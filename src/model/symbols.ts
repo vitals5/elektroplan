@@ -293,16 +293,16 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     standard: 'DIN EN 60617',
     defaultBmkPrefix: '-X',
     defaultFunctionText: 'Reihenklemme',
-    width: 20,
+    width: 24,
     height: 40,
     pins: [
-      { id: '1', name: '1', x: 10, y: 0, direction: 'top' },
-      { id: '2', name: '2', x: 10, y: 40, direction: 'bottom' }
+      { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 12, y: 40, direction: 'bottom' }
     ],
     svgContent: `
-      <line x1="10" y1="0" x2="10" y2="16" stroke="currentColor" stroke-width="2"/>
-      <circle cx="10" cy="20" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
-      <line x1="10" y1="24" x2="10" y2="40" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="0" x2="12" y2="16" stroke="currentColor" stroke-width="2"/>
+      <circle cx="12" cy="20" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="24" x2="12" y2="40" stroke="currentColor" stroke-width="2"/>
     `,
     description: 'Durchgangsklemme für Klemmenleiste'
   },
@@ -943,14 +943,14 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     standard: 'DIN EN 60617',
     defaultBmkPrefix: '/',
     defaultFunctionText: '+24V',
-    width: 20,
+    width: 24,
     height: 30,
     pins: [
-      { id: '1', name: '1', x: 10, y: 30, direction: 'bottom' }
+      { id: '1', name: '1', x: 12, y: 30, direction: 'bottom' }
     ],
     svgContent: `
-      <line x1="10" y1="0" x2="10" y2="16" stroke="currentColor" stroke-width="2"/>
-      <polygon points="4,16 10,28 16,16" fill="currentColor"/>
+      <line x1="12" y1="0" x2="12" y2="16" stroke="currentColor" stroke-width="2"/>
+      <polygon points="6,16 12,28 18,16" fill="currentColor"/>
     `,
     description: 'Potentialweiterleitung / Abbruchstelle nach unten'
   },
@@ -961,14 +961,14 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     standard: 'DIN EN 60617',
     defaultBmkPrefix: '/',
     defaultFunctionText: '0V',
-    width: 20,
+    width: 24,
     height: 30,
     pins: [
-      { id: '1', name: '1', x: 10, y: 0, direction: 'top' }
+      { id: '1', name: '1', x: 12, y: 0, direction: 'top' }
     ],
     svgContent: `
-      <line x1="10" y1="30" x2="10" y2="14" stroke="currentColor" stroke-width="2"/>
-      <polygon points="4,14 10,2 16,14" fill="currentColor"/>
+      <line x1="12" y1="30" x2="12" y2="14" stroke="currentColor" stroke-width="2"/>
+      <polygon points="6,14 12,2 18,14" fill="currentColor"/>
     `,
     description: 'Potentialweiterleitung / Abbruchstelle nach oben'
   }

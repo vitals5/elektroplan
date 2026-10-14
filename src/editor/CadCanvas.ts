@@ -288,89 +288,6 @@ export class CadCanvas {
     return Math.round(val / step) * step;
   }
 
-  /**
-   * EPLAN Magnetic Pin Snapping:
-   * When moving or placing a component, if its pins come within range of facing pins
-   * of other components on the page, magnetically snap candidate position so pins align with 0px delta!
-   */
-  public snapWithPinMagnet(
-    comp: PlacedComponent,
-    rawX: number,
-    rawY: number,
-    isModifierActive: boolean = false
-  ): { x: number; y: number } {
-    let snapX = this.snap(rawX, isModifierActive);
-    let snapY = this.snap(rawY, isModifierActive);
-
-    if (!this.gridSnap && this.gridResolution === 'off') {
-      return { x: snapX, y: snapY };
-    }
-
-    const sym = getSymbolById(comp.symbolId);
-    if (!sym) return { x: snapX, y: snapY };
-
-    const otherComps = this.activePage.components.filter(c => c.id !== comp.id);
-    const otherPins = AutoconnectEngine.getAllPins(otherComps);
-    if (otherPins.length === 0) return { x: snapX, y: snapY };
-
-    const MAGNET_RADIUS = 6; // px
-
-    // 1. Vertical Pin Snapping: snap X to align pins vertically
-    let bestDeltaX: number | null = null;
-    let minDistX = MAGNET_RADIUS + 1;
-
-    const testCompX: PlacedComponent = { ...comp, x: snapX, y: snapY };
-    const compPinsX = sym.pins.map(p => AutoconnectEngine.getRotatedPinInfo(testCompX, p, sym));
-
-    for (const cPin of compPinsX) {
-      for (const oPin of otherPins) {
-        const isVerticalMatch =
-          (cPin.direction === 'top' && oPin.direction === 'bottom' && oPin.worldY < cPin.worldY) ||
-          (cPin.direction === 'bottom' && oPin.direction === 'top' && oPin.worldY > cPin.worldY);
-
-        if (isVerticalMatch) {
-          const dx = oPin.worldX - cPin.worldX;
-          if (Math.abs(dx) <= MAGNET_RADIUS && Math.abs(dx) < minDistX) {
-            minDistX = Math.abs(dx);
-            bestDeltaX = dx;
-          }
-        }
-      }
-    }
-
-    if (bestDeltaX !== null) {
-      snapX += bestDeltaX;
-    }
-
-    // 2. Horizontal Pin Snapping: snap Y to align pins horizontally
-    let bestDeltaY: number | null = null;
-    let minDistY = MAGNET_RADIUS + 1;
-
-    const testCompY: PlacedComponent = { ...comp, x: snapX, y: snapY };
-    const compPinsY = sym.pins.map(p => AutoconnectEngine.getRotatedPinInfo(testCompY, p, sym));
-
-    for (const cPin of compPinsY) {
-      for (const oPin of otherPins) {
-        const isHorizontalMatch =
-          (cPin.direction === 'left' && oPin.direction === 'right' && oPin.worldX < cPin.worldX) ||
-          (cPin.direction === 'right' && oPin.direction === 'left' && oPin.worldX > cPin.worldX);
-
-        if (isHorizontalMatch) {
-          const dy = oPin.worldY - cPin.worldY;
-          if (Math.abs(dy) <= MAGNET_RADIUS && Math.abs(dy) < minDistY) {
-            minDistY = Math.abs(dy);
-            bestDeltaY = dy;
-          }
-        }
-      }
-    }
-
-    if (bestDeltaY !== null) {
-      snapY += bestDeltaY;
-    }
-
-    return { x: snapX, y: snapY };
-  }
 
   private screenToWorld(clientX: number, clientY: number): { x: number; y: number } {
     const rect = this.svg.getBoundingClientRect();
@@ -589,8 +506,8 @@ export class CadCanvas {
     const prefix = sym.defaultBmkPrefix || '';
     const bmk = prefix ? `${prefix}${existingCount + 1}` : '';
 
-    const tempComp: PlacedComponent = {
-      id: '__new__',
+    const newComp: PlacedComponent = {
+      id: 'comp_' + Math.random().toString(36).substring(2, 9),
       symbolId: sym.id,
       bmk,
       higherLevelFunction: this.activePage.higherLevel,
@@ -603,14 +520,6 @@ export class CadCanvas {
       y: this.snap(worldY),
       rotation: this.ghostRotation || 0,
       pins: {}
-    };
-    const snapped = this.snapWithPinMagnet(tempComp, worldX, worldY);
-
-    const newComp: PlacedComponent = {
-      ...tempComp,
-      id: 'comp_' + Math.random().toString(36).substring(2, 9),
-      x: snapped.x,
-      y: snapped.y
     };
 
     this.activePage.components.push(newComp);
@@ -727,9 +636,8 @@ export class CadCanvas {
         const rawX = world.x - this.dragOffset.x;
         const rawY = world.y - this.dragOffset.y;
         const isModifier = e.shiftKey || e.altKey;
-        const snapped = this.snapWithPinMagnet(comp, rawX, rawY, isModifier);
-        comp.x = snapped.x;
-        comp.y = snapped.y;
+        comp.x = this.snap(rawX, isModifier);
+        comp.y = this.snap(rawY, isModifier);
         const el = this.svg.getElementById(comp.id);
         if (el && sym) {
           el.setAttribute('transform', `translate(${comp.x}, ${comp.y}) rotate(${comp.rotation || 0}, ${sym.width / 2}, ${sym.height / 2})`);
@@ -924,9 +832,8 @@ export class CadCanvas {
           const sym = getSymbolById(comp.symbolId);
           const rawX = world.x - this.dragOffset.x;
           const rawY = world.y - this.dragOffset.y;
-          const snapped = this.snapWithPinMagnet(comp, rawX, rawY, false);
-          comp.x = snapped.x;
-          comp.y = snapped.y;
+          comp.x = this.snap(rawX, false);
+          comp.y = this.snap(rawY, false);
           // Fast DOM update for smooth 60fps drag without replacing innerHTML:
           const el = this.svg.getElementById(comp.id);
           if (el && sym) {
@@ -1361,9 +1268,6 @@ export class CadCanvas {
         rotation: this.ghostRotation || 0,
         pins: {}
       };
-      const snapped = this.snapWithPinMagnet(tempComp, this.currentMousePos.x, this.currentMousePos.y);
-      tempComp.x = snapped.x;
-      tempComp.y = snapped.y;
       previews = AutoconnectEngine.getAutoconnectPreview(this.activePage.components, tempComp);
     } else if (this.isDraggingComponent && this.selectedComponentId) {
       const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
@@ -1438,19 +1342,8 @@ export class CadCanvas {
     const sym = getSymbolById(this.activeSymbolToPlace);
     if (!sym) return '';
 
-    const tempComp: PlacedComponent = {
-      id: '__ghost__',
-      symbolId: sym.id,
-      bmk: '',
-      functionText: '',
-      x: this.snap(this.currentMousePos.x),
-      y: this.snap(this.currentMousePos.y),
-      rotation: this.ghostRotation || 0,
-      pins: {}
-    };
-    const snapped = this.snapWithPinMagnet(tempComp, this.currentMousePos.x, this.currentMousePos.y);
-    const gx = snapped.x;
-    const gy = snapped.y;
+    const gx = this.snap(this.currentMousePos.x);
+    const gy = this.snap(this.currentMousePos.y);
 
     const existingCount = this.activePage.components.filter(c => c.symbolId === sym.id).length;
     const prefix = sym.defaultBmkPrefix || '';

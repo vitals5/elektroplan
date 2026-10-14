@@ -188,7 +188,7 @@ export class App {
           <button class="btn" id="btnZoomIn" title="Vergrößern">➕</button>
           <button class="btn" id="btnZoomOut" title="Verkleinern">➖</button>
           <button class="btn" id="btnZoomFit" title="Blatt formatfüllend anpassen (F)">🔍 Fit</button>
-          <button class="btn hide-mobile active" id="btnGridSnap" title="Raster umschalten (Vollraster 8px / Halbraster 4px / Feinraster 2px / Aus - Tastenkürzel: H)">📐 Raster: 1x</button>
+          <button class="btn active" id="btnGridSnap" title="Raster umschalten (Vollraster 8px / Halbraster 4px / Feinraster 2px / Aus - Tastenkürzel: H)">📐 <span class="hide-mobile">Raster: </span>1x</button>
           <button class="btn hide-mobile active" id="btnAutoconnect" title="EPLAN Autoconnecting ein/aus">⚡ Autoconnect</button>
 
           <button class="btn btn-drawer-toggle" id="btnToggleRightSidebar" title="Eigenschaften & Inspektor">⚙️ <span class="hide-mobile">Eigenschaften</span></button>
@@ -968,11 +968,11 @@ export class App {
       const res = this.canvas.gridResolution;
       const isSnap = this.canvas.gridSnap && res !== 'off';
       btnGrid.classList.toggle('active', isSnap);
-      let text = '📐 Raster: 1x';
-      if (!isSnap) text = '📐 Raster: Aus';
-      else if (res === 'half') text = '📐 Raster: ½';
-      else if (res === 'fine') text = '📐 Raster: ¼';
-      btnGrid.innerHTML = text;
+      let label = '1x';
+      if (!isSnap) label = 'Aus';
+      else if (res === 'half') label = '½';
+      else if (res === 'fine') label = '¼';
+      btnGrid.innerHTML = `📐 <span class="hide-mobile">Raster: </span>${label}`;
     }
     this.updateStatusBar();
   }

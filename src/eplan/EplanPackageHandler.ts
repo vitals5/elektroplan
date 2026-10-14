@@ -289,7 +289,7 @@ export class EplanPackageHandler {
           symbolId: 'potential_arrow_down',
           bmk: '/1.1',
           functionText: 'L1',
-          x: 222,
+          x: 220,
           y: 80,
           rotation: 0,
           pins: {}
@@ -299,7 +299,7 @@ export class EplanPackageHandler {
           symbolId: 'potential_arrow_down',
           bmk: '/1.2',
           functionText: 'L2',
-          x: 246,
+          x: 244,
           y: 80,
           rotation: 0,
           pins: {}
@@ -309,7 +309,7 @@ export class EplanPackageHandler {
           symbolId: 'potential_arrow_down',
           bmk: '/1.3',
           functionText: 'L3',
-          x: 270,
+          x: 268,
           y: 80,
           rotation: 0,
           pins: {}
@@ -353,7 +353,7 @@ export class EplanPackageHandler {
           bmk: '-X1',
           functionText: '1',
           bmkPosition: { preset: 'left', offsetX: -6 },
-          x: 222,
+          x: 220,
           y: 400,
           rotation: 0,
           pins: {}
@@ -364,7 +364,7 @@ export class EplanPackageHandler {
           bmk: '-X1',
           functionText: '2',
           bmkPosition: { visible: false },
-          x: 246,
+          x: 244,
           y: 400,
           rotation: 0,
           pins: {}
@@ -375,7 +375,7 @@ export class EplanPackageHandler {
           bmk: '-X1',
           functionText: '3',
           bmkPosition: { visible: false },
-          x: 270,
+          x: 268,
           y: 400,
           rotation: 0,
           pins: {}

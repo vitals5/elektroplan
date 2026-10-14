@@ -173,8 +173,8 @@ console.log('\n--- 5. Testing Live Autoconnect Preview ---');
 // Test ghost preview while dragging or placing termB
 const previews = AutoconnectEngine.getAutoconnectPreview([termA], termB);
 assert(previews.length === 1, `Live preview generates 1 target connection segment (got ${previews.length})`);
-assert(previews[0].x1 === 210 && previews[0].y1 === 180, 'Preview start point matches moving pin');
-assert(previews[0].targetX === 210 && previews[0].targetY === 140, 'Preview target matches existing component pin');
+assert(previews[0].x1 === 212 && previews[0].y1 === 180, 'Preview start point matches moving pin');
+assert(previews[0].targetX === 212 && previews[0].targetY === 140, 'Preview target matches existing component pin');
 
 console.log('\n--- 6. Testing Rotation of All Elements ---');
 // Rotating any element (e.g. corner symbol, motor, contactor, etc.)
@@ -261,7 +261,7 @@ const halfTermTop: PlacedComponent = {
   symbolId: 'terminal_single',
   bmk: '-X2:1',
   functionText: '',
-  x: 236 - 10, // pin at x + 10 = 236
+  x: 236 - 12, // pin at x + 12 = 236
   y: 100,
   rotation: 0,
   pins: {}
@@ -271,7 +271,7 @@ const halfTermBottom: PlacedComponent = {
   symbolId: 'terminal_single',
   bmk: '-X2:2',
   functionText: '',
-  x: 236 - 10, // pin at x + 10 = 236
+  x: 236 - 12, // pin at x + 12 = 236
   y: 160,
   rotation: 0,
   pins: {}
@@ -282,12 +282,12 @@ assert(halfPairs.length === 1, `Halbraster components connect automatically (got
 assert(halfPairs[0].pin1.worldX === 236 && halfPairs[0].pin2.worldX === 236, 'Both pins aligned at half-raster X=236');
 
 // Tolerance test: Pin 1 at X=236, Pin 2 at X=235 (1px subpixel delta)
-halfTermBottom.x = 235 - 10;
+halfTermBottom.x = 235 - 12;
 const tolPairs = AutoconnectEngine.findAutoconnectPairs([halfTermTop, halfTermBottom]);
 assert(tolPairs.length === 1, `Pins within <= 2px tolerance cluster and connect (got ${tolPairs.length})`);
 
 // Non-matching test: Pin 1 at X=236, Pin 2 at X=232 (4px difference: distinct columns)
-halfTermBottom.x = 232 - 10;
+halfTermBottom.x = 232 - 12;
 const diffPairs = AutoconnectEngine.findAutoconnectPairs([halfTermTop, halfTermBottom]);
 assert(diffPairs.length === 0, `Pins on different raster columns (4px apart) do NOT false-connect (got ${diffPairs.length})`);
 
