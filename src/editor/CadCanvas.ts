@@ -10,6 +10,9 @@ export type EditorMode = 'select' | 'wire' | 'place_symbol' | 'pan';
 export interface CadCanvasCallbacks {
   onSelectComponent: (component: PlacedComponent | null) => void;
   onSelectWire: (wire: Wire | null) => void;
+  onOpenProperties?: (component: PlacedComponent) => void;
+  onOpenSymbolSelection?: () => void;
+  onNavigateToPage?: (pageId: string) => void;
   onProjectModified: () => void;
 }
 
@@ -32,8 +35,10 @@ export class CadCanvas {
   public gridSnap: boolean = true;
   public gridSize: number = 10; // 10px per raster unit
   public activeSymbolToPlace: string | null = null;
+  public ghostRotation: 0 | 90 | 180 | 270 = 0;
   public selectedComponentId: string | null = null;
   public selectedWireId: string | null = null;
+  public hoveredPin: { componentId: string; pinId: string } | null = null;
 
   // Dragging components
   private isDraggingComponent: boolean = false;
@@ -100,6 +105,7 @@ export class CadCanvas {
   public setSymbolToPlace(symbolId: string): void {
     this.activeSymbolToPlace = symbolId;
     this.mode = 'place_symbol';
+    this.ghostRotation = 0;
     this.render();
   }
 
@@ -142,6 +148,31 @@ export class CadCanvas {
       this.notifyModified();
       this.render();
     }
+  }
+
+  public duplicateSelected(): void {
+    if (!this.selectedComponentId) return;
+    const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
+    if (!comp) return;
+
+    const sym = getSymbolById(comp.symbolId);
+    const existingCount = this.activePage.components.filter(c => c.symbolId === comp.symbolId).length;
+    const prefix = sym?.defaultBmkPrefix || '-K';
+    const newBmk = `${prefix}${existingCount + 1}`;
+
+    const newComp: PlacedComponent = {
+      ...JSON.parse(JSON.stringify(comp)),
+      id: 'comp_' + Math.random().toString(36).substring(2, 9),
+      bmk: newBmk,
+      x: comp.x + this.gridSize * 4,
+      y: comp.y + this.gridSize * 4,
+    };
+
+    this.activePage.components.push(newComp);
+    this.selectedComponentId = newComp.id;
+    this.callbacks.onSelectComponent(newComp);
+    this.notifyModified();
+    this.render();
   }
 
   public deleteSelected(): void {
@@ -191,6 +222,8 @@ export class CadCanvas {
     window.addEventListener('mousemove', (e) => this.onMouseMove(e));
     window.addEventListener('mouseup', () => this.onMouseUp());
     this.svg.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
+    this.svg.addEventListener('dblclick', (e) => this.onDoubleClick(e));
+    this.svg.addEventListener('contextmenu', (e) => this.onContextMenu(e));
 
     // Touch events for smartphone / tablet gestures
     this.svg.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
@@ -198,18 +231,152 @@ export class CadCanvas {
     window.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
     window.addEventListener('touchcancel', (e) => this.onTouchEnd(e), { passive: false });
 
-    // Keyboard shortcuts
+    // Keyboard shortcuts (EPLAN P8 standard shortcuts)
     window.addEventListener('keydown', (e) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      
+      if (e.key === 'Tab') {
+        if (this.mode === 'place_symbol' && this.activeSymbolToPlace) {
+          e.preventDefault();
+          this.ghostRotation = ((this.ghostRotation + 90) % 360) as any;
+          this.render();
+        }
+      } else if (e.key === 'Insert' || e.key === 'e' || e.key === 'E') {
+        this.callbacks.onOpenSymbolSelection?.();
+      } else if (e.key === 'w' || e.key === 'W' || e.key === 'd' || e.key === 'D') {
+        this.setMode(this.mode === 'wire' ? 'select' : 'wire');
+      } else if (e.key === 'f' || e.key === 'F') {
+        this.fitToScreen();
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
         this.deleteSelected();
       } else if (e.key === 'r' || e.key === 'R') {
         this.rotateSelected();
       } else if (e.key === 'Escape') {
         this.mode = 'select';
         this.wireStart = null;
+        this.activeSymbolToPlace = null;
         this.render();
+      } else if (e.ctrlKey && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        this.duplicateSelected();
       }
+    });
+  }
+
+  private onDoubleClick(e: MouseEvent): void {
+    const world = this.screenToWorld(e.clientX, e.clientY);
+    const comp = this.findComponentAt(world.x, world.y);
+    if (comp) {
+      this.callbacks.onOpenProperties?.(comp);
+    }
+  }
+
+  private onContextMenu(e: MouseEvent): void {
+    e.preventDefault();
+    const world = this.screenToWorld(e.clientX, e.clientY);
+    const comp = this.findComponentAt(world.x, world.y);
+    const wire = this.findWireAt(world.x, world.y);
+
+    if (comp) {
+      this.selectedComponentId = comp.id;
+      this.selectedWireId = null;
+      this.callbacks.onSelectComponent(comp);
+      this.callbacks.onSelectWire(null);
+      this.render();
+    } else if (wire) {
+      this.selectedWireId = wire.id;
+      this.selectedComponentId = null;
+      this.callbacks.onSelectWire(wire);
+      this.callbacks.onSelectComponent(null);
+      this.render();
+    }
+
+    this.showContextMenu(e.clientX, e.clientY, comp, wire);
+  }
+
+  private showContextMenu(clientX: number, clientY: number, comp: PlacedComponent | null, wire: Wire | null): void {
+    const existing = document.getElementById('eplanContextMenu');
+    if (existing) existing.remove();
+
+    const menu = document.createElement('div');
+    menu.id = 'eplanContextMenu';
+    menu.className = 'eplan-context-menu';
+    menu.style.position = 'fixed';
+    menu.style.left = `${clientX}px`;
+    menu.style.top = `${clientY}px`;
+    menu.style.zIndex = '3000';
+
+    let items = '';
+    if (comp) {
+      const sym = getSymbolById(comp.symbolId);
+      items += `
+        <div class="ctx-header"><strong>${comp.bmk}</strong> (${sym?.name || 'Bauteil'})</div>
+        <div class="ctx-item" data-action="properties">⚙️ Eigenschaften... <span class="ctx-key">DblClick</span></div>
+        <div class="ctx-item" data-action="rotate">🔄 Um 90° drehen <span class="ctx-key">R</span></div>
+        <div class="ctx-item" data-action="duplicate">📋 Duplizieren <span class="ctx-key">Strg+D</span></div>
+        ${comp.crossRef ? `<div class="ctx-item" data-action="jump-crossref">🔗 Querverweis folgen (${comp.crossRef})</div>` : ''}
+        <div class="ctx-sep"></div>
+        <div class="ctx-item ctx-danger" data-action="delete">🗑️ Löschen <span class="ctx-key">Entf</span></div>
+      `;
+    } else if (wire) {
+      items += `
+        <div class="ctx-header">Verbindung: <strong>${wire.potential}</strong></div>
+        <div class="ctx-item" data-action="delete">🗑️ Verbindung löschen <span class="ctx-key">Entf</span></div>
+      `;
+    } else {
+      items += `
+        <div class="ctx-item" data-action="insert-sym">➕ Symbol einfügen... <span class="ctx-key">Einfg</span></div>
+        <div class="ctx-item" data-action="wire">🔌 Verbinden / Verdrahten <span class="ctx-key">D</span></div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item" data-action="fit">🔍 Ansicht: Ganzes Blatt <span class="ctx-key">F</span></div>
+        <div class="ctx-item" data-action="reset-zoom">📐 100% Zoom (1:1)</div>
+        <div class="ctx-item" data-action="toggle-grid">📐 Rasterfang: ${this.gridSnap ? 'Aktiv (10px)' : 'Aus'}</div>
+      `;
+    }
+
+    menu.innerHTML = items;
+    document.body.appendChild(menu);
+
+    const closeMenu = () => menu.remove();
+    setTimeout(() => {
+      window.addEventListener('click', closeMenu, { once: true });
+      window.addEventListener('contextmenu', closeMenu, { once: true });
+    }, 10);
+
+    menu.querySelectorAll('.ctx-item').forEach(el => {
+      el.addEventListener('click', (e) => {
+        const action = (e.currentTarget as HTMLElement).dataset.action;
+        closeMenu();
+        if (action === 'properties' && comp) {
+          this.callbacks.onOpenProperties?.(comp);
+        } else if (action === 'rotate') {
+          this.rotateSelected();
+        } else if (action === 'duplicate') {
+          this.duplicateSelected();
+        } else if (action === 'delete') {
+          this.deleteSelected();
+        } else if (action === 'insert-sym') {
+          this.callbacks.onOpenSymbolSelection?.();
+        } else if (action === 'wire') {
+          this.setMode('wire');
+        } else if (action === 'fit') {
+          this.fitToScreen();
+        } else if (action === 'reset-zoom') {
+          this.resetZoom();
+        } else if (action === 'toggle-grid') {
+          this.gridSnap = !this.gridSnap;
+          this.render();
+        } else if (action === 'jump-crossref' && comp?.crossRef) {
+          const match = comp.crossRef.match(/\/(\d+)/);
+          if (match) {
+            const pageNum = match[1];
+            const targetPage = this.project.pages.find(p => p.pageNumber === pageNum);
+            if (targetPage && this.callbacks.onNavigateToPage) {
+              this.callbacks.onNavigateToPage(targetPage.id);
+            }
+          }
+        }
+      });
     });
   }
 
@@ -233,7 +400,7 @@ export class CadCanvas {
       manufacturer: sym.manufacturer || '',
       x: this.snap(worldX),
       y: this.snap(worldY),
-      rotation: 0,
+      rotation: this.ghostRotation || 0,
       pins: {}
     };
 
@@ -339,6 +506,13 @@ export class CadCanvas {
     const world = this.screenToWorld(e.clientX, e.clientY);
     this.currentMousePos = world;
 
+    // Check hovered pin for visual snap highlight
+    const pin = this.findPinAt(world.x, world.y);
+    const pinChanged = (pin?.componentId !== this.hoveredPin?.componentId || pin?.pinId !== this.hoveredPin?.pinId);
+    if (pinChanged) {
+      this.hoveredPin = pin;
+    }
+
     if (this.isDraggingComponent && this.selectedComponentId) {
       const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
       if (comp) {
@@ -346,7 +520,7 @@ export class CadCanvas {
         comp.y = this.snap(world.y - this.dragOffset.y);
         this.render();
       }
-    } else if (this.wireStart) {
+    } else if (this.mode === 'place_symbol' || this.wireStart || pinChanged) {
       this.render();
     }
   }
@@ -631,6 +805,12 @@ export class CadCanvas {
 
         <!-- Interactive Temp Wire -->
         ${this.renderInteractiveWire()}
+
+        <!-- Pin Hover Snap Highlight -->
+        ${this.renderHoveredPin()}
+
+        <!-- Ghost Symbol under Cursor (EPLAN P8 Placement Preview) -->
+        ${this.renderGhostSymbol()}
       </g>
     `;
   }
@@ -807,5 +987,45 @@ export class CadCanvas {
     if (potential === '+24V') return '#fc8181';
     if (potential === '0V') return '#4299e1';
     return '#cbd5e0';
+  }
+
+  private renderHoveredPin(): string {
+    if (!this.hoveredPin) return '';
+    const coord = this.getPinCoordinates(this.hoveredPin.componentId, this.hoveredPin.pinId);
+    if (!coord) return '';
+
+    return `
+      <g class="pin-hover-marker" transform="translate(${coord.x}, ${coord.y})" pointer-events="none">
+        <circle cx="0" cy="0" r="8" fill="none" stroke="#68d391" stroke-width="2" stroke-dasharray="3,2"/>
+        <circle cx="0" cy="0" r="2.5" fill="#68d391"/>
+      </g>
+    `;
+  }
+
+  private renderGhostSymbol(): string {
+    if (this.mode !== 'place_symbol' || !this.activeSymbolToPlace) return '';
+    const sym = getSymbolById(this.activeSymbolToPlace);
+    if (!sym) return '';
+
+    const gx = this.snap(this.currentMousePos.x);
+    const gy = this.snap(this.currentMousePos.y);
+
+    const existingCount = this.activePage.components.filter(c => c.symbolId === sym.id).length;
+    const bmk = `${sym.defaultBmkPrefix}${existingCount + 1}`;
+
+    return `
+      <g id="ghostLayer" transform="translate(${gx}, ${gy}) rotate(${this.ghostRotation || 0}, ${sym.width / 2}, ${sym.height / 2})" opacity="0.75" pointer-events="none">
+        <!-- Placement target box -->
+        <rect x="-4" y="-4" width="${sym.width + 8}" height="${sym.height + 8}" fill="rgba(99, 179, 237, 0.15)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="4,3" rx="4"/>
+        
+        <!-- BMK hint -->
+        <text x="${sym.width / 2}" y="-8" font-size="10" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${bmk} (Klick: Platzieren | Tab: Drehen)</text>
+
+        <!-- Symbol Graphics -->
+        <g color="#63b3ed">
+          ${sym.svgContent}
+        </g>
+      </g>
+    `;
   }
 }

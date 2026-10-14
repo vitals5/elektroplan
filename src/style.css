@@ -522,4 +522,208 @@ body {
     padding: 0 8px;
     font-size: 10px;
   }
+
+  .eplan-menubar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    height: 26px;
+    padding: 0 4px;
+  }
+  .eplan-menubar::-webkit-scrollbar {
+    display: none;
+  }
+  .eplan-menubar .menu-item {
+    padding: 2px 6px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+}
+
+/* ==========================================================================
+   EPLAN Classic Desktop Menu Bar
+   ========================================================================== */
+.eplan-menubar {
+  display: flex;
+  align-items: center;
+  background-color: #171b24;
+  border-bottom: 1px solid #2d3748;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  user-select: none;
+  z-index: 1100;
+  position: relative;
+}
+
+.eplan-menubar .menu-item {
+  position: relative;
+  padding: 4px 10px;
+  color: #cbd5e0;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.eplan-menubar .menu-item:hover,
+.eplan-menubar .menu-item.open {
+  background-color: #2b3547;
+  color: #ffffff;
+}
+
+.eplan-menubar .menu-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 280px;
+  background: #1e2430;
+  border: 1px solid #3e4c63;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.65);
+  border-radius: 4px;
+  padding: 4px 0;
+  z-index: 2200;
+}
+
+.eplan-menubar .menu-item.open > .menu-dropdown {
+  display: block;
+}
+
+.eplan-menubar .menu-opt {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.eplan-menubar .menu-opt:hover {
+  background-color: var(--accent);
+  color: #ffffff;
+}
+
+.eplan-menubar .opt-key {
+  font-size: 10px;
+  color: #a0aec0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin-left: 20px;
+}
+
+.eplan-menubar .menu-opt:hover .opt-key {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.eplan-menubar .menu-sep {
+  height: 1px;
+  background-color: #2e3848;
+  margin: 4px 0;
+}
+
+/* ==========================================================================
+   EPLAN Context Menu (Right Click)
+   ========================================================================== */
+.eplan-context-menu {
+  position: fixed;
+  background: #1e2430;
+  border: 1px solid #3e4c63;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.7);
+  border-radius: 5px;
+  padding: 4px 0;
+  min-width: 230px;
+  z-index: 3000;
+  font-size: 12px;
+  user-select: none;
+  animation: fadeInCtx 0.08s ease-out;
+}
+
+@keyframes fadeInCtx {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.eplan-context-menu .ctx-header {
+  padding: 6px 14px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #a0aec0;
+  text-transform: uppercase;
+  border-bottom: 1px solid #2d3748;
+  letter-spacing: 0.5px;
+  margin-bottom: 3px;
+}
+
+.eplan-context-menu .ctx-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 14px;
+  color: #edf2f7;
+  cursor: pointer;
+}
+
+.eplan-context-menu .ctx-item:hover {
+  background-color: var(--accent);
+  color: #ffffff;
+}
+
+.eplan-context-menu .ctx-item.danger:hover {
+  background-color: var(--danger);
+  color: #ffffff;
+}
+
+.eplan-context-menu .ctx-key {
+  font-size: 10px;
+  color: #a0aec0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin-left: 16px;
+}
+
+.eplan-context-menu .ctx-item:hover .ctx-key {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.eplan-context-menu .ctx-sep {
+  height: 1px;
+  background-color: #2d3748;
+  margin: 4px 0;
+}
+
+/* ==========================================================================
+   EPLAN Window & Tab Dialog Styles
+   ========================================================================== */
+.eplan-window {
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.8) !important;
+}
+
+.eplan-tab-bar {
+  display: flex;
+  background: #1c202a;
+  border-bottom: 1px solid #3e4656;
+  padding: 0 8px;
+  gap: 2px;
+}
+
+.eplan-tab-btn {
+  background: transparent;
+  border: none;
+  color: #a0aec0;
+  padding: 8px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.eplan-tab-btn:hover {
+  color: #edf2f7;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.eplan-tab-btn.active {
+  color: #63b3ed;
+  border-bottom: 2px solid #3182ce;
+  font-weight: 600;
+  background: rgba(49, 130, 206, 0.08);
 }

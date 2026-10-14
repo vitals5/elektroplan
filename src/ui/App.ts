@@ -11,6 +11,9 @@ import { PartsListGenerator } from '../reports/PartsList';
 import { PdfExportDialog } from './PdfExportDialog';
 import { PartCatalogue, MANUFACTURER_PARTS, ManufacturerPart } from '../model/PartCatalogue';
 import { MobileConnectDialog } from './MobileConnectDialog';
+import { EplanPropertiesDialog } from './EplanPropertiesDialog';
+import { EplanSymbolSelectionDialog } from './EplanSymbolSelectionDialog';
+import { EplanPlausibilityDialog } from './EplanPlausibilityDialog';
 
 export class App {
   private project!: Project;
@@ -45,10 +48,74 @@ export class App {
     if (!root) return;
 
     root.innerHTML = `
-      <!-- Header Toolbar -->
+      <!-- EPLAN Classic Desktop Menu Bar -->
+      <nav class="eplan-menubar" id="eplanMenubar">
+        <div class="menu-item">
+          Projekt
+          <div class="menu-dropdown">
+            <div class="menu-opt" id="menuNew">📄 Neu... <span class="opt-key">Strg+N</span></div>
+            <label class="menu-opt" style="margin:0; cursor:pointer;">📂 Öffnen (.zw1, .edz, .xml, .json)... <span class="opt-key">Strg+O</span><input type="file" id="menuFileInput" accept=".zw1,.edz,.xml,.json,.elk" style="display:none;"></label>
+            <div class="menu-opt" id="menuSave">💾 Speichern <span class="opt-key">Strg+S</span></div>
+            <div class="menu-sep"></div>
+            <div class="menu-opt" id="menuExportPdf">📑 Intelligenter PDF-Export (DIN A3)... <span class="opt-key">Strg+P</span></div>
+            <div class="menu-opt" id="menuExportZw1">📦 Als EPLAN .zw1 Backup exportieren...</div>
+            <div class="menu-opt" id="menuExportXml">📋 Als EPLAN XML exportieren...</div>
+            <div class="menu-sep"></div>
+            <div class="menu-opt" id="menuPrint">🖨️ Drucken / Plotten...</div>
+          </div>
+        </div>
+        <div class="menu-item">
+          Bearbeiten
+          <div class="menu-dropdown">
+            <div class="menu-opt" id="menuDuplicate">📋 Duplizieren <span class="opt-key">Strg+D</span></div>
+            <div class="menu-opt" id="menuRotate">🔄 Um 90° drehen <span class="opt-key">R</span></div>
+            <div class="menu-opt" id="menuDelete">🗑️ Löschen <span class="opt-key">Entf</span></div>
+          </div>
+        </div>
+        <div class="menu-item">
+          Ansicht
+          <div class="menu-dropdown">
+            <div class="menu-opt" id="menuFit">🔍 Ganzes Blatt (Fit) <span class="opt-key">F / Alt+3</span></div>
+            <div class="menu-opt" id="menuZoom100">📐 Originalgröße (100%)</div>
+            <div class="menu-opt" id="menuZoomIn">➕ Ausschnitt vergrößern</div>
+            <div class="menu-opt" id="menuZoomOut">➖ Ausschnitt verkleinern</div>
+            <div class="menu-sep"></div>
+            <div class="menu-opt" id="menuToggleGrid">📐 Rasterfang umschalten</div>
+          </div>
+        </div>
+        <div class="menu-item">
+          Einfügen
+          <div class="menu-dropdown">
+            <div class="menu-opt" id="menuInsertSym">⚡ Symbol auswählen... <span class="opt-key">Einfg</span></div>
+            <div class="menu-opt" id="menuWire">🔌 Verbindungslinie (Verdrahten) <span class="opt-key">D</span></div>
+            <div class="menu-sep"></div>
+            <div class="menu-opt" id="menuNewPage">📄 Neue Seite anlegen...</div>
+          </div>
+        </div>
+        <div class="menu-item">
+          Projektdaten
+          <div class="menu-dropdown">
+            <div class="menu-opt" id="menuPlausibility">📋 Prüflauf / Plausibilitätsprüfung ausführen...</div>
+            <div class="menu-opt" id="menuRecalcCrossRef">🔄 Querverweise & Kontaktspiegel neu berechnen</div>
+            <div class="menu-sep"></div>
+            <div class="menu-opt" id="menuShowTerminals">🔌 Klemmenplan (-X1) anzeigen</div>
+            <div class="menu-opt" id="menuShowBom">📊 Artikel-Stückliste anzeigen</div>
+          </div>
+        </div>
+        <div class="menu-item">
+          Hilfe
+          <div class="menu-dropdown">
+            <div class="menu-opt" id="menuMobile">📱 Auf dem Smartphone testen (QR-Code)...</div>
+            <div class="menu-opt" id="menuShortcuts">⌨️ EPLAN P8 Tastenkürzel-Übersicht...</div>
+            <div class="menu-opt" id="menuAbout">ℹ️ Über Elektroplan (EPLAN Electric P8 Edition)</div>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Main Toolbar -->
       <header class="app-header">
         <div class="brand-section">
-          <button class="btn btn-drawer-toggle" id="btnToggleLeftSidebar" title="Menü (Seiten, Symbole, Artikel)">☰ <span class="hide-mobile">Menü</span></button>
+          <button class="btn btn-drawer-toggle" id="btnToggleLeftSidebar" title="Menü (Seiten, Symbole, Artikel)">☰ <span class="hide-mobile">Seiten</span></button>
           <div class="brand-logo">
             ⚡ Elektroplan <span class="badge-eplan">EPLAN P8</span>
           </div>
@@ -62,36 +129,39 @@ export class App {
           
           <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
 
-          <button class="btn" id="btnNewProject" title="Neues Projekt anlegen">📄 <span class="hide-mobile">Neu</span></button>
-          <label class="btn" title="EPLAN .zw1, .edz, .xml oder .json öffnen" style="margin: 0;">
+          <button class="btn" id="btnNewProject" title="Neues Projekt anlegen (Strg+N)">📄 <span class="hide-mobile">Neu</span></button>
+          <label class="btn" title="EPLAN .zw1, .edz, .xml oder .json öffnen" style="margin: 0; cursor: pointer;">
             📂 <span class="hide-mobile">Öffnen</span>
             <input type="file" id="fileInput" accept=".zw1,.edz,.xml,.json,.elk" style="display: none;">
           </label>
-          <button class="btn" id="btnSaveJson" title="Projekt speichern">💾 <span class="hide-mobile">Speichern</span></button>
+          <button class="btn" id="btnSaveJson" title="Projekt speichern (Strg+S)">💾 <span class="hide-mobile">Speichern</span></button>
           
           <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
 
-          <button class="btn btn-primary" id="btnExportPdf" title="Intelligenter EPLAN P8 PDF-Export mit interaktiven Querverweisen">📑 PDF</button>
-          <button class="btn hide-mobile" id="btnExportZw1" title="Als EPLAN .zw1 Backup exportieren">📦 EPLAN .zw1</button>
-          <button class="btn hide-mobile" id="btnExportXml" title="Als EPLAN XML exportieren">📋 EPLAN XML</button>
-          <button class="btn hide-mobile" id="btnPrintSvg" title="Drucken / Als SVG speichern">🖨️ Drucken</button>
-
-          <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
-
+          <!-- EPLAN Insertion Tools -->
+          <button class="btn btn-primary" id="btnOpenSymbolSelection" title="EPLAN Symbolauswahl öffnen (Einfg)">⚡ <span class="hide-mobile">Symbol (Einfg)</span></button>
           <button class="btn active" id="btnToolSelect" title="Auswahlwerkzeug">👆 <span class="hide-mobile">Auswählen</span></button>
-          <button class="btn" id="btnToolWire" title="Verbindungslinie zeichnen">🔌 <span class="hide-mobile">Verdrahten</span></button>
-          <button class="btn" id="btnToolRotate" title="Ausgewähltes Bauteil um 90° drehen (R)">🔄 <span class="hide-mobile">Drehen</span></button>
+          <button class="btn" id="btnToolWire" title="Verbindungslinie zeichnen (D)">🔌 <span class="hide-mobile">Verdrahten</span></button>
+          <button class="btn" id="btnToolRotate" title="Ausgewähltes Bauteil um 90° drehen (R)">🔄 <span class="hide-mobile">Drehen (R)</span></button>
+          <button class="btn" id="btnToolDuplicate" title="Ausgewähltes Bauteil duplizieren (Strg+D)">📋 <span class="hide-mobile">Duplizieren</span></button>
           <button class="btn" id="btnToolDelete" title="Ausgewähltes Element löschen (Entf)">🗑️ <span class="hide-mobile">Löschen</span></button>
 
           <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
 
+          <!-- EPLAN Engineering & Export Tools -->
+          <button class="btn" id="btnPlausibility" title="EPLAN Prüflauf / Plausibilitätskontrolle durchführen">📋 <span class="hide-mobile">Prüflauf</span></button>
+          <button class="btn btn-primary" id="btnExportPdf" title="Intelligenter EPLAN P8 PDF-Export mit interaktiven Querverweisen">📑 PDF</button>
+          <button class="btn hide-mobile" id="btnExportZw1" title="Als EPLAN .zw1 Backup exportieren">📦 .zw1</button>
+
+          <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
+
+          <!-- Zoom & Grid -->
           <button class="btn" id="btnZoomIn" title="Vergrößern">➕</button>
           <button class="btn" id="btnZoomOut" title="Verkleinern">➖</button>
-          <button class="btn" id="btnZoomFit" title="Blatt anpassen">🔍 Fit</button>
-          <button class="btn" id="btnZoomReset" title="100% Zoom">1:1</button>
-          <button class="btn hide-mobile active" id="btnGridSnap" title="Rasterfang ein/aus">📐 Raster</button>
+          <button class="btn" id="btnZoomFit" title="Blatt formatfüllend anpassen (F)">🔍 Fit</button>
+          <button class="btn hide-mobile active" id="btnGridSnap" title="Rasterfang ein/aus (4mm / 10px)">📐 Raster</button>
 
-          <button class="btn btn-drawer-toggle" id="btnToggleRightSidebar" title="Eigenschaften & Inspektor">⚙️ <span class="hide-mobile">Info</span></button>
+          <button class="btn btn-drawer-toggle" id="btnToggleRightSidebar" title="Eigenschaften & Inspektor">⚙️ <span class="hide-mobile">Eigenschaften</span></button>
         </div>
       </header>
 
@@ -142,8 +212,8 @@ export class App {
 
       <!-- Bottom Status Bar -->
       <footer class="status-bar">
-        <div id="statusLeft">Bereit | DIN EN 81346 / IEC 60617</div>
-        <div id="statusRight">Seite 1 / 3 | Raster: 10px | Touch & Maus aktiv</div>
+        <div id="statusLeft">Bereit | DIN EN 81346 / IEC 60617 | EPLAN Electric P8 Modus</div>
+        <div id="statusRight">Seite 1 / 3 | Raster: 10px (4mm) | Querverweise: Aktiv</div>
       </footer>
     `;
 
@@ -164,6 +234,26 @@ export class App {
         this.selectedWire = wire;
         this.selectedComponent = null;
         this.renderRightTab();
+      },
+      onOpenProperties: (comp) => {
+        new EplanPropertiesDialog(comp, this.project, {
+          onSave: (updated) => {
+            this.selectedComponent = updated;
+            this.canvas.render();
+            this.renderRightTab();
+          }
+        }).show();
+      },
+      onOpenSymbolSelection: () => {
+        new EplanSymbolSelectionDialog({
+          onSelect: (sym) => {
+            this.canvas.setSymbolToPlace(sym.id);
+          }
+        }).show();
+      },
+      onNavigateToPage: (pageId) => {
+        this.canvas.setPage(pageId);
+        this.updateUI();
       },
       onProjectModified: () => {
         const banner = document.getElementById('placeHintBanner');
@@ -316,6 +406,29 @@ export class App {
       this.canvas.deleteSelected();
     });
 
+    // EPLAN Toolbar Actions
+    document.getElementById('btnOpenSymbolSelection')?.addEventListener('click', () => {
+      new EplanSymbolSelectionDialog({
+        onSelect: (sym) => this.canvas.setSymbolToPlace(sym.id)
+      }).show();
+    });
+
+    document.getElementById('btnToolDuplicate')?.addEventListener('click', () => {
+      this.canvas.duplicateSelected();
+    });
+
+    document.getElementById('btnPlausibility')?.addEventListener('click', () => {
+      new EplanPlausibilityDialog(this.project, {
+        onNavigateToPage: (pageId) => {
+          this.canvas.setPage(pageId);
+          this.updateUI();
+        }
+      }).show();
+    });
+
+    // Menubar interactions
+    this.bindMenubarEvents();
+
     // Zoom
     document.getElementById('btnZoomIn')?.addEventListener('click', () => this.canvas.zoomIn());
     document.getElementById('btnZoomOut')?.addEventListener('click', () => this.canvas.zoomOut());
@@ -384,6 +497,157 @@ export class App {
         this.handleFileOpen(file);
       });
     }
+  }
+
+  private bindMenubarEvents(): void {
+    const menubar = document.getElementById('eplanMenubar');
+    if (!menubar) return;
+
+    const menuItems = menubar.querySelectorAll<HTMLElement>('.menu-item');
+
+    const closeAllMenus = () => {
+      menuItems.forEach(item => item.classList.remove('open'));
+    };
+
+    menuItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('.menu-dropdown')) return;
+        const isOpen = item.classList.contains('open');
+        closeAllMenus();
+        if (!isOpen) {
+          item.classList.add('open');
+        }
+      });
+
+      item.addEventListener('mouseenter', () => {
+        const anyOpen = Array.from(menuItems).some(m => m.classList.contains('open'));
+        if (anyOpen) {
+          closeAllMenus();
+          item.classList.add('open');
+        }
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!menubar.contains(e.target as Node)) {
+        closeAllMenus();
+      }
+    });
+
+    const bindMenuOpt = (id: string, action: () => void) => {
+      document.getElementById(id)?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeAllMenus();
+        action();
+      });
+    };
+
+    // Projekt
+    bindMenuOpt('menuNew', () => {
+      if (confirm('Möchten Sie ein neues leeres Projekt anlegen? Nicht gespeicherte Änderungen gehen verloren.')) {
+        this.createNewProject();
+      }
+    });
+
+    const menuFileInput = document.getElementById('menuFileInput') as HTMLInputElement;
+    menuFileInput?.addEventListener('change', async (e) => {
+      closeAllMenus();
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) await this.handleFileOpen(file);
+    });
+
+    bindMenuOpt('menuSave', () => this.saveProjectJson());
+    bindMenuOpt('menuExportPdf', () => new PdfExportDialog(this.project, this.project.activePageId).show());
+    bindMenuOpt('menuExportZw1', async () => await this.exportZw1());
+    bindMenuOpt('menuExportXml', () => this.exportXml());
+    bindMenuOpt('menuPrint', () => window.print());
+
+    // Bearbeiten
+    bindMenuOpt('menuDuplicate', () => this.canvas.duplicateSelected());
+    bindMenuOpt('menuRotate', () => this.canvas.rotateSelected());
+    bindMenuOpt('menuDelete', () => this.canvas.deleteSelected());
+
+    // Ansicht
+    bindMenuOpt('menuFit', () => this.canvas.fitToScreen());
+    bindMenuOpt('menuZoom100', () => this.canvas.resetZoom());
+    bindMenuOpt('menuZoomIn', () => this.canvas.zoomIn());
+    bindMenuOpt('menuZoomOut', () => this.canvas.zoomOut());
+    bindMenuOpt('menuToggleGrid', () => {
+      this.canvas.gridSnap = !this.canvas.gridSnap;
+      document.getElementById('btnGridSnap')?.classList.toggle('active', this.canvas.gridSnap);
+    });
+
+    // Einfügen
+    bindMenuOpt('menuInsertSym', () => {
+      new EplanSymbolSelectionDialog({
+        onSelect: (sym) => this.canvas.setSymbolToPlace(sym.id)
+      }).show();
+    });
+    bindMenuOpt('menuWire', () => {
+      this.canvas.setMode('wire');
+      this.updateToolButtons('btnToolWire');
+    });
+    bindMenuOpt('menuNewPage', () => this.addNewPage());
+
+    // Projektdaten
+    bindMenuOpt('menuPlausibility', () => {
+      new EplanPlausibilityDialog(this.project, {
+        onNavigateToPage: (pageId) => {
+          this.canvas.setPage(pageId);
+          this.updateUI();
+        }
+      }).show();
+    });
+    bindMenuOpt('menuRecalcCrossRef', () => {
+      CrossReferenceEngine.updateProjectCrossReferences(this.project);
+      this.canvas.render();
+      alert('Querverweise und Kontaktspiegel für alle Schaltzeichen wurden erfolgreich neu berechnet.');
+    });
+    bindMenuOpt('menuShowTerminals', () => {
+      this.activeLeftTab = 'terminals';
+      document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', (b as HTMLElement).dataset.tab === 'terminals'));
+      this.renderLeftTab();
+    });
+    bindMenuOpt('menuShowBom', () => {
+      this.activeLeftTab = 'bom';
+      document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', (b as HTMLElement).dataset.tab === 'bom'));
+      this.renderLeftTab();
+    });
+
+    // Hilfe
+    bindMenuOpt('menuMobile', () => MobileConnectDialog.show());
+    bindMenuOpt('menuShortcuts', () => {
+      alert(
+        'EPLAN Electric P8 Tastatur-Kürzel:\n\n' +
+        '• Einfg: EPLAN Symbolauswahl öffnen\n' +
+        '• Tab: Symbol während Vorschau um 90° drehen\n' +
+        '• D / W: Verbindungslinie zeichnen (Verdrahten)\n' +
+        '• Doppelklick: Eigenschaften (Schaltzeichen)\n' +
+        '• Rechtsklick: EPLAN Kontextmenü\n' +
+        '• Strg+D: Ausgewähltes Bauteil duplizieren\n' +
+        '• R: Ausgewähltes Bauteil um 90° drehen\n' +
+        '• Entf / Backspace: Ausgewähltes Element löschen\n' +
+        '• F / Alt+3: Ganzes Blatt anzeigen (Fit)\n' +
+        '• Strg+P: Intelligenter PDF-Export (DIN A3)\n' +
+        '• Strg+S: Projekt speichern\n' +
+        '• Esc: Modus / Platzierung abbrechen'
+      );
+    });
+    bindMenuOpt('menuAbout', () => {
+      alert(
+        'Elektroplan - EPLAN Electric P8 Edition\n' +
+        'Version 2.0 (CAD & Engineering Suite)\n\n' +
+        'Kompatibilität:\n' +
+        '• EPLAN .zw1 Projektarchive (Backup/Restore)\n' +
+        '• EPLAN Data Portal .edz Makro- und Artikelpakete\n' +
+        '• EPLAN Electric P8 XML Schaltplan-Schemata\n' +
+        '• DIN EN 81346 Strukturierung (=Anlage +Ort -BMK :Pin)\n' +
+        '• IEC 60617 genormte elektrotechnische Symbole\n' +
+        '• Automatische Querverweisberechnung & Kontaktspiegel\n' +
+        '• Klemmenpläne (-X1) und automatisierte Stücklisten\n' +
+        '• Windows Desktop (Electron) & Mobile/PWA Web App'
+      );
+    });
   }
 
   private updateToolButtons(activeId: string): void {
