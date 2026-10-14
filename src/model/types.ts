@@ -33,13 +33,25 @@ export interface SymbolDefinition {
   technicalCharacteristics?: string;
 }
 
+export interface TextFormatConfig {
+  preset: 'top' | 'bottom' | 'left' | 'right' | 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right' | 'custom';
+  offsetX?: number;             // X offset in px relative to default position
+  offsetY?: number;             // Y offset in px relative to default position
+  alignment?: 'start' | 'middle' | 'end';
+  rotation?: 0 | 90 | 180 | 270;
+  fontSize?: number;            // in px, e.g. 8, 10, 12
+  visible?: boolean;
+}
+
 export interface PlacedComponent {
   id: string;
   symbolId: string;
   bmk: string;                  // e.g. "-K1", "-Q1", "-F1"
+  deviceTag?: string;           // Gerätebezeichnung z.B. "Hauptschütz K1", "Motorschutzschalter"
   higherLevelFunction?: string; // e.g. "=A1" (Anlage)
   mountingLocation?: string;    // e.g. "+S1" (Schaltschrank / Ort)
   functionText: string;         // e.g. "Hauptantrieb Förderband"
+  additionalText?: string;      // Zusatztext / Graviertext
   technicalCharacteristics?: string; // e.g. "4.0kW 400V 8.5A"
   articleNumber?: string;       // e.g. "3RT2026-1BB40"
   manufacturer?: string;        // e.g. "Siemens"
@@ -53,6 +65,10 @@ export interface PlacedComponent {
     };
   };
   crossRef?: string;            // Calculated cross-reference, e.g. "/1.4"
+  // EPLAN P8 Label positioning & display properties
+  bmkPosition?: TextFormatConfig;
+  functionTextPosition?: TextFormatConfig;
+  technicalDataPosition?: TextFormatConfig;
 }
 
 export interface Wire {

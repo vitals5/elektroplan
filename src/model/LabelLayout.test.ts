@@ -1,0 +1,82 @@
+// src/model/LabelLayout.test.ts
+import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from './LabelLayout';
+import { PlacedComponent, SymbolDefinition } from './types';
+
+const mockSymbol: SymbolDefinition = {
+  id: 'contactor_no',
+  name: 'Schütz-Schließer',
+  category: 'relays',
+  standard: 'DIN EN 60617',
+  defaultBmkPrefix: '-K',
+  defaultFunctionText: 'Schütz',
+  description: 'Schütz Schließer',
+  width: 40,
+  height: 60,
+  pins: [],
+  svgContent: '<path d="M 0 0 L 40 60"/>'
+};
+
+const baseComp: PlacedComponent = {
+  id: 'c1',
+  symbolId: 'contactor_no',
+  bmk: '-K1',
+  functionText: 'Lüftermotor',
+  deviceTag: 'Hauptschütz',
+  technicalCharacteristics: '4kW 400V',
+  x: 100,
+  y: 100,
+  rotation: 0,
+  pins: {}
+};
+
+console.log('--- 1. Testing Default Positions ---');
+const bmkDef = computeBmkPosition(baseComp, mockSymbol);
+console.assert(bmkDef.x === 20, `Default BMK X should be 20, got ${bmkDef.x}`);
+console.assert(bmkDef.y === -8, `Default BMK Y should be -8, got ${bmkDef.y}`);
+console.assert(bmkDef.anchor === 'middle', `Default BMK anchor should be middle, got ${bmkDef.anchor}`);
+console.assert(bmkDef.visible === true, `Default BMK should be visible`);
+console.log('✅ Default BMK position is correct (x=20, y=-8, middle)');
+
+const fnDef = computeFunctionTextPosition(baseComp, mockSymbol);
+console.assert(fnDef.x === 20, `Default FnText X should be 20, got ${fnDef.x}`);
+console.assert(fnDef.y === 72, `Default FnText Y should be 72, got ${fnDef.y}`);
+console.assert(fnDef.anchor === 'middle', `Default FnText anchor should be middle, got ${fnDef.anchor}`);
+console.log('✅ Default Funktionstext position is correct (x=20, y=72, middle)');
+
+console.log('--- 2. Testing Preset Positions ---');
+const bmkRight = computeBmkPosition({
+  ...baseComp,
+  bmkPosition: { preset: 'right', offsetX: 5, offsetY: -2 }
+}, mockSymbol);
+console.assert(bmkRight.x === 40 + 8 + 5, `BMK right X should be 53, got ${bmkRight.x}`);
+console.assert(bmkRight.y === 30 - 2, `BMK right Y should be 28, got ${bmkRight.y}`);
+console.assert(bmkRight.anchor === 'start', `BMK right anchor should be start, got ${bmkRight.anchor}`);
+console.log('✅ BMK "right" preset with offsets verified');
+
+const bmkTopLeft = computeBmkPosition({
+  ...baseComp,
+  bmkPosition: { preset: 'top_left', alignment: 'start' }
+}, mockSymbol);
+console.assert(bmkTopLeft.x === 0, `BMK top_left X should be 0, got ${bmkTopLeft.x}`);
+console.assert(bmkTopLeft.anchor === 'start', `BMK top_left anchor should be start, got ${bmkTopLeft.anchor}`);
+console.log('✅ BMK "top_left" preset verified');
+
+console.log('--- 3. Testing Visibility & Rotations ---');
+const bmkHidden = computeBmkPosition({
+  ...baseComp,
+  bmkPosition: { preset: 'top', visible: false, rotation: 90 }
+}, mockSymbol);
+console.assert(bmkHidden.visible === false, 'BMK should be hidden');
+console.assert(bmkHidden.rotation === 90, 'BMK should be rotated 90');
+console.assert(bmkHidden.transform.includes('rotate(90'), 'BMK transform should include rotate(90');
+console.log('✅ BMK rotation and visibility verified');
+
+const techPos = computeTechnicalDataPosition({
+  ...baseComp,
+  technicalDataPosition: { preset: 'bottom', visible: true }
+}, mockSymbol);
+console.assert(techPos.visible === true, 'Tech data should be visible');
+console.assert(techPos.y === 82, `Tech data Y should be 82, got ${techPos.y}`);
+console.log('✅ Technical data positioning verified');
+
+console.log('🎉 ALL LABEL LAYOUT TESTS PASSED!');

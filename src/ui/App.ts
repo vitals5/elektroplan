@@ -1202,7 +1202,14 @@ export class App {
       const comp = this.selectedComponent;
       const sym = getSymbolById(comp.symbolId);
 
+      const bmkPreset = comp.bmkPosition?.preset || 'top';
+
       container.innerHTML = `
+        <button class="btn btn-primary" id="btnOpenFullPropModal" style="width: 100%; margin-bottom: 12px; font-weight: 600; font-size: 12px; padding: 8px 12px; display: flex; align-items: center; justify-content: center; gap: 8px; background: #3182ce; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">
+          <span>⚡ EPLAN Editierfenster...</span>
+          <span style="font-size: 10px; opacity: 0.8; font-family: monospace;">[Enter / F2]</span>
+        </button>
+
         <div style="font-size: 11px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; margin-bottom: 12px;">
           Bauteileigenschaften (${sym?.name || comp.symbolId})
         </div>
@@ -1213,8 +1220,27 @@ export class App {
         </div>
 
         <div class="form-group">
+          <label class="form-label">Gerätebezeichnung</label>
+          <input class="form-input" id="propDeviceTag" value="${comp.deviceTag || ''}" placeholder="z.B. Hauptschütz, Netzteil">
+        </div>
+
+        <div class="form-group">
           <label class="form-label">Funktionstext</label>
           <input class="form-input" id="propFunctionText" value="${comp.functionText || ''}">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Position der BMK-Beschriftung</label>
+          <select class="form-input" id="propQuickBmkPreset">
+            <option value="top" ${bmkPreset === 'top' ? 'selected' : ''}>Oben zentriert (Standard)</option>
+            <option value="top_left" ${bmkPreset === 'top_left' ? 'selected' : ''}>Oben links</option>
+            <option value="top_right" ${bmkPreset === 'top_right' ? 'selected' : ''}>Oben rechts</option>
+            <option value="bottom" ${bmkPreset === 'bottom' ? 'selected' : ''}>Unten zentriert</option>
+            <option value="bottom_left" ${bmkPreset === 'bottom_left' ? 'selected' : ''}>Unten links</option>
+            <option value="bottom_right" ${bmkPreset === 'bottom_right' ? 'selected' : ''}>Unten rechts</option>
+            <option value="left" ${bmkPreset === 'left' ? 'selected' : ''}>Links daneben</option>
+            <option value="right" ${bmkPreset === 'right' ? 'selected' : ''}>Rechts daneben</option>
+          </select>
         </div>
 
         <div class="form-group">
@@ -1266,8 +1292,34 @@ export class App {
       `;
 
       // Form bindings
+      document.getElementById('btnOpenFullPropModal')?.addEventListener('click', () => {
+        new EplanPropertiesDialog(comp, this.project, {
+          onSave: (updated) => {
+            this.selectedComponent = updated;
+            if (this.canvas.autoconnectEnabled) {
+              const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
+              if (activePage) AutoconnectEngine.updatePageAutoconnections(activePage);
+            }
+            this.canvas.render();
+            this.renderRightTab();
+          }
+        }).show();
+      });
+
       document.getElementById('propBmk')?.addEventListener('input', (e) => {
         comp.bmk = (e.target as HTMLInputElement).value;
+        this.notifyChange();
+      });
+      document.getElementById('propDeviceTag')?.addEventListener('input', (e) => {
+        comp.deviceTag = (e.target as HTMLInputElement).value;
+        this.notifyChange();
+      });
+      document.getElementById('propQuickBmkPreset')?.addEventListener('change', (e) => {
+        const preset = (e.target as HTMLSelectElement).value as any;
+        if (!comp.bmkPosition) {
+          comp.bmkPosition = { preset: 'top', visible: true };
+        }
+        comp.bmkPosition.preset = preset;
         this.notifyChange();
       });
       document.getElementById('propAssignPartSelect')?.addEventListener('change', (e) => {

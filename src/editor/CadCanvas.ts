@@ -5,6 +5,7 @@ import { Project, Page, PlacedComponent, Wire } from '../model/types';
 import { getSymbolById } from '../model/symbols';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
 import { AutoconnectEngine, AutoconnectPreviewSegment } from '../model/AutoconnectEngine';
+import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
 
 export type EditorMode = 'select' | 'wire' | 'place_symbol' | 'pan';
 
@@ -263,6 +264,14 @@ export class CadCanvas {
         } else if (this.selectedComponentId) {
           e.preventDefault();
           this.rotateSelected();
+        }
+      } else if (e.key === 'Enter' || e.key === 'F2') {
+        if (this.selectedComponentId) {
+          const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
+          if (comp) {
+            e.preventDefault();
+            this.callbacks.onOpenProperties?.(comp);
+          }
         }
       } else if (e.key === 'Insert' || e.key === 'e' || e.key === 'E') {
         this.callbacks.onOpenSymbolSelection?.();
@@ -1025,20 +1034,36 @@ export class CadCanvas {
         `;
       }).join('');
 
+      const bmkPos = computeBmkPosition(comp, sym);
+      const fnPos = computeFunctionTextPosition(comp, sym);
+      const techPos = computeTechnicalDataPosition(comp, sym);
+      const techText = comp.deviceTag
+        ? (comp.deviceTag + (comp.technicalCharacteristics ? ' · ' + comp.technicalCharacteristics : ''))
+        : (comp.technicalCharacteristics || '');
+
       return `
         <g id="${comp.id}" class="component ${isSelected ? 'selected' : ''}" 
            transform="translate(${comp.x}, ${comp.y}) rotate(${comp.rotation || 0}, ${sym.width / 2}, ${sym.height / 2})"
            style="cursor: pointer;">
           
           <!-- Selection Highlight -->
-          <rect class="selection-rect" x="-5" y="-5" width="${sym.width + 10}" height="${isConn ? sym.height + 10 : sym.height + 32}" fill="rgba(99, 179, 237, 0.15)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="3,2" rx="4" style="display: ${isSelected ? 'block' : 'none'};"/>
+          <rect class="selection-rect" x="-8" y="-8" width="${sym.width + 16}" height="${isConn ? sym.height + 16 : sym.height + 36}" fill="rgba(99, 179, 237, 0.15)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="3,2" rx="4" style="display: ${isSelected ? 'block' : 'none'};"/>
 
           ${!isConn ? `
             <!-- BMK Label (z.B. -K1, -Q1) -->
-            <text x="${sym.width / 2}" y="-8" font-size="10" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${comp.bmk}</text>
+            ${bmkPos.visible ? `
+              <text x="${bmkPos.x}" y="${bmkPos.y}" font-size="${bmkPos.fontSize}" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="${bmkPos.anchor}" ${bmkPos.transform}>${comp.bmk}</text>
+            ` : ''}
             
             <!-- Function text (Funktionstext) -->
-            <text x="${sym.width / 2}" y="${sym.height + 12}" font-size="8" font-family="sans-serif" fill="#e2e8f0" text-anchor="middle">${comp.functionText || ''}</text>
+            ${fnPos.visible && comp.functionText ? `
+              <text x="${fnPos.x}" y="${fnPos.y}" font-size="${fnPos.fontSize}" font-family="sans-serif" fill="#e2e8f0" text-anchor="${fnPos.anchor}" ${fnPos.transform}>${comp.functionText}</text>
+            ` : ''}
+
+            <!-- Device Tag / Technical Characteristics -->
+            ${techPos.visible && techText ? `
+              <text x="${techPos.x}" y="${techPos.y}" font-size="${techPos.fontSize}" font-family="sans-serif" fill="#68d391" text-anchor="${techPos.anchor}" ${techPos.transform}>${techText}</text>
+            ` : ''}
 
             <!-- Cross Reference -->
             ${crossRefDisplay}
