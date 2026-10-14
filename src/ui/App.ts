@@ -28,11 +28,31 @@ export class App {
   private leftDrawerOpen: boolean = false;
   private rightDrawerOpen: boolean = false;
 
+  private leftSidebarWidth: number = 280;
+  private rightSidebarWidth: number = 300;
+  private isLeftCollapsed: boolean = false;
+  private isRightCollapsed: boolean = false;
+
   constructor() {
+    const savedLeftW = localStorage.getItem('elektroplan_left_w');
+    if (savedLeftW) this.leftSidebarWidth = parseInt(savedLeftW, 10) || 280;
+    const savedRightW = localStorage.getItem('elektroplan_right_w');
+    if (savedRightW) this.rightSidebarWidth = parseInt(savedRightW, 10) || 300;
+
+    // Default panels to collapsed on mobile / small screens
+    if (window.innerWidth <= 960) {
+      this.isLeftCollapsed = true;
+      this.isRightCollapsed = true;
+    }
+
     this.initDefaultProject();
     this.renderLayout();
     this.initCanvas();
+    this.initPanelResizers();
     this.updateUI();
+
+    if (this.isLeftCollapsed) this.setLeftPanelCollapsed(true);
+    if (this.isRightCollapsed) this.setRightPanelCollapsed(true);
   }
 
   private initDefaultProject(): void {
@@ -169,9 +189,13 @@ export class App {
       <div class="drawer-backdrop" id="drawerBackdrop"></div>
 
       <!-- Main Workspace -->
-      <div class="main-container">
-        <!-- Left Sidebar (Drawer on mobile) -->
-        <aside class="sidebar" id="leftSidebar">
+      <div class="main-container" id="mainContainer">
+        <!-- Left Sidebar -->
+        <aside class="sidebar" id="leftSidebar" style="width: ${this.leftSidebarWidth}px;">
+          <div class="sidebar-top-bar">
+            <span class="sidebar-heading">PROJEKT & SYMBOLE</span>
+            <button class="btn-panel-collapse" id="btnCollapseLeft" title="Linkes Panel einklappen (◀)">◀</button>
+          </div>
           <div class="tab-nav">
             <button class="tab-btn active" data-tab="pages">Seiten</button>
             <button class="tab-btn" data-tab="symbols">Symbole</button>
@@ -181,6 +205,12 @@ export class App {
           </div>
           <div class="tab-content" id="leftTabContent"></div>
         </aside>
+
+        <!-- Left Resizer Splitter -->
+        <div class="sidebar-resizer" id="leftResizer" title="Breite anpassen (ziehen)">
+          <div class="resizer-handle"></div>
+          <button class="resizer-expand-btn left" id="btnExpandLeft" title="Linkes Panel einblenden" style="display: none;">▶</button>
+        </div>
 
         <!-- Center CAD Canvas -->
         <main class="canvas-wrapper" id="canvasContainer">
@@ -200,8 +230,18 @@ export class App {
           </div>
         </main>
 
-        <!-- Right Sidebar (Drawer on mobile) -->
-        <aside class="sidebar right" id="rightSidebar">
+        <!-- Right Resizer Splitter -->
+        <div class="sidebar-resizer right" id="rightResizer" title="Breite anpassen (ziehen)">
+          <div class="resizer-handle"></div>
+          <button class="resizer-expand-btn right" id="btnExpandRight" title="Rechtes Panel einblenden" style="display: none;">◀</button>
+        </div>
+
+        <!-- Right Sidebar -->
+        <aside class="sidebar right" id="rightSidebar" style="width: ${this.rightSidebarWidth}px;">
+          <div class="sidebar-top-bar">
+            <span class="sidebar-heading">EIGENSCHAFTEN</span>
+            <button class="btn-panel-collapse" id="btnCollapseRight" title="Rechtes Panel einklappen (▶)">▶</button>
+          </div>
           <div class="tab-nav">
             <button class="tab-btn active" data-right-tab="properties">Eigenschaften</button>
             <button class="tab-btn" data-right-tab="eplan">EPLAN / REA</button>
@@ -266,43 +306,146 @@ export class App {
     this.canvas.setPage(this.project.activePageId || this.project.pages[0].id);
   }
 
-  public toggleLeftDrawer(open?: boolean): void {
+  public setLeftPanelCollapsed(collapsed: boolean): void {
+    this.isLeftCollapsed = collapsed;
     const sidebar = document.getElementById('leftSidebar');
-    const backdrop = document.getElementById('drawerBackdrop');
-    this.leftDrawerOpen = open !== undefined ? open : !this.leftDrawerOpen;
-    if (this.leftDrawerOpen) {
-      this.toggleRightDrawer(false);
-      sidebar?.classList.add('open');
-      backdrop?.classList.add('active');
-    } else {
-      sidebar?.classList.remove('open');
-      if (!this.rightDrawerOpen) backdrop?.classList.remove('active');
+    const expandBtn = document.getElementById('btnExpandLeft');
+    const toggleBtn = document.getElementById('btnToggleLeftSidebar');
+    const resizer = document.getElementById('leftResizer');
+
+    if (sidebar) {
+      if (collapsed) {
+        sidebar.classList.add('collapsed');
+        sidebar.style.width = '0px';
+        if (expandBtn) expandBtn.style.display = 'flex';
+        toggleBtn?.classList.remove('active');
+        resizer?.classList.add('collapsed');
+      } else {
+        sidebar.classList.remove('collapsed');
+        sidebar.style.width = `${this.leftSidebarWidth}px`;
+        if (expandBtn) expandBtn.style.display = 'none';
+        toggleBtn?.classList.add('active');
+        resizer?.classList.remove('collapsed');
+      }
     }
+    setTimeout(() => this.canvas?.fitToScreen(), 120);
   }
 
-  public toggleRightDrawer(open?: boolean): void {
+  public setRightPanelCollapsed(collapsed: boolean): void {
+    this.isRightCollapsed = collapsed;
     const sidebar = document.getElementById('rightSidebar');
-    const backdrop = document.getElementById('drawerBackdrop');
-    this.rightDrawerOpen = open !== undefined ? open : !this.rightDrawerOpen;
-    if (this.rightDrawerOpen) {
-      this.toggleLeftDrawer(false);
-      sidebar?.classList.add('open');
-      backdrop?.classList.add('active');
-    } else {
-      sidebar?.classList.remove('open');
-      if (!this.leftDrawerOpen) backdrop?.classList.remove('active');
+    const expandBtn = document.getElementById('btnExpandRight');
+    const toggleBtn = document.getElementById('btnToggleRightSidebar');
+    const resizer = document.getElementById('rightResizer');
+
+    if (sidebar) {
+      if (collapsed) {
+        sidebar.classList.add('collapsed');
+        sidebar.style.width = '0px';
+        if (expandBtn) expandBtn.style.display = 'flex';
+        toggleBtn?.classList.remove('active');
+        resizer?.classList.add('collapsed');
+      } else {
+        sidebar.classList.remove('collapsed');
+        sidebar.style.width = `${this.rightSidebarWidth}px`;
+        if (expandBtn) expandBtn.style.display = 'none';
+        toggleBtn?.classList.add('active');
+        resizer?.classList.remove('collapsed');
+      }
     }
+    setTimeout(() => this.canvas?.fitToScreen(), 120);
   }
 
-  public closeAllDrawers(): void {
-    this.toggleLeftDrawer(false);
-    this.toggleRightDrawer(false);
+  private initPanelResizers(): void {
+    const leftResizer = document.getElementById('leftResizer');
+    const rightResizer = document.getElementById('rightResizer');
+    const leftSidebar = document.getElementById('leftSidebar');
+    const rightSidebar = document.getElementById('rightSidebar');
+    const mainContainer = document.getElementById('mainContainer');
+
+    if (leftResizer && leftSidebar && mainContainer) {
+      const onMove = (clientX: number) => {
+        if (this.isLeftCollapsed) {
+          this.setLeftPanelCollapsed(false);
+        }
+        const rect = mainContainer.getBoundingClientRect();
+        let newW = clientX - rect.left;
+        newW = Math.max(160, Math.min(newW, Math.min(550, window.innerWidth - 200)));
+        this.leftSidebarWidth = newW;
+        leftSidebar.style.width = `${newW}px`;
+        localStorage.setItem('elektroplan_left_w', String(newW));
+      };
+
+      const startLeftDrag = (e: MouseEvent | TouchEvent) => {
+        if ((e.target as HTMLElement).closest('.resizer-expand-btn')) return;
+        e.preventDefault();
+        document.body.classList.add('resizing');
+        const moveHandler = (ev: MouseEvent | TouchEvent) => {
+          const clientX = 'touches' in ev ? ev.touches[0].clientX : ev.clientX;
+          onMove(clientX);
+        };
+        const upHandler = () => {
+          document.body.classList.remove('resizing');
+          window.removeEventListener('mousemove', moveHandler);
+          window.removeEventListener('mouseup', upHandler);
+          window.removeEventListener('touchmove', moveHandler);
+          window.removeEventListener('touchend', upHandler);
+          this.canvas?.fitToScreen();
+        };
+        window.addEventListener('mousemove', moveHandler);
+        window.addEventListener('mouseup', upHandler);
+        window.addEventListener('touchmove', moveHandler, { passive: false });
+        window.addEventListener('touchend', upHandler);
+      };
+
+      leftResizer.addEventListener('mousedown', startLeftDrag);
+      leftResizer.addEventListener('touchstart', startLeftDrag, { passive: false });
+    }
+
+    if (rightResizer && rightSidebar && mainContainer) {
+      const onMove = (clientX: number) => {
+        if (this.isRightCollapsed) {
+          this.setRightPanelCollapsed(false);
+        }
+        const rect = mainContainer.getBoundingClientRect();
+        let newW = rect.right - clientX;
+        newW = Math.max(160, Math.min(newW, Math.min(550, window.innerWidth - 200)));
+        this.rightSidebarWidth = newW;
+        rightSidebar.style.width = `${newW}px`;
+        localStorage.setItem('elektroplan_right_w', String(newW));
+      };
+
+      const startRightDrag = (e: MouseEvent | TouchEvent) => {
+        if ((e.target as HTMLElement).closest('.resizer-expand-btn')) return;
+        e.preventDefault();
+        document.body.classList.add('resizing');
+        const moveHandler = (ev: MouseEvent | TouchEvent) => {
+          const clientX = 'touches' in ev ? ev.touches[0].clientX : ev.clientX;
+          onMove(clientX);
+        };
+        const upHandler = () => {
+          document.body.classList.remove('resizing');
+          window.removeEventListener('mousemove', moveHandler);
+          window.removeEventListener('mouseup', upHandler);
+          window.removeEventListener('touchmove', moveHandler);
+          window.removeEventListener('touchend', upHandler);
+          this.canvas?.fitToScreen();
+        };
+        window.addEventListener('mousemove', moveHandler);
+        window.addEventListener('mouseup', upHandler);
+        window.addEventListener('touchmove', moveHandler, { passive: false });
+        window.addEventListener('touchend', upHandler);
+      };
+
+      rightResizer.addEventListener('mousedown', startRightDrag);
+      rightResizer.addEventListener('touchstart', startRightDrag, { passive: false });
+    }
   }
 
   public onSymbolSelectedToPlace(symId: string, customName?: string): void {
     this.canvas.setSymbolToPlace(symId);
-    if (window.innerWidth <= 860) {
-      this.closeAllDrawers();
+    if (window.innerWidth <= 960) {
+      this.setLeftPanelCollapsed(true);
       const banner = document.getElementById('placeHintBanner');
       const bannerText = document.getElementById('placeHintText');
       if (banner && bannerText) {
@@ -313,17 +456,29 @@ export class App {
   }
 
   private bindHeaderEvents(): void {
-    // Mobile Drawer Toggles & Backdrop
+    // Panel Toggles & Collapse Buttons
     document.getElementById('btnToggleLeftSidebar')?.addEventListener('click', () => {
-      this.toggleLeftDrawer();
+      this.setLeftPanelCollapsed(!this.isLeftCollapsed);
     });
 
     document.getElementById('btnToggleRightSidebar')?.addEventListener('click', () => {
-      this.toggleRightDrawer();
+      this.setRightPanelCollapsed(!this.isRightCollapsed);
     });
 
-    document.getElementById('drawerBackdrop')?.addEventListener('click', () => {
-      this.closeAllDrawers();
+    document.getElementById('btnCollapseLeft')?.addEventListener('click', () => {
+      this.setLeftPanelCollapsed(true);
+    });
+
+    document.getElementById('btnExpandLeft')?.addEventListener('click', () => {
+      this.setLeftPanelCollapsed(false);
+    });
+
+    document.getElementById('btnCollapseRight')?.addEventListener('click', () => {
+      this.setRightPanelCollapsed(true);
+    });
+
+    document.getElementById('btnExpandRight')?.addEventListener('click', () => {
+      this.setRightPanelCollapsed(false);
     });
 
     // Mobile Connect Dialog
@@ -718,8 +873,8 @@ export class App {
       node.addEventListener('click', (e) => {
         const id = (e.currentTarget as HTMLElement).dataset.pageId!;
         this.canvas.setPage(id);
-        if (window.innerWidth <= 860) {
-          this.closeAllDrawers();
+        if (window.innerWidth <= 960) {
+          this.setLeftPanelCollapsed(true);
         }
         this.updateUI();
       });

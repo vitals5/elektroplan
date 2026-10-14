@@ -452,15 +452,17 @@ export class CadCanvas {
       return;
     }
 
-    // Check if clicked on a pin
-    const clickedPin = this.findPinAt(world.x, world.y);
-    if (clickedPin) {
-      this.handlePinClick(clickedPin);
-      return;
+    // Check if clicked on a pin only in wire mode
+    if (this.mode === 'wire' || this.wireStart !== null) {
+      const clickedPin = this.findPinAt(world.x, world.y);
+      if (clickedPin) {
+        this.handlePinClick(clickedPin);
+        return;
+      }
     }
 
     // Check if clicked on a component
-    const clickedComp = this.findComponentAt(world.x, world.y);
+    const clickedComp = this.findComponentAt(world.x, world.y, false);
     if (clickedComp) {
       this.selectedComponentId = clickedComp.id;
       this.selectedWireId = null;
@@ -472,7 +474,7 @@ export class CadCanvas {
         x: world.x - clickedComp.x,
         y: world.y - clickedComp.y
       };
-      this.render();
+      this.updateSelectionClasses();
       return;
     }
 
@@ -483,7 +485,7 @@ export class CadCanvas {
       this.selectedComponentId = null;
       this.callbacks.onSelectWire(clickedWire);
       this.callbacks.onSelectComponent(null);
-      this.render();
+      this.updateSelectionClasses();
       return;
     }
 
@@ -492,7 +494,7 @@ export class CadCanvas {
     this.selectedWireId = null;
     this.callbacks.onSelectComponent(null);
     this.callbacks.onSelectWire(null);
-    this.render();
+    this.updateSelectionClasses();
   }
 
   private onMouseMove(e: MouseEvent): void {
@@ -506,6 +508,21 @@ export class CadCanvas {
     const world = this.screenToWorld(e.clientX, e.clientY);
     this.currentMousePos = world;
 
+    if (this.isDraggingComponent && this.selectedComponentId) {
+      const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
+      if (comp) {
+        const sym = getSymbolById(comp.symbolId);
+        comp.x = this.snap(world.x - this.dragOffset.x);
+        comp.y = this.snap(world.y - this.dragOffset.y);
+        const el = this.svg.getElementById(comp.id);
+        if (el && sym) {
+          el.setAttribute('transform', `translate(${comp.x}, ${comp.y}) rotate(${comp.rotation || 0}, ${sym.width / 2}, ${sym.height / 2})`);
+        }
+        this.updateConnectedWiresFast(comp.id);
+      }
+      return;
+    }
+
     // Check hovered pin for visual snap highlight
     const pin = this.findPinAt(world.x, world.y);
     const pinChanged = (pin?.componentId !== this.hoveredPin?.componentId || pin?.pinId !== this.hoveredPin?.pinId);
@@ -513,14 +530,7 @@ export class CadCanvas {
       this.hoveredPin = pin;
     }
 
-    if (this.isDraggingComponent && this.selectedComponentId) {
-      const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
-      if (comp) {
-        comp.x = this.snap(world.x - this.dragOffset.x);
-        comp.y = this.snap(world.y - this.dragOffset.y);
-        this.render();
-      }
-    } else if (this.mode === 'place_symbol' || this.wireStart || pinChanged) {
+    if (this.mode === 'place_symbol' || this.wireStart || pinChanged) {
       this.render();
     }
   }
@@ -580,16 +590,18 @@ export class CadCanvas {
         return;
       }
 
-      // Check pin
-      const clickedPin = this.findPinAt(world.x, world.y);
-      if (clickedPin) {
-        e.preventDefault();
-        this.handlePinClick(clickedPin);
-        return;
+      // Check pin in wire mode only
+      if (this.mode === 'wire' || this.wireStart !== null) {
+        const clickedPin = this.findPinAt(world.x, world.y);
+        if (clickedPin) {
+          e.preventDefault();
+          this.handlePinClick(clickedPin);
+          return;
+        }
       }
 
-      // Check component
-      const clickedComp = this.findComponentAt(world.x, world.y);
+      // Check component (with finger touch hitbox padding)
+      const clickedComp = this.findComponentAt(world.x, world.y, true);
       if (clickedComp) {
         e.preventDefault();
         this.selectedComponentId = clickedComp.id;
@@ -603,7 +615,8 @@ export class CadCanvas {
           x: world.x - clickedComp.x,
           y: world.y - clickedComp.y
         };
-        this.render();
+        // DO NOT call this.render() here: keeping DOM intact avoids cancelling touch stream in Mobile Chrome
+        this.updateSelectionClasses();
         return;
       }
 
@@ -615,7 +628,7 @@ export class CadCanvas {
         this.selectedComponentId = null;
         this.callbacks.onSelectWire(clickedWire);
         this.callbacks.onSelectComponent(null);
-        this.render();
+        this.updateSelectionClasses();
         return;
       }
 
@@ -627,7 +640,7 @@ export class CadCanvas {
       this.selectedWireId = null;
       this.callbacks.onSelectComponent(null);
       this.callbacks.onSelectWire(null);
-      this.render();
+      this.updateSelectionClasses();
     }
   }
 
@@ -674,9 +687,15 @@ export class CadCanvas {
         const world = this.screenToWorld(touch.clientX, touch.clientY);
         const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
         if (comp) {
+          const sym = getSymbolById(comp.symbolId);
           comp.x = this.snap(world.x - this.dragOffset.x);
           comp.y = this.snap(world.y - this.dragOffset.y);
-          this.render();
+          // Fast DOM update for smooth 60fps drag without replacing innerHTML:
+          const el = this.svg.getElementById(comp.id);
+          if (el && sym) {
+            el.setAttribute('transform', `translate(${comp.x}, ${comp.y}) rotate(${comp.rotation || 0}, ${sym.width / 2}, ${sym.height / 2})`);
+          }
+          this.updateConnectedWiresFast(comp.id);
         }
       }
     }
@@ -700,17 +719,58 @@ export class CadCanvas {
     }
   }
 
+  private updateSelectionClasses(): void {
+    this.svg.querySelectorAll('.component').forEach(el => {
+      const isSel = el.id === this.selectedComponentId;
+      el.classList.toggle('selected', isSel);
+      const selRect = el.querySelector('.selection-rect') as SVGElement | null;
+      if (selRect) {
+        selRect.style.display = isSel ? 'block' : 'none';
+      }
+    });
+    this.svg.querySelectorAll('.wire').forEach(el => {
+      el.classList.toggle('selected', el.id === this.selectedWireId);
+    });
+  }
+
+  private updateConnectedWiresFast(componentId: string): void {
+    for (const wire of this.activePage.wires) {
+      if (wire.from.componentId === componentId || wire.to.componentId === componentId) {
+        const p1 = this.getPinCoordinates(wire.from.componentId, wire.from.pinId);
+        const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
+        if (p1 && p2) {
+          const wireEl = this.svg.getElementById(wire.id);
+          const pathEl = wireEl?.querySelector('path');
+          if (pathEl) {
+            const midY = (p1.y + p2.y) / 2;
+            pathEl.setAttribute('d', `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`);
+          }
+        }
+      }
+    }
+  }
+
   private notifyModified(): void {
     CrossReferenceEngine.updateProjectCrossReferences(this.project);
     this.callbacks.onProjectModified();
   }
 
-  private findComponentAt(x: number, y: number): PlacedComponent | null {
+  private findComponentAt(x: number, y: number, isTouch: boolean = false): PlacedComponent | null {
+    const pad = isTouch ? 20 : 6;
     for (let i = this.activePage.components.length - 1; i >= 0; i--) {
       const comp = this.activePage.components[i];
       const sym = getSymbolById(comp.symbolId);
       if (!sym) continue;
-      if (x >= comp.x && x <= comp.x + sym.width && y >= comp.y && y <= comp.y + sym.height) {
+      
+      const rot = comp.rotation || 0;
+      let w = sym.width;
+      let h = sym.height;
+      if (rot === 90 || rot === 270) {
+        w = sym.height;
+        h = sym.width;
+      }
+
+      if (x >= comp.x - pad && x <= comp.x + w + pad && y >= comp.y - pad && y <= comp.y + h + pad) {
         return comp;
       }
     }
@@ -718,14 +778,14 @@ export class CadCanvas {
   }
 
   private findPinAt(x: number, y: number): { componentId: string; pinId: string } | null {
-    const pinRadius = 6;
+    const pinRadius = 8;
     for (const comp of this.activePage.components) {
       const sym = getSymbolById(comp.symbolId);
       if (!sym) continue;
       for (const pin of sym.pins) {
-        const px = comp.x + pin.x;
-        const py = comp.y + pin.y;
-        const dist = Math.hypot(x - px, y - py);
+        const pCoord = this.getPinCoordinates(comp.id, pin.id);
+        if (!pCoord) continue;
+        const dist = Math.hypot(x - pCoord.x, y - pCoord.y);
         if (dist <= pinRadius) {
           return { componentId: comp.id, pinId: pin.id };
         }
@@ -735,7 +795,7 @@ export class CadCanvas {
   }
 
   private findWireAt(x: number, y: number): Wire | null {
-    const hitTolerance = 6;
+    const hitTolerance = 8;
     for (const wire of this.activePage.wires) {
       const p1 = this.getPinCoordinates(wire.from.componentId, wire.from.pinId);
       const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
@@ -769,7 +829,20 @@ export class CadCanvas {
     if (!sym) return null;
     const pin = sym.pins.find(p => p.id === pinId);
     if (!pin) return null;
-    return { x: comp.x + pin.x, y: comp.y + pin.y };
+
+    const rot = comp.rotation || 0;
+    if (rot === 0) {
+      return { x: comp.x + pin.x, y: comp.y + pin.y };
+    }
+
+    const rad = (rot * Math.PI) / 180;
+    const cx = sym.width / 2;
+    const cy = sym.height / 2;
+    const dx = pin.x - cx;
+    const dy = pin.y - cy;
+    const rx = cx + (dx * Math.cos(rad) - dy * Math.sin(rad));
+    const ry = cy + (dx * Math.sin(rad) + dy * Math.cos(rad));
+    return { x: Math.round(comp.x + rx), y: Math.round(comp.y + ry) };
   }
 
   /**
@@ -910,7 +983,7 @@ export class CadCanvas {
            style="cursor: pointer;">
           
           <!-- Selection Highlight -->
-          ${isSelected ? `<rect x="-6" y="-6" width="${sym.width + 12}" height="${sym.height + 34}" fill="rgba(99, 179, 237, 0.15)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="3,2" rx="4"/>` : ''}
+          <rect class="selection-rect" x="-6" y="-6" width="${sym.width + 12}" height="${sym.height + 34}" fill="rgba(99, 179, 237, 0.15)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="3,2" rx="4" style="display: ${isSelected ? 'block' : 'none'};"/>
 
           <!-- BMK Label (z.B. -K1, -Q1) -->
           <text x="${sym.width / 2}" y="-8" font-size="10" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${comp.bmk}</text>
