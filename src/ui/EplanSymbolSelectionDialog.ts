@@ -122,6 +122,9 @@ export class EplanSymbolSelectionDialog {
             <div class="sym-tree-node" data-cat="terminals" style="padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 6px;">
               <span>🔌</span> Klemmen & Verbinder
             </div>
+            <div class="sym-tree-node" data-cat="connections" style="padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 6px;">
+              <span>🔗</span> Verbindungssymbole
+            </div>
             <div class="sym-tree-node" data-cat="supply" style="padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 6px;">
               <span>🔋</span> Spannungsversorgung
             </div>

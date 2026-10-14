@@ -14,6 +14,7 @@ import { MobileConnectDialog } from './MobileConnectDialog';
 import { EplanPropertiesDialog } from './EplanPropertiesDialog';
 import { EplanSymbolSelectionDialog } from './EplanSymbolSelectionDialog';
 import { EplanPlausibilityDialog } from './EplanPlausibilityDialog';
+import { AutoconnectEngine } from '../model/AutoconnectEngine';
 
 export class App {
   private project!: Project;
@@ -101,6 +102,7 @@ export class App {
             <div class="menu-opt" id="menuZoomOut">➖ Ausschnitt verkleinern</div>
             <div class="menu-sep"></div>
             <div class="menu-opt" id="menuToggleGrid">📐 Rasterfang umschalten</div>
+            <div class="menu-opt" id="menuToggleAutoconnect">⚡ Autoconnecting umschalten</div>
           </div>
         </div>
         <div class="menu-item">
@@ -180,6 +182,7 @@ export class App {
           <button class="btn" id="btnZoomOut" title="Verkleinern">➖</button>
           <button class="btn" id="btnZoomFit" title="Blatt formatfüllend anpassen (F)">🔍 Fit</button>
           <button class="btn hide-mobile active" id="btnGridSnap" title="Rasterfang ein/aus (4mm / 10px)">📐 Raster</button>
+          <button class="btn hide-mobile active" id="btnAutoconnect" title="EPLAN Autoconnecting ein/aus">⚡ Autoconnect</button>
 
           <button class="btn btn-drawer-toggle" id="btnToggleRightSidebar" title="Eigenschaften & Inspektor">⚙️ <span class="hide-mobile">Eigenschaften</span></button>
         </div>
@@ -279,6 +282,10 @@ export class App {
         new EplanPropertiesDialog(comp, this.project, {
           onSave: (updated) => {
             this.selectedComponent = updated;
+            if (this.canvas.autoconnectEnabled) {
+              const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
+              if (activePage) AutoconnectEngine.updatePageAutoconnections(activePage);
+            }
             this.canvas.render();
             this.renderRightTab();
           }
@@ -596,6 +603,18 @@ export class App {
       btnGrid.classList.toggle('active', this.canvas.gridSnap);
     });
 
+    // Autoconnect toggle
+    const btnAuto = document.getElementById('btnAutoconnect');
+    btnAuto?.addEventListener('click', () => {
+      this.canvas.autoconnectEnabled = !this.canvas.autoconnectEnabled;
+      btnAuto.classList.toggle('active', this.canvas.autoconnectEnabled);
+      if (this.canvas.autoconnectEnabled) {
+        const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
+        if (activePage) AutoconnectEngine.updatePageAutoconnections(activePage);
+        this.canvas.render();
+      }
+    });
+
     // File Open
     const fileInput = document.getElementById('fileInput') as HTMLInputElement;
     fileInput?.addEventListener('change', async (e) => {
@@ -730,6 +749,15 @@ export class App {
     bindMenuOpt('menuToggleGrid', () => {
       this.canvas.gridSnap = !this.canvas.gridSnap;
       document.getElementById('btnGridSnap')?.classList.toggle('active', this.canvas.gridSnap);
+    });
+    bindMenuOpt('menuToggleAutoconnect', () => {
+      this.canvas.autoconnectEnabled = !this.canvas.autoconnectEnabled;
+      document.getElementById('btnAutoconnect')?.classList.toggle('active', this.canvas.autoconnectEnabled);
+      if (this.canvas.autoconnectEnabled) {
+        const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
+        if (activePage) AutoconnectEngine.updatePageAutoconnections(activePage);
+        this.canvas.render();
+      }
     });
 
     // Einfügen
@@ -930,6 +958,7 @@ export class App {
           <option value="controls" ${this.symbolCategoryFilter === 'controls' ? 'selected' : ''}>Befehls- & Meldegeräte</option>
           <option value="motors" ${this.symbolCategoryFilter === 'motors' ? 'selected' : ''}>Motoren & Aktoren</option>
           <option value="terminals" ${this.symbolCategoryFilter === 'terminals' ? 'selected' : ''}>Klemmen & Verbinder</option>
+          <option value="connections" ${this.symbolCategoryFilter === 'connections' ? 'selected' : ''}>🔗 Verbindungssymbole (T-Stücke, Winkel)</option>
           <option value="supply" ${this.symbolCategoryFilter === 'supply' ? 'selected' : ''}>Spannungsversorgung</option>
         </select>
       </div>

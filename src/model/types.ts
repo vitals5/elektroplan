@@ -15,7 +15,7 @@ export interface PinDefinition {
 export interface SymbolDefinition {
   id: string;
   name: string;
-  category: 'supply' | 'protection' | 'relays' | 'controls' | 'terminals' | 'motors' | 'sensors';
+  category: 'supply' | 'protection' | 'relays' | 'controls' | 'terminals' | 'motors' | 'sensors' | 'connections';
   standard: 'DIN EN 60617';
   defaultBmkPrefix: string;
   defaultFunctionText: string;
@@ -70,6 +70,7 @@ export interface Wire {
   crossSection?: string;        // e.g. "1.5mm²"
   color?: string;               // e.g. "BK", "BU", "GNYE", "RD"
   waypoints?: { x: number; y: number }[];
+  isAutoconnect?: boolean;
 }
 
 export interface TitleBlock {

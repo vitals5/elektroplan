@@ -4,6 +4,7 @@
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
 import { getSymbolById } from '../model/symbols';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
+import { AutoconnectEngine, AutoconnectPreviewSegment } from '../model/AutoconnectEngine';
 
 export type EditorMode = 'select' | 'wire' | 'place_symbol' | 'pan';
 
@@ -34,6 +35,7 @@ export class CadCanvas {
   public mode: EditorMode = 'select';
   public gridSnap: boolean = true;
   public gridSize: number = 10; // 10px per raster unit
+  public autoconnectEnabled: boolean = true;
   public activeSymbolToPlace: string | null = null;
   public ghostRotation: 0 | 90 | 180 | 270 = 0;
   public selectedComponentId: string | null = null;
@@ -71,6 +73,9 @@ export class CadCanvas {
     this.container.appendChild(this.svg);
 
     this.bindEvents();
+    if (this.autoconnectEnabled) {
+      AutoconnectEngine.updatePageAutoconnections(this.activePage);
+    }
     this.render();
   }
 
@@ -83,6 +88,9 @@ export class CadCanvas {
       this.selectedWireId = null;
       this.callbacks.onSelectComponent(null);
       this.callbacks.onSelectWire(null);
+      if (this.autoconnectEnabled) {
+        AutoconnectEngine.updatePageAutoconnections(this.activePage);
+      }
       this.render();
     }
   }
@@ -93,6 +101,9 @@ export class CadCanvas {
     this.selectedComponentId = null;
     this.selectedWireId = null;
     CrossReferenceEngine.updateProjectCrossReferences(this.project);
+    if (this.autoconnectEnabled) {
+      AutoconnectEngine.updatePageAutoconnections(this.activePage);
+    }
     this.render();
   }
 
@@ -140,11 +151,14 @@ export class CadCanvas {
     }
   }
 
-  public rotateSelected(): void {
+  public rotateSelected(delta: number = 90): void {
     if (!this.selectedComponentId) return;
     const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
     if (comp) {
-      comp.rotation = ((comp.rotation + 90) % 360) as any;
+      comp.rotation = (((comp.rotation || 0) + delta + 360) % 360) as any;
+      if (this.autoconnectEnabled) {
+        AutoconnectEngine.updatePageAutoconnections(this.activePage);
+      }
       this.notifyModified();
       this.render();
     }
@@ -158,7 +172,7 @@ export class CadCanvas {
     const sym = getSymbolById(comp.symbolId);
     const existingCount = this.activePage.components.filter(c => c.symbolId === comp.symbolId).length;
     const prefix = sym?.defaultBmkPrefix || '-K';
-    const newBmk = `${prefix}${existingCount + 1}`;
+    const newBmk = prefix ? `${prefix}${existingCount + 1}` : '';
 
     const newComp: PlacedComponent = {
       ...JSON.parse(JSON.stringify(comp)),
@@ -171,6 +185,9 @@ export class CadCanvas {
     this.activePage.components.push(newComp);
     this.selectedComponentId = newComp.id;
     this.callbacks.onSelectComponent(newComp);
+    if (this.autoconnectEnabled) {
+      AutoconnectEngine.updatePageAutoconnections(this.activePage);
+    }
     this.notifyModified();
     this.render();
   }
@@ -184,6 +201,9 @@ export class CadCanvas {
       );
       this.selectedComponentId = null;
       this.callbacks.onSelectComponent(null);
+      if (this.autoconnectEnabled) {
+        AutoconnectEngine.updatePageAutoconnections(this.activePage);
+      }
       this.notifyModified();
       this.render();
     } else if (this.selectedWireId) {
@@ -240,6 +260,9 @@ export class CadCanvas {
           e.preventDefault();
           this.ghostRotation = ((this.ghostRotation + 90) % 360) as any;
           this.render();
+        } else if (this.selectedComponentId) {
+          e.preventDefault();
+          this.rotateSelected();
         }
       } else if (e.key === 'Insert' || e.key === 'e' || e.key === 'E') {
         this.callbacks.onOpenSymbolSelection?.();
@@ -250,7 +273,13 @@ export class CadCanvas {
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         this.deleteSelected();
       } else if (e.key === 'r' || e.key === 'R') {
-        this.rotateSelected();
+        if (this.mode === 'place_symbol' && this.activeSymbolToPlace) {
+          e.preventDefault();
+          this.ghostRotation = ((this.ghostRotation + 90) % 360) as any;
+          this.render();
+        } else {
+          this.rotateSelected();
+        }
       } else if (e.key === 'Escape') {
         this.mode = 'select';
         this.wireStart = null;
@@ -386,7 +415,8 @@ export class CadCanvas {
     if (!sym) return null;
 
     const existingCount = this.activePage.components.filter(c => c.symbolId === sym.id).length;
-    const bmk = `${sym.defaultBmkPrefix}${existingCount + 1}`;
+    const prefix = sym.defaultBmkPrefix || '';
+    const bmk = prefix ? `${prefix}${existingCount + 1}` : '';
 
     const newComp: PlacedComponent = {
       id: 'comp_' + Math.random().toString(36).substring(2, 9),
@@ -407,6 +437,9 @@ export class CadCanvas {
     this.activePage.components.push(newComp);
     this.selectedComponentId = newComp.id;
     this.callbacks.onSelectComponent(newComp);
+    if (this.autoconnectEnabled) {
+      AutoconnectEngine.updatePageAutoconnections(this.activePage);
+    }
     this.notifyModified();
     this.render();
     return newComp;
@@ -519,6 +552,7 @@ export class CadCanvas {
           el.setAttribute('transform', `translate(${comp.x}, ${comp.y}) rotate(${comp.rotation || 0}, ${sym.width / 2}, ${sym.height / 2})`);
         }
         this.updateConnectedWiresFast(comp.id);
+        this.updateAutoconnectPreviewLayer();
       }
       return;
     }
@@ -541,6 +575,9 @@ export class CadCanvas {
     }
     if (this.isDraggingComponent) {
       this.isDraggingComponent = false;
+      if (this.autoconnectEnabled) {
+        AutoconnectEngine.updatePageAutoconnections(this.activePage);
+      }
       this.notifyModified();
       this.render();
     }
@@ -696,6 +733,7 @@ export class CadCanvas {
             el.setAttribute('transform', `translate(${comp.x}, ${comp.y}) rotate(${comp.rotation || 0}, ${sym.width / 2}, ${sym.height / 2})`);
           }
           this.updateConnectedWiresFast(comp.id);
+          this.updateAutoconnectPreviewLayer();
         }
       }
     }
@@ -714,6 +752,9 @@ export class CadCanvas {
     if (this.touchMode === 'drag') {
       this.isDraggingComponent = false;
       this.touchMode = 'none';
+      if (this.autoconnectEnabled) {
+        AutoconnectEngine.updatePageAutoconnections(this.activePage);
+      }
       this.notifyModified();
       this.render();
     }
@@ -763,14 +804,16 @@ export class CadCanvas {
       if (!sym) continue;
       
       const rot = comp.rotation || 0;
-      let w = sym.width;
-      let h = sym.height;
+      const cx = comp.x + sym.width / 2;
+      const cy = comp.y + sym.height / 2;
+      let halfW = sym.width / 2;
+      let halfH = sym.height / 2;
       if (rot === 90 || rot === 270) {
-        w = sym.height;
-        h = sym.width;
+        halfW = sym.height / 2;
+        halfH = sym.width / 2;
       }
 
-      if (x >= comp.x - pad && x <= comp.x + w + pad && y >= comp.y - pad && y <= comp.y + h + pad) {
+      if (x >= cx - halfW - pad && x <= cx + halfW + pad && y >= cy - halfH - pad && y <= cy + halfH + pad) {
         return comp;
       }
     }
@@ -801,14 +844,17 @@ export class CadCanvas {
       const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
       if (!p1 || !p2) continue;
 
-      // Distance to orthogonal segment
-      const midY = (p1.y + p2.y) / 2;
-      const d1 = this.distToSegment(x, y, p1.x, p1.y, p1.x, midY);
-      const d2 = this.distToSegment(x, y, p1.x, midY, p2.x, midY);
-      const d3 = this.distToSegment(x, y, p2.x, midY, p2.x, p2.y);
-
-      if (d1 < hitTolerance || d2 < hitTolerance || d3 < hitTolerance) {
-        return wire;
+      if (p1.x === p2.x || p1.y === p2.y) {
+        const d = this.distToSegment(x, y, p1.x, p1.y, p2.x, p2.y);
+        if (d < hitTolerance) return wire;
+      } else {
+        const midY = (p1.y + p2.y) / 2;
+        const d1 = this.distToSegment(x, y, p1.x, p1.y, p1.x, midY);
+        const d2 = this.distToSegment(x, y, p1.x, midY, p2.x, midY);
+        const d3 = this.distToSegment(x, y, p2.x, midY, p2.x, p2.y);
+        if (d1 < hitTolerance || d2 < hitTolerance || d3 < hitTolerance) {
+          return wire;
+        }
       }
     }
     return null;
@@ -830,19 +876,8 @@ export class CadCanvas {
     const pin = sym.pins.find(p => p.id === pinId);
     if (!pin) return null;
 
-    const rot = comp.rotation || 0;
-    if (rot === 0) {
-      return { x: comp.x + pin.x, y: comp.y + pin.y };
-    }
-
-    const rad = (rot * Math.PI) / 180;
-    const cx = sym.width / 2;
-    const cy = sym.height / 2;
-    const dx = pin.x - cx;
-    const dy = pin.y - cy;
-    const rx = cx + (dx * Math.cos(rad) - dy * Math.sin(rad));
-    const ry = cy + (dx * Math.sin(rad) + dy * Math.cos(rad));
-    return { x: Math.round(comp.x + rx), y: Math.round(comp.y + ry) };
+    const info = AutoconnectEngine.getRotatedPinInfo(comp, pin, sym);
+    return { x: info.worldX, y: info.worldY };
   }
 
   /**
@@ -874,6 +909,11 @@ export class CadCanvas {
         <!-- Components -->
         <g id="componentsLayer">
           ${this.renderComponents()}
+        </g>
+
+        <!-- Live Autoconnect Previews (EPLAN Cyan Dashed Guide Lines & Targets) -->
+        <g id="autoconnectPreviewLayer">
+          ${this.renderAutoconnectPreview()}
         </g>
 
         <!-- Interactive Temp Wire -->
@@ -958,17 +998,25 @@ export class CadCanvas {
       const sym = getSymbolById(comp.symbolId);
       if (!sym) return '';
 
+      const isConn = sym.category === 'connections';
       const isSelected = comp.id === this.selectedComponentId;
       const strokeColor = isSelected ? '#63b3ed' : '#e2e8f0';
 
       // Cross Reference text / Contact mirror
       let crossRefDisplay = '';
-      if (comp.crossRef) {
+      if (comp.crossRef && !isConn) {
         crossRefDisplay = `<text x="${sym.width / 2}" y="${sym.height + 24}" font-size="8" font-family="monospace" fill="#f6ad55" text-anchor="middle">${comp.crossRef}</text>`;
       }
 
       // Pins render
       const pinsSvg = sym.pins.map(pin => {
+        if (isConn) {
+          return `
+            <g class="pin" transform="translate(${pin.x}, ${pin.y})">
+              <circle cx="0" cy="0" r="3" fill="transparent"/>
+            </g>
+          `;
+        }
         return `
           <g class="pin" transform="translate(${pin.x}, ${pin.y})">
             <circle cx="0" cy="0" r="3.5" fill="#2d3748" stroke="#63b3ed" stroke-width="1.5"/>
@@ -983,16 +1031,20 @@ export class CadCanvas {
            style="cursor: pointer;">
           
           <!-- Selection Highlight -->
-          <rect class="selection-rect" x="-6" y="-6" width="${sym.width + 12}" height="${sym.height + 34}" fill="rgba(99, 179, 237, 0.15)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="3,2" rx="4" style="display: ${isSelected ? 'block' : 'none'};"/>
+          <rect class="selection-rect" x="-5" y="-5" width="${sym.width + 10}" height="${isConn ? sym.height + 10 : sym.height + 32}" fill="rgba(99, 179, 237, 0.15)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="3,2" rx="4" style="display: ${isSelected ? 'block' : 'none'};"/>
 
-          <!-- BMK Label (z.B. -K1, -Q1) -->
-          <text x="${sym.width / 2}" y="-8" font-size="10" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${comp.bmk}</text>
-          
-          <!-- Function text (Funktionstext) -->
-          <text x="${sym.width / 2}" y="${sym.height + 12}" font-size="8" font-family="sans-serif" fill="#e2e8f0" text-anchor="middle">${comp.functionText || ''}</text>
+          ${!isConn ? `
+            <!-- BMK Label (z.B. -K1, -Q1) -->
+            <text x="${sym.width / 2}" y="-8" font-size="10" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${comp.bmk}</text>
+            
+            <!-- Function text (Funktionstext) -->
+            <text x="${sym.width / 2}" y="${sym.height + 12}" font-size="8" font-family="sans-serif" fill="#e2e8f0" text-anchor="middle">${comp.functionText || ''}</text>
 
-          <!-- Cross Reference -->
-          ${crossRefDisplay}
+            <!-- Cross Reference -->
+            ${crossRefDisplay}
+          ` : (sym.id.startsWith('potential_arrow') ? `
+            <text x="${sym.width / 2}" y="-4" font-size="9" font-weight="bold" font-family="monospace" fill="#63b3ed" text-anchor="middle">${comp.functionText || comp.bmk}</text>
+          ` : '')}
 
           <!-- Symbol Vector Graphics -->
           <g color="${strokeColor}">
@@ -1007,30 +1059,100 @@ export class CadCanvas {
   }
 
   private renderWires(): string {
-    return this.activePage.wires.map(wire => {
+    const coordCounts = new Map<string, number>();
+    for (const wire of this.activePage.wires) {
+      const p1 = this.getPinCoordinates(wire.from.componentId, wire.from.pinId);
+      const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
+      if (p1) {
+        const k1 = `${p1.x},${p1.y}`;
+        coordCounts.set(k1, (coordCounts.get(k1) || 0) + 1);
+      }
+      if (p2) {
+        const k2 = `${p2.x},${p2.y}`;
+        coordCounts.set(k2, (coordCounts.get(k2) || 0) + 1);
+      }
+    }
+
+    const junctionDotsHtml: string[] = [];
+    coordCounts.forEach((count, key) => {
+      if (count >= 2) {
+        const [x, y] = key.split(',').map(Number);
+        junctionDotsHtml.push(`
+          <circle cx="${x}" cy="${y}" r="3.5" fill="#e2e8f0" stroke="#1a202c" stroke-width="1" class="junction-dot"/>
+        `);
+      }
+    });
+
+    const wiresHtml = this.activePage.wires.map(wire => {
       const p1 = this.getPinCoordinates(wire.from.componentId, wire.from.pinId);
       const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
       if (!p1 || !p2) return '';
 
       const isSelected = wire.id === this.selectedWireId;
       const wireColor = this.getWireColor(wire.potential, wire.color);
-      const midY = (p1.y + p2.y) / 2;
 
-      // Orthogonal path
-      const pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
+      let pathData = '';
+      if (p1.x === p2.x || p1.y === p2.y) {
+        pathData = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+      } else {
+        const midY = (p1.y + p2.y) / 2;
+        pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
+      }
 
       return `
         <g id="${wire.id}" class="wire ${isSelected ? 'selected' : ''}" style="cursor: pointer;">
           <!-- Hit area -->
-          <path d="${pathData}" fill="none" stroke="transparent" stroke-width="10"/>
+          <path d="${pathData}" fill="none" stroke="transparent" stroke-width="12"/>
           <!-- Active Wire -->
           <path d="${pathData}" fill="none" stroke="${isSelected ? '#63b3ed' : wireColor}" stroke-width="${isSelected ? 2.5 : 2}"/>
-          <!-- Junction Dots -->
-          <circle cx="${p1.x}" cy="${p1.y}" r="2.5" fill="${wireColor}"/>
-          <circle cx="${p2.x}" cy="${p2.y}" r="2.5" fill="${wireColor}"/>
         </g>
       `;
     }).join('');
+
+    return wiresHtml + junctionDotsHtml.join('');
+  }
+
+  private renderAutoconnectPreview(): string {
+    let previews: AutoconnectPreviewSegment[] = [];
+
+    if (this.mode === 'place_symbol' && this.activeSymbolToPlace) {
+      const gx = this.snap(this.currentMousePos.x);
+      const gy = this.snap(this.currentMousePos.y);
+      const tempComp: PlacedComponent = {
+        id: '__ghost__',
+        symbolId: this.activeSymbolToPlace,
+        bmk: '',
+        functionText: '',
+        x: gx,
+        y: gy,
+        rotation: this.ghostRotation || 0,
+        pins: {}
+      };
+      previews = AutoconnectEngine.getAutoconnectPreview(this.activePage.components, tempComp);
+    } else if (this.isDraggingComponent && this.selectedComponentId) {
+      const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
+      if (comp) {
+        previews = AutoconnectEngine.getAutoconnectPreview(this.activePage.components, comp);
+      }
+    }
+
+    if (previews.length === 0) return '';
+
+    return previews.map(p => `
+      <g class="autoconnect-preview" pointer-events="none">
+        <line x1="${p.x1}" y1="${p.y1}" x2="${p.x2}" y2="${p.y2}" stroke="#00f0ff" stroke-width="2" stroke-dasharray="4,3"/>
+        <circle cx="${p.targetX}" cy="${p.targetY}" r="7" fill="rgba(0, 240, 255, 0.25)" stroke="#00f0ff" stroke-width="1.5"/>
+        <circle cx="${p.targetX}" cy="${p.targetY}" r="3" fill="#00f0ff"/>
+        <circle cx="${p.x1}" cy="${p.y1}" r="3" fill="#00f0ff"/>
+      </g>
+    `).join('');
+  }
+
+  private updateAutoconnectPreviewLayer(): void {
+    const layer = this.svg.getElementById('autoconnectPreviewLayer');
+    if (layer) {
+      layer.innerHTML = this.renderAutoconnectPreview();
+    }
   }
 
   private renderInteractiveWire(): string {
@@ -1084,7 +1206,8 @@ export class CadCanvas {
     const gy = this.snap(this.currentMousePos.y);
 
     const existingCount = this.activePage.components.filter(c => c.symbolId === sym.id).length;
-    const bmk = `${sym.defaultBmkPrefix}${existingCount + 1}`;
+    const prefix = sym.defaultBmkPrefix || '';
+    const bmk = prefix ? `${prefix}${existingCount + 1}` : sym.name;
 
     return `
       <g id="ghostLayer" transform="translate(${gx}, ${gy}) rotate(${this.ghostRotation || 0}, ${sym.width / 2}, ${sym.height / 2})" opacity="0.75" pointer-events="none">
@@ -1092,7 +1215,7 @@ export class CadCanvas {
         <rect x="-4" y="-4" width="${sym.width + 8}" height="${sym.height + 8}" fill="rgba(99, 179, 237, 0.15)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="4,3" rx="4"/>
         
         <!-- BMK hint -->
-        <text x="${sym.width / 2}" y="-8" font-size="10" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${bmk} (Klick: Platzieren | Tab: Drehen)</text>
+        <text x="${sym.width / 2}" y="-8" font-size="10" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${bmk} (Klick: Platzieren | Tab / R: Drehen)</text>
 
         <!-- Symbol Graphics -->
         <g color="#63b3ed">

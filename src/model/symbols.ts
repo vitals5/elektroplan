@@ -692,6 +692,249 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
       <line x1="31" y1="42" x2="31" y2="52" stroke="currentColor" stroke-width="2"/>
     `,
     description: 'Dehn DEHNguard M TNS 275 Überspannungsableiter Typ 2'
+  },
+
+  // --- 8. VERBINDUNGSSYMBOLE & T-STÜCKE (EPLAN P8 STANDARD) ---
+  {
+    id: 't_piece_down',
+    name: 'T-Stück (Abzweig unten)',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: 'T',
+    defaultFunctionText: 'T-Stück unten',
+    width: 20,
+    height: 20,
+    pins: [
+      { id: '1', name: '1', x: 0, y: 10, direction: 'left', description: 'Durchgang links' },
+      { id: '2', name: '2', x: 20, y: 10, direction: 'right', description: 'Durchgang rechts' },
+      { id: '3', name: '3', x: 10, y: 20, direction: 'bottom', description: 'Abzweig unten' }
+    ],
+    svgContent: `
+      <line x1="0" y1="10" x2="20" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="10" y1="10" x2="10" y2="20" stroke="currentColor" stroke-width="2"/>
+      <circle cx="10" cy="10" r="3" fill="currentColor"/>
+    `,
+    description: 'EPLAN T-Verbindung Durchgang waagerecht mit Abzweig nach unten'
+  },
+  {
+    id: 't_piece_up',
+    name: 'T-Stück (Abzweig oben)',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: 'T',
+    defaultFunctionText: 'T-Stück oben',
+    width: 20,
+    height: 20,
+    pins: [
+      { id: '1', name: '1', x: 0, y: 10, direction: 'left', description: 'Durchgang links' },
+      { id: '2', name: '2', x: 20, y: 10, direction: 'right', description: 'Durchgang rechts' },
+      { id: '3', name: '3', x: 10, y: 0, direction: 'top', description: 'Abzweig oben' }
+    ],
+    svgContent: `
+      <line x1="0" y1="10" x2="20" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="10" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="2"/>
+      <circle cx="10" cy="10" r="3" fill="currentColor"/>
+    `,
+    description: 'EPLAN T-Verbindung Durchgang waagerecht mit Abzweig nach oben'
+  },
+  {
+    id: 't_piece_right',
+    name: 'T-Stück (Abzweig rechts)',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: 'T',
+    defaultFunctionText: 'T-Stück rechts',
+    width: 20,
+    height: 20,
+    pins: [
+      { id: '1', name: '1', x: 10, y: 0, direction: 'top', description: 'Durchgang oben' },
+      { id: '2', name: '2', x: 10, y: 20, direction: 'bottom', description: 'Durchgang unten' },
+      { id: '3', name: '3', x: 20, y: 10, direction: 'right', description: 'Abzweig rechts' }
+    ],
+    svgContent: `
+      <line x1="10" y1="0" x2="10" y2="20" stroke="currentColor" stroke-width="2"/>
+      <line x1="10" y1="10" x2="20" y2="10" stroke="currentColor" stroke-width="2"/>
+      <circle cx="10" cy="10" r="3" fill="currentColor"/>
+    `,
+    description: 'EPLAN T-Verbindung Durchgang senkrecht mit Abzweig nach rechts'
+  },
+  {
+    id: 't_piece_left',
+    name: 'T-Stück (Abzweig links)',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: 'T',
+    defaultFunctionText: 'T-Stück links',
+    width: 20,
+    height: 20,
+    pins: [
+      { id: '1', name: '1', x: 10, y: 0, direction: 'top', description: 'Durchgang oben' },
+      { id: '2', name: '2', x: 10, y: 20, direction: 'bottom', description: 'Durchgang unten' },
+      { id: '3', name: '3', x: 0, y: 10, direction: 'left', description: 'Abzweig links' }
+    ],
+    svgContent: `
+      <line x1="10" y1="0" x2="10" y2="20" stroke="currentColor" stroke-width="2"/>
+      <line x1="0" y1="10" x2="10" y2="10" stroke="currentColor" stroke-width="2"/>
+      <circle cx="10" cy="10" r="3" fill="currentColor"/>
+    `,
+    description: 'EPLAN T-Verbindung Durchgang senkrecht mit Abzweig nach links'
+  },
+  {
+    id: 'corner_top_right',
+    name: 'Winkel / Ecke (links-unten)',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: 'W',
+    defaultFunctionText: 'Winkel links-unten',
+    width: 20,
+    height: 20,
+    pins: [
+      { id: '1', name: '1', x: 0, y: 10, direction: 'left' },
+      { id: '2', name: '2', x: 10, y: 20, direction: 'bottom' }
+    ],
+    svgContent: `
+      <line x1="0" y1="10" x2="10" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="10" y1="10" x2="10" y2="20" stroke="currentColor" stroke-width="2"/>
+    `,
+    description: 'Eckenverbinder von links nach unten'
+  },
+  {
+    id: 'corner_top_left',
+    name: 'Winkel / Ecke (rechts-unten)',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: 'W',
+    defaultFunctionText: 'Winkel rechts-unten',
+    width: 20,
+    height: 20,
+    pins: [
+      { id: '1', name: '1', x: 20, y: 10, direction: 'right' },
+      { id: '2', name: '2', x: 10, y: 20, direction: 'bottom' }
+    ],
+    svgContent: `
+      <line x1="20" y1="10" x2="10" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="10" y1="10" x2="10" y2="20" stroke="currentColor" stroke-width="2"/>
+    `,
+    description: 'Eckenverbinder von rechts nach unten'
+  },
+  {
+    id: 'corner_bottom_right',
+    name: 'Winkel / Ecke (links-oben)',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: 'W',
+    defaultFunctionText: 'Winkel links-oben',
+    width: 20,
+    height: 20,
+    pins: [
+      { id: '1', name: '1', x: 0, y: 10, direction: 'left' },
+      { id: '2', name: '2', x: 10, y: 0, direction: 'top' }
+    ],
+    svgContent: `
+      <line x1="0" y1="10" x2="10" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="10" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="2"/>
+    `,
+    description: 'Eckenverbinder von links nach oben'
+  },
+  {
+    id: 'corner_bottom_left',
+    name: 'Winkel / Ecke (rechts-oben)',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: 'W',
+    defaultFunctionText: 'Winkel rechts-oben',
+    width: 20,
+    height: 20,
+    pins: [
+      { id: '1', name: '1', x: 20, y: 10, direction: 'right' },
+      { id: '2', name: '2', x: 10, y: 0, direction: 'top' }
+    ],
+    svgContent: `
+      <line x1="20" y1="10" x2="10" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="10" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="2"/>
+    `,
+    description: 'Eckenverbinder von rechts nach oben'
+  },
+  {
+    id: 'cross_junction',
+    name: 'Kreuzung mit Verbindungspunkt',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: 'X',
+    defaultFunctionText: 'Kreuzungsverbindung',
+    width: 20,
+    height: 20,
+    pins: [
+      { id: '1', name: '1', x: 10, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 10, y: 20, direction: 'bottom' },
+      { id: '3', name: '3', x: 0, y: 10, direction: 'left' },
+      { id: '4', name: '4', x: 20, y: 10, direction: 'right' }
+    ],
+    svgContent: `
+      <line x1="10" y1="0" x2="10" y2="20" stroke="currentColor" stroke-width="2"/>
+      <line x1="0" y1="10" x2="20" y2="10" stroke="currentColor" stroke-width="2"/>
+      <circle cx="10" cy="10" r="3.5" fill="currentColor"/>
+    `,
+    description: 'Elektrische 4-fach Kreuzung mit Knotenpunkt'
+  },
+  {
+    id: 'cross_bridge',
+    name: 'Kreuzung ohne Verbindung (Brücke)',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: 'X',
+    defaultFunctionText: 'Überbrückung',
+    width: 20,
+    height: 20,
+    pins: [
+      { id: '1', name: '1', x: 10, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 10, y: 20, direction: 'bottom' },
+      { id: '3', name: '3', x: 0, y: 10, direction: 'left' },
+      { id: '4', name: '4', x: 20, y: 10, direction: 'right' }
+    ],
+    svgContent: `
+      <line x1="10" y1="0" x2="10" y2="20" stroke="currentColor" stroke-width="2"/>
+      <line x1="0" y1="10" x2="6" y2="10" stroke="currentColor" stroke-width="2"/>
+      <path d="M 6 10 A 4 4 0 0 1 14 10" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="14" y1="10" x2="20" y2="10" stroke="currentColor" stroke-width="2"/>
+    `,
+    description: 'Kreuzende Leitungen ohne elektrische Verbindung (Sprungbogen)'
+  },
+  {
+    id: 'potential_arrow_right',
+    name: 'Abbruchstelle / Potentialpfeil rechts',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '/',
+    defaultFunctionText: 'L1',
+    width: 30,
+    height: 20,
+    pins: [
+      { id: '1', name: '1', x: 0, y: 10, direction: 'left' }
+    ],
+    svgContent: `
+      <line x1="0" y1="10" x2="16" y2="10" stroke="currentColor" stroke-width="2"/>
+      <polygon points="16,4 28,10 16,16" fill="currentColor"/>
+    `,
+    description: 'Potentialweiterleitung / Abbruchstelle nach rechts'
+  },
+  {
+    id: 'potential_arrow_left',
+    name: 'Abbruchstelle / Potentialpfeil links',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '/',
+    defaultFunctionText: 'L1',
+    width: 30,
+    height: 20,
+    pins: [
+      { id: '1', name: '1', x: 30, y: 10, direction: 'right' }
+    ],
+    svgContent: `
+      <line x1="30" y1="10" x2="14" y2="10" stroke="currentColor" stroke-width="2"/>
+      <polygon points="14,4 2,10 14,16" fill="currentColor"/>
+    `,
+    description: 'Potentialweiterleitung / Abbruchstelle nach links'
   }
 ];
 
