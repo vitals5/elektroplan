@@ -6,8 +6,9 @@ import { getSymbolById } from '../model/symbols';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
 import { AutoconnectEngine, AutoconnectPreviewSegment } from '../model/AutoconnectEngine';
 import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
+import { WindowMacro, MacroManager } from '../model/MacroManager';
 
-export type EditorMode = 'select' | 'wire' | 'place_symbol' | 'pan';
+export type EditorMode = 'select' | 'wire' | 'place_symbol' | 'place_macro' | 'pan';
 export type GridResolution = 'full' | 'half' | 'fine' | 'off';
 
 export interface CadCanvasCallbacks {
@@ -15,6 +16,8 @@ export interface CadCanvasCallbacks {
   onSelectWire: (wire: Wire | null) => void;
   onOpenProperties?: (component: PlacedComponent) => void;
   onOpenSymbolSelection?: () => void;
+  onOpenMacroSelection?: () => void;
+  onExportSelectedMacro?: (components: PlacedComponent[]) => void;
   onNavigateToPage?: (pageId: string) => void;
   onProjectModified: () => void;
 }
@@ -40,6 +43,7 @@ export class CadCanvas {
   public gridResolution: GridResolution = 'full'; // 'full' (8px), 'half' (4px), 'fine' (2px), 'off' (1px)
   public autoconnectEnabled: boolean = true;
   public activeSymbolToPlace: string | null = null;
+  public activeMacroToPlace: WindowMacro | null = null;
   public ghostRotation: 0 | 90 | 180 | 270 = 0;
   public selectedComponentId: string | null = null;
   public selectedWireId: string | null = null;
@@ -120,9 +124,42 @@ export class CadCanvas {
 
   public setSymbolToPlace(symbolId: string): void {
     this.activeSymbolToPlace = symbolId;
+    this.activeMacroToPlace = null;
     this.mode = 'place_symbol';
     this.ghostRotation = 0;
     this.render();
+  }
+
+  public setMacroToPlace(macro: WindowMacro): void {
+    this.activeMacroToPlace = macro;
+    this.activeSymbolToPlace = null;
+    this.mode = 'place_macro';
+    this.render();
+  }
+
+  public placeMacroAt(worldX: number, worldY: number, macro: WindowMacro): PlacedComponent[] {
+    const snappedX = this.snap(worldX);
+    const snappedY = this.snap(worldY);
+    const res = MacroManager.instantiateWindowMacro(macro, snappedX, snappedY, this.activePage.components);
+
+    this.activePage.components.push(...res.components);
+    if (res.wires && res.wires.length > 0) {
+      this.activePage.wires.push(...res.wires);
+    }
+
+    if (this.autoconnectEnabled) {
+      AutoconnectEngine.updatePageAutoconnections(this.activePage);
+    }
+    CrossReferenceEngine.updateProjectCrossReferences(this.project);
+
+    if (res.components.length > 0) {
+      this.selectedComponentId = res.components[0].id;
+      this.callbacks.onSelectComponent(res.components[0]);
+    }
+
+    this.notifyModified();
+    this.render();
+    return res.components;
   }
 
   public zoomIn(): void {
@@ -289,7 +326,7 @@ export class CadCanvas {
   }
 
 
-  private screenToWorld(clientX: number, clientY: number): { x: number; y: number } {
+  public screenToWorld(clientX: number, clientY: number): { x: number; y: number } {
     const rect = this.svg.getBoundingClientRect();
     const x = (clientX - rect.left - this.panX) / this.scale;
     const y = (clientY - rect.top - this.panY) / this.scale;
@@ -431,6 +468,7 @@ export class CadCanvas {
         <div class="ctx-item" data-action="properties">⚙️ Eigenschaften... <span class="ctx-key">DblClick</span></div>
         <div class="ctx-item" data-action="rotate">🔄 Um 90° drehen <span class="ctx-key">R</span></div>
         <div class="ctx-item" data-action="duplicate">📋 Duplizieren <span class="ctx-key">Strg+D</span></div>
+        <div class="ctx-item" data-action="export-macro">📦 Als .ema Fenstermakro speichern...</div>
         ${comp.crossRef ? `<div class="ctx-item" data-action="jump-crossref">🔗 Querverweis folgen (${comp.crossRef})</div>` : ''}
         <div class="ctx-sep"></div>
         <div class="ctx-item ctx-danger" data-action="delete">🗑️ Löschen <span class="ctx-key">Entf</span></div>
@@ -442,7 +480,8 @@ export class CadCanvas {
       `;
     } else {
       items += `
-        <div class="ctx-item" data-action="insert-sym">➕ Symbol einfügen... <span class="ctx-key">Einfg</span></div>
+        <div class="ctx-item" data-action="insert-sym">⚡ Symbol einfügen... <span class="ctx-key">Einfg</span></div>
+        <div class="ctx-item" data-action="insert-macro">📦 Makro aus Bibliothek einfügen (.ema)...</div>
         <div class="ctx-item" data-action="wire">🔌 Verbinden / Verdrahten <span class="ctx-key">D</span></div>
         <div class="ctx-sep"></div>
         <div class="ctx-item" data-action="fit">🔍 Ansicht: Ganzes Blatt <span class="ctx-key">F</span></div>
@@ -470,10 +509,14 @@ export class CadCanvas {
           this.rotateSelected();
         } else if (action === 'duplicate') {
           this.duplicateSelected();
+        } else if (action === 'export-macro' && comp) {
+          this.callbacks.onExportSelectedMacro?.([comp]);
         } else if (action === 'delete') {
           this.deleteSelected();
         } else if (action === 'insert-sym') {
           this.callbacks.onOpenSymbolSelection?.();
+        } else if (action === 'insert-macro') {
+          this.callbacks.onOpenMacroSelection?.();
         } else if (action === 'wire') {
           this.setMode('wire');
         } else if (action === 'fit') {
@@ -573,6 +616,11 @@ export class CadCanvas {
       return;
     }
 
+    if (this.mode === 'place_macro' && this.activeMacroToPlace) {
+      this.placeMacroAt(world.x, world.y, this.activeMacroToPlace);
+      return;
+    }
+
     // Check if clicked on a pin only in wire mode
     if (this.mode === 'wire' || this.wireStart !== null) {
       const clickedPin = this.findPinAt(world.x, world.y);
@@ -655,7 +703,7 @@ export class CadCanvas {
       this.hoveredPin = pin;
     }
 
-    if (this.mode === 'place_symbol' || this.wireStart || pinChanged) {
+    if (this.mode === 'place_symbol' || this.mode === 'place_macro' || this.wireStart || pinChanged) {
       this.render();
     }
   }
@@ -717,6 +765,14 @@ export class CadCanvas {
       if (this.mode === 'place_symbol' && this.activeSymbolToPlace) {
         e.preventDefault();
         this.placeSymbolAt(world.x, world.y);
+        this.mode = 'select';
+        return;
+      }
+
+      // Macro placing
+      if (this.mode === 'place_macro' && this.activeMacroToPlace) {
+        e.preventDefault();
+        this.placeMacroAt(world.x, world.y, this.activeMacroToPlace);
         this.mode = 'select';
         return;
       }
@@ -1338,6 +1394,35 @@ export class CadCanvas {
   }
 
   private renderGhostSymbol(): string {
+    if (this.mode === 'place_macro' && this.activeMacroToPlace) {
+      const macro = this.activeMacroToPlace;
+      const gx = this.snap(this.currentMousePos.x);
+      const gy = this.snap(this.currentMousePos.y);
+
+      let componentsGhost = '';
+      for (const c of macro.components) {
+        const sym = getSymbolById(c.symbolId);
+        if (sym) {
+          componentsGhost += `
+            <g transform="translate(${c.x}, ${c.y})">
+              <g stroke="#63b3ed" fill="none">
+                ${sym.svgContent}
+              </g>
+              <text x="0" y="-4" font-size="9" font-family="monospace" font-weight="bold" fill="#f6e05e">${c.bmk}</text>
+            </g>
+          `;
+        }
+      }
+
+      return `
+        <g id="ghostLayer" transform="translate(${gx}, ${gy})" opacity="0.8" pointer-events="none">
+          <rect x="-6" y="-6" width="${macro.width + 12}" height="${macro.height + 12}" fill="rgba(66, 153, 225, 0.12)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="4,3" rx="4"/>
+          <text x="${macro.width / 2}" y="-10" font-size="11" font-weight="bold" font-family="sans-serif" fill="#63b3ed" text-anchor="middle">📦 ${macro.name} (Klick: Makro platzieren)</text>
+          ${componentsGhost}
+        </g>
+      `;
+    }
+
     if (this.mode !== 'place_symbol' || !this.activeSymbolToPlace) return '';
     const sym = getSymbolById(this.activeSymbolToPlace);
     if (!sym) return '';

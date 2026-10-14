@@ -15,15 +15,19 @@ import { PropertiesDialog } from './PropertiesDialog';
 import { SymbolSelectionDialog } from './SymbolSelectionDialog';
 import { PlausibilityDialog } from './PlausibilityDialog';
 import { AutoconnectEngine } from '../model/AutoconnectEngine';
+import { MacroManager, WindowMacro, PageMacro, MacroItem } from '../model/MacroManager';
+import { MacroSelectionDialog } from './MacroSelectionDialog';
 
 export class App {
   private project!: Project;
   private canvas!: CadCanvas;
   private selectedComponent: PlacedComponent | null = null;
   private selectedWire: Wire | null = null;
-  private activeLeftTab: 'pages' | 'symbols' | 'terminals' | 'bom' | 'parts' = 'pages';
+  private activeLeftTab: 'pages' | 'symbols' | 'macros' | 'terminals' | 'bom' | 'parts' = 'pages';
   private activeRightTab: 'properties' | 'archive' = 'properties';
   private symbolCategoryFilter: string = 'all';
+  private macroCategoryFilter: string = 'all';
+  private macroSearchQuery: string = '';
   private manufacturerFilter: string = 'all';
   private manufacturerSearchQuery: string = '';
   private leftDrawerOpen: boolean = false;
@@ -84,6 +88,7 @@ export class App {
             <div class="menu-opt" id="menuExportPdf">📑 Intelligenter PDF-Export (DIN A3)... <span class="opt-key">Strg+P</span></div>
             <div class="menu-opt" id="menuExportZw1">📦 Als Projekt-Archiv (.zw1) exportieren...</div>
             <div class="menu-opt" id="menuExportXml">📋 Als Projekt-XML exportieren...</div>
+            <div class="menu-opt" id="menuExportPageMacro">📦 Aktuelle Seite als .ems exportieren...</div>
             <div class="menu-sep"></div>
             <div class="menu-opt" id="menuPrint">🖨️ Drucken / Plotten...</div>
           </div>
@@ -116,9 +121,11 @@ export class App {
           Einfügen
           <div class="menu-dropdown">
             <div class="menu-opt" id="menuInsertSym">⚡ Symbol auswählen... <span class="opt-key">Einfg</span></div>
+            <div class="menu-opt" id="menuInsertMacro">📦 Makro auswählen (.ema)...</div>
             <div class="menu-opt" id="menuWire">🔌 Verbindungslinie (Verdrahten) <span class="opt-key">D</span></div>
             <div class="menu-sep"></div>
             <div class="menu-opt" id="menuNewPage">📄 Neue Seite anlegen...</div>
+            <div class="menu-opt" id="menuInsertPageMacro">📄 Seitenmakro anfügen (.ems)...</div>
           </div>
         </div>
         <div class="menu-item">
@@ -209,6 +216,7 @@ export class App {
           <div class="tab-nav">
             <button class="tab-btn active" data-tab="pages">Seiten</button>
             <button class="tab-btn" data-tab="symbols">Symbole</button>
+            <button class="tab-btn" data-tab="macros">Makros</button>
             <button class="tab-btn" data-tab="parts">Artikel</button>
             <button class="tab-btn" data-tab="terminals">Klemmen</button>
             <button class="tab-btn" data-tab="bom">Stückliste</button>
@@ -251,6 +259,7 @@ export class App {
             <button class="btn btn-primary" id="btnFloatingEdit" style="padding: 6px 14px; font-size: 12px; font-weight: 600; background: #3182ce; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
               <span>⚡ BMK & Beschriftung bearbeiten...</span>
             </button>
+            <button class="btn" id="btnFloatingExportMacro" style="padding: 6px 10px; font-size: 12px; background: rgba(66, 153, 225, 0.2); border-color: #3182ce;" title="Als .ema Makro speichern">📦 Makro</button>
             <button class="btn" id="btnFloatingRotate" style="padding: 6px 10px; font-size: 12px;" title="90° Drehen">🔄</button>
             <button class="btn" id="btnFloatingDelete" style="padding: 6px 10px; font-size: 12px; color: #fc8181; border-color: #e53e3e;" title="Löschen">🗑️</button>
           </div>
@@ -323,6 +332,12 @@ export class App {
           }
         }).show();
       },
+      onOpenMacroSelection: () => {
+        this.openMacroSelectionDialog();
+      },
+      onExportSelectedMacro: (comps) => {
+        this.exportComponentsAsMacro(comps);
+      },
       onNavigateToPage: (pageId) => {
         this.canvas.setPage(pageId);
         this.updateUI();
@@ -331,6 +346,18 @@ export class App {
         const banner = document.getElementById('placeHintBanner');
         if (banner) banner.style.display = 'none';
         this.updateUI();
+      }
+    });
+
+    // Support dragging macro files (.ema, .ems, .edz) directly onto CAD canvas
+    container.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+    container.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer?.files?.[0];
+      if (file && (file.name.endsWith('.ema') || file.name.endsWith('.ems') || file.name.endsWith('.edz') || file.name.endsWith('.xml') || file.name.endsWith('.json'))) {
+        await this.handleMacroFileDrop(file, e.clientX, e.clientY);
       }
     });
 
@@ -597,6 +624,10 @@ export class App {
       }
     });
 
+    document.getElementById('btnFloatingExportMacro')?.addEventListener('click', () => {
+      this.exportSelectedAsWindowMacro();
+    });
+
     document.getElementById('btnFloatingRotate')?.addEventListener('click', () => {
       this.canvas.rotateSelected();
       this.updateFloatingSelectionBar();
@@ -842,6 +873,7 @@ export class App {
     bindMenuOpt('menuExportPdf', () => new PdfExportDialog(this.project, this.project.activePageId).show());
     bindMenuOpt('menuExportZw1', async () => await this.exportZw1());
     bindMenuOpt('menuExportXml', () => this.exportXml());
+    bindMenuOpt('menuExportPageMacro', () => this.exportCurrentPageAsPageMacro());
     bindMenuOpt('menuPrint', () => window.print());
 
     // Bearbeiten
@@ -886,11 +918,17 @@ export class App {
         onSelect: (sym) => this.canvas.setSymbolToPlace(sym.id)
       }).show();
     });
+    bindMenuOpt('menuInsertMacro', () => {
+      this.openMacroSelectionDialog('window');
+    });
     bindMenuOpt('menuWire', () => {
       this.canvas.setMode('wire');
       this.updateToolButtons('btnToolWire');
     });
     bindMenuOpt('menuNewPage', () => this.addNewPage());
+    bindMenuOpt('menuInsertPageMacro', () => {
+      this.openMacroSelectionDialog('page');
+    });
 
     // Projektdaten
     bindMenuOpt('menuPlausibility', () => {
@@ -1002,6 +1040,8 @@ export class App {
       this.renderPagesTab(container);
     } else if (this.activeLeftTab === 'symbols') {
       this.renderSymbolsTab(container);
+    } else if (this.activeLeftTab === 'macros') {
+      this.renderMacrosTab(container);
     } else if (this.activeLeftTab === 'parts') {
       this.renderPartsCatalogueTab(container);
     } else if (this.activeLeftTab === 'terminals') {
@@ -1142,6 +1182,371 @@ export class App {
         this.renderSymbolsTab(container);
       });
     });
+  }
+
+  private renderMacrosTab(container: HTMLElement): void {
+    let html = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span style="font-size: 11px; font-weight: bold; color: var(--text-muted); text-transform: uppercase;">Makro-Bibliothek</span>
+        <div style="display: flex; gap: 4px;">
+          <button class="btn" id="btnOpenMacroDialog" style="padding: 2px 7px; font-size: 11px;" title="Große Makro-Bibliothek öffnen">🔍 Groß</button>
+          <label class="btn btn-primary" style="padding: 2px 7px; font-size: 11px; margin: 0; cursor: pointer;" title="Makrodatei (.ema, .ems, .edz, .xml, .json) importieren">
+            + Import
+            <input type="file" id="macroTabFileInput" accept=".ema,.ems,.edz,.xml,.json" style="display: none;">
+          </label>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px;">
+        <select class="form-input" id="macroCategorySelect">
+          <option value="all" ${this.macroCategoryFilter === 'all' ? 'selected' : ''}>Alle Makros</option>
+          <option value="window" ${this.macroCategoryFilter === 'window' ? 'selected' : ''}>📦 Fenstermakros (.ema)</option>
+          <option value="page" ${this.macroCategoryFilter === 'page' ? 'selected' : ''}>📄 Seitenmakros (.ems)</option>
+          <option value="motor" ${this.macroCategoryFilter === 'motor' ? 'selected' : ''}>⚙️ Motoren & Antriebe</option>
+          <option value="power" ${this.macroCategoryFilter === 'power' ? 'selected' : ''}>⚡ Stromversorgung</option>
+          <option value="safety" ${this.macroCategoryFilter === 'safety' ? 'selected' : ''}>🛡️ Not-Halt & Sicherheit</option>
+          <option value="user" ${this.macroCategoryFilter === 'user' ? 'selected' : ''}>⭐ Eigene Importe</option>
+        </select>
+        <input class="form-input" id="macroTabSearch" placeholder="Suche (z.B. Motor, 24V)..." value="${this.macroSearchQuery}">
+      </div>
+
+      <div class="dropzone" id="macroTabDropzone" style="padding: 8px 10px; margin-bottom: 8px; text-align: center; border: 1px dashed var(--border-color); border-radius: 4px; background: rgba(0,0,0,0.15); cursor: pointer;" title="Klicken oder Datei (.ema/.ems) hier ablegen">
+        <div style="font-size: 11px; color: var(--text-muted);">
+          📥 .ema / .ems / .edz hier ablegen
+        </div>
+      </div>
+
+      <div class="macro-list" style="display: flex; flex-direction: column; gap: 8px; overflow-y: auto;">
+    `;
+
+    let list = MacroManager.getAllMacros();
+    if (this.macroCategoryFilter === 'window') {
+      list = list.filter(m => m.type === 'ema');
+    } else if (this.macroCategoryFilter === 'page') {
+      list = list.filter(m => m.type === 'ems');
+    } else if (this.macroCategoryFilter === 'user') {
+      list = list.filter(m => !m.isBuiltIn);
+    } else if (this.macroCategoryFilter === 'motor') {
+      list = list.filter(m => m.category.includes('Motor') || m.name.includes('Motor'));
+    } else if (this.macroCategoryFilter === 'power') {
+      list = list.filter(m => m.category.includes('Strom') || m.category.includes('Versorgung') || m.name.includes('24V'));
+    } else if (this.macroCategoryFilter === 'safety') {
+      list = list.filter(m => m.category.includes('Sicherheit') || m.name.includes('HALT'));
+    } else if (this.macroCategoryFilter !== 'all') {
+      list = list.filter(m => m.category.toLowerCase().includes(this.macroCategoryFilter.toLowerCase()));
+    }
+
+    if (this.macroSearchQuery) {
+      const q = this.macroSearchQuery.toLowerCase();
+      list = list.filter(m => {
+        const titleMatch = m.name.toLowerCase().includes(q);
+        const descMatch = (m.description || '').toLowerCase().includes(q);
+        const catMatch = (m.category || '').toLowerCase().includes(q);
+        const bmkMatch = m.type === 'ema'
+          ? (m as WindowMacro).components.some(c => c.bmk.toLowerCase().includes(q) || (c.functionText || '').toLowerCase().includes(q))
+          : (m as PageMacro).page.components.some(c => c.bmk.toLowerCase().includes(q));
+        return titleMatch || descMatch || catMatch || bmkMatch;
+      });
+    }
+
+    if (list.length === 0) {
+      html += `
+        <div style="padding: 24px 10px; text-align: center; color: var(--text-muted); font-size: 11px;">
+          Keine Makros gefunden.<br>
+          Importieren Sie Ihre .ema/.ems Makros mit dem Button oben.
+        </div>
+      `;
+    } else {
+      for (const m of list) {
+        const isWindow = m.type === 'ema';
+        const typeBadge = isWindow
+          ? '<span style="background: rgba(66, 153, 225, 0.25); color: #63b3ed; border: 1px solid #3182ce; font-size: 9px; padding: 1px 4px; border-radius: 3px; font-weight: bold;">.EMA</span>'
+          : '<span style="background: rgba(159, 122, 234, 0.25); color: #b794f4; border: 1px solid #805ad5; font-size: 9px; padding: 1px 4px; border-radius: 3px; font-weight: bold;">.EMS</span>';
+
+        const thumbSvg = MacroManager.generateMacroSvgThumbnail(m);
+        const compCount = isWindow ? (m as WindowMacro).components.length : (m as PageMacro).page.components.length;
+        const bmkSummary = isWindow
+          ? (m as WindowMacro).components.map(c => c.bmk).filter(Boolean).slice(0, 4).join(', ')
+          : (m as PageMacro).page.components.map(c => c.bmk).filter(Boolean).slice(0, 4).join(', ');
+
+        const isCurrentPlacing = isWindow && this.canvas.mode === 'place_macro' && this.canvas.activeMacroToPlace?.id === m.id;
+
+        html += `
+          <div class="symbol-card ${isCurrentPlacing ? 'selected' : ''}" style="display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid ${isCurrentPlacing ? '#63b3ed' : 'var(--border-color)'};">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 4px;">
+              <div style="font-size: 11px; font-weight: 600; color: #edf2f7; line-height: 1.3;">${m.name}</div>
+              ${typeBadge}
+            </div>
+
+            <div style="background: #181b22; border: 1px solid #2d3748; border-radius: 3px; height: 75px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+              ${thumbSvg}
+            </div>
+
+            <div style="font-size: 10px; color: var(--text-muted); line-height: 1.3; max-height: 26px; overflow: hidden;">
+              ${m.description || 'Schaltungsmakro'}
+            </div>
+
+            <div style="font-size: 9px; font-family: monospace; color: #f6e05e;">
+              ${compCount} Bauteile: ${bmkSummary || '–'}
+            </div>
+
+            <div style="display: flex; gap: 4px; margin-top: 2px;">
+              ${isWindow ? `
+                <button class="btn btn-primary btn-tab-place-macro" data-macro-id="${m.id}" style="flex: 1; padding: 3px 6px; font-size: 11px; justify-content: center;">
+                  ⚡ Platzieren
+                </button>
+              ` : `
+                <button class="btn btn-primary btn-tab-add-page-macro" data-macro-id="${m.id}" style="flex: 1; padding: 3px 6px; font-size: 11px; justify-content: center;">
+                  📄 Seite anfügen
+                </button>
+              `}
+              <button class="btn btn-tab-export-macro" data-macro-id="${m.id}" style="padding: 3px 6px; font-size: 11px;" title="Als .ema/.ems exportieren">💾</button>
+              ${!m.isBuiltIn ? `
+                <button class="btn btn-tab-delete-macro" data-macro-id="${m.id}" style="padding: 3px 6px; font-size: 11px; color: #fc8181; border-color: #e53e3e;" title="Löschen">🗑️</button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    html += `</div>`;
+    container.innerHTML = html;
+
+    this.bindMacrosTabEvents(container);
+  }
+
+  private bindMacrosTabEvents(container: HTMLElement): void {
+    document.getElementById('btnOpenMacroDialog')?.addEventListener('click', () => {
+      this.openMacroSelectionDialog();
+    });
+
+    document.getElementById('macroCategorySelect')?.addEventListener('change', (e) => {
+      this.macroCategoryFilter = (e.target as HTMLSelectElement).value;
+      this.renderMacrosTab(container);
+    });
+
+    document.getElementById('macroTabSearch')?.addEventListener('input', (e) => {
+      this.macroSearchQuery = (e.target as HTMLInputElement).value.trim();
+      this.renderMacrosTab(container);
+    });
+
+    // File input import
+    const fileInput = document.getElementById('macroTabFileInput') as HTMLInputElement;
+    fileInput?.addEventListener('change', async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        await this.importMacroFile(file);
+      }
+    });
+
+    // Dropzone import
+    const dropzone = document.getElementById('macroTabDropzone');
+    if (dropzone) {
+      dropzone.addEventListener('click', () => {
+        fileInput?.click();
+      });
+      dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = 'var(--accent-bright)';
+      });
+      dropzone.addEventListener('dragleave', () => {
+        dropzone.style.borderColor = 'var(--border-color)';
+      });
+      dropzone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = 'var(--border-color)';
+        const file = e.dataTransfer?.files?.[0];
+        if (file) {
+          await this.importMacroFile(file);
+        }
+      });
+    }
+
+    // Place window macro buttons
+    container.querySelectorAll('.btn-tab-place-macro').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = (e.currentTarget as HTMLElement).dataset.macroId!;
+        const macro = MacroManager.getAllMacros().find(m => m.id === id);
+        if (macro && macro.type === 'ema') {
+          this.startPlacingWindowMacro(macro as WindowMacro);
+          this.renderMacrosTab(container);
+        }
+      });
+    });
+
+    // Add page macro buttons
+    container.querySelectorAll('.btn-tab-add-page-macro').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = (e.currentTarget as HTMLElement).dataset.macroId!;
+        const macro = MacroManager.getAllMacros().find(m => m.id === id);
+        if (macro && macro.type === 'ems') {
+          this.addPageFromMacro(macro as PageMacro);
+        }
+      });
+    });
+
+    // Export buttons
+    container.querySelectorAll('.btn-tab-export-macro').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = (e.currentTarget as HTMLElement).dataset.macroId!;
+        const macro = MacroManager.getAllMacros().find(m => m.id === id);
+        if (macro) {
+          this.downloadMacro(macro);
+        }
+      });
+    });
+
+    // Delete buttons
+    container.querySelectorAll('.btn-tab-delete-macro').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = (e.currentTarget as HTMLElement).dataset.macroId!;
+        if (confirm('Möchten Sie dieses Makro wirklich aus Ihrer Bibliothek entfernen?')) {
+          MacroManager.deleteMacro(id);
+          this.renderMacrosTab(container);
+        }
+      });
+    });
+  }
+
+  public openMacroSelectionDialog(defaultCategory?: string): void {
+    new MacroSelectionDialog({
+      onSelectWindowMacro: (wm) => {
+        this.startPlacingWindowMacro(wm);
+      },
+      onSelectPageMacro: (pm) => {
+        this.addPageFromMacro(pm);
+      }
+    }).show();
+  }
+
+  public startPlacingWindowMacro(macro: WindowMacro): void {
+    this.canvas.setMacroToPlace(macro);
+    if (window.innerWidth <= 960) {
+      this.setLeftPanelCollapsed(true);
+    }
+    const banner = document.getElementById('placeHintBanner');
+    const bannerText = document.getElementById('placeHintText');
+    if (banner && bannerText) {
+      bannerText.textContent = `📍 Makro "${macro.name}" gewählt: Tippe auf den Plan zum Platzieren`;
+      banner.style.display = 'flex';
+    }
+  }
+
+  public addPageFromMacro(macro: PageMacro): void {
+    const newPage = MacroManager.instantiatePageMacro(macro, this.project);
+    this.canvas.setPage(newPage.id);
+    this.updateUI();
+    alert(`Seitenmakro "${macro.name}" wurde als Blatt ${newPage.pageNumber} (${newPage.title}) angefügt.`);
+  }
+
+  public async importMacroFile(file: File): Promise<void> {
+    try {
+      const imported = await MacroManager.parseMacroFile(file);
+      MacroManager.addMacro(imported);
+      if (this.activeLeftTab === 'macros') {
+        const container = document.getElementById('leftTabContent');
+        if (container) this.renderMacrosTab(container);
+      }
+      alert(`Makro "${imported.name}" erfolgreich importiert (${imported.type === 'ema' ? '.ema Fenstermakro' : '.ems Seitenmakro'})!`);
+    } catch (err: any) {
+      alert(`Fehler beim Importieren des Makros: ${err.message}`);
+    }
+  }
+
+  public exportSelectedAsWindowMacro(): void {
+    if (!this.selectedComponent) {
+      alert('Bitte wählen Sie zuerst ein Bauteil im Plan aus.');
+      return;
+    }
+    this.exportComponentsAsMacro([this.selectedComponent]);
+  }
+
+  public exportComponentsAsMacro(comps: PlacedComponent[]): void {
+    const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
+    if (!activePage || comps.length === 0) return;
+
+    const defaultName = comps.length === 1
+      ? `Makro_${comps[0].bmk}`
+      : `Makro_${comps[0].bmk}_Gruppe`;
+
+    const name = prompt('Name für das neue Fenstermakro (.ema):', defaultName);
+    if (!name) return;
+
+    const desc = prompt('Beschreibung des Makros:', comps[0].functionText || 'Benutzerdefiniertes Schaltungsmakro') || '';
+
+    const macro = MacroManager.createMacroFromComponents(
+      name,
+      'Eigene Fenstermakros',
+      desc,
+      comps,
+      activePage.wires
+    );
+
+    MacroManager.addMacro(macro);
+
+    const { blob, filename } = MacroManager.exportMacro(macro);
+    this.downloadBlob(blob, filename);
+
+    if (this.activeLeftTab === 'macros') {
+      const container = document.getElementById('leftTabContent');
+      if (container) this.renderMacrosTab(container);
+    }
+
+    alert(`Fenstermakro "${name}" (.ema) wurde erfolgreich erstellt, heruntergeladen und zu Ihrer Makro-Bibliothek hinzugefügt!`);
+  }
+
+  public exportCurrentPageAsPageMacro(): void {
+    const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
+    if (!activePage) return;
+
+    const defaultName = `Seitenmakro_Blatt_${activePage.pageNumber}_${activePage.title.replace(/\s+/g, '_')}`;
+    const name = prompt('Name für das Seitenmakro (.ems):', defaultName);
+    if (!name) return;
+
+    const desc = prompt('Beschreibung des Seitenmakros:', `${activePage.title} (${activePage.higherLevel}${activePage.location})`) || '';
+
+    const macro = MacroManager.createMacroFromPage(
+      activePage,
+      name,
+      'Eigene Seitenmakros'
+    );
+
+    MacroManager.addMacro(macro);
+
+    const { blob, filename } = MacroManager.exportMacro(macro);
+    this.downloadBlob(blob, filename);
+
+    if (this.activeLeftTab === 'macros') {
+      const container = document.getElementById('leftTabContent');
+      if (container) this.renderMacrosTab(container);
+    }
+
+    alert(`Seitenmakro "${name}" (.ems) wurde erfolgreich erstellt, heruntergeladen und zu Ihrer Makro-Bibliothek hinzugefügt!`);
+  }
+
+  public downloadMacro(macro: MacroItem): void {
+    const { blob, filename } = MacroManager.exportMacro(macro);
+    this.downloadBlob(blob, filename);
+  }
+
+  private async handleMacroFileDrop(file: File, clientX: number, clientY: number): Promise<void> {
+    try {
+      const imported = await MacroManager.parseMacroFile(file);
+      MacroManager.addMacro(imported);
+      if (imported.type === 'ema') {
+        const wm = imported as WindowMacro;
+        const world = this.canvas.screenToWorld(clientX, clientY);
+        this.canvas.placeMacroAt(world.x, world.y, wm);
+        this.updateUI();
+        alert(`Fenstermakro "${wm.name}" (.ema) direkt platziert und in der Makro-Bibliothek gespeichert!`);
+      } else {
+        const pm = imported as PageMacro;
+        this.addPageFromMacro(pm);
+      }
+    } catch (err: any) {
+      alert(`Fehler beim Verarbeiten des Makros: ${err.message}`);
+    }
   }
 
   private renderPartsCatalogueTab(container: HTMLElement): void {
