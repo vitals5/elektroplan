@@ -61,6 +61,9 @@ export class App {
     // Generates the initial project with Cover, 400V Motor circuit, and 24V DC control circuit
     const res = (EplanPackageHandler as any).createProjectFromEplanMetadata('Anlagensteuerung_P8', '', []);
     this.project = res;
+    for (const p of this.project.pages) {
+      AutoconnectEngine.updatePageAutoconnections(p);
+    }
     CrossReferenceEngine.updateProjectCrossReferences(this.project);
   }
 

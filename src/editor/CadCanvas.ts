@@ -159,6 +159,7 @@ export class CadCanvas {
     const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
     if (comp) {
       comp.rotation = (((comp.rotation || 0) + delta + 360) % 360) as any;
+      AutoconnectEngine.clearSuppressedForComponent(this.activePage, comp.id);
       if (this.autoconnectEnabled) {
         AutoconnectEngine.updatePageAutoconnections(this.activePage);
       }
@@ -210,6 +211,10 @@ export class CadCanvas {
       this.notifyModified();
       this.render();
     } else if (this.selectedWireId) {
+      const wire = this.activePage.wires.find(w => w.id === this.selectedWireId);
+      if (wire) {
+        AutoconnectEngine.suppressAutoconnection(this.activePage, wire);
+      }
       this.activePage.wires = this.activePage.wires.filter(w => w.id !== this.selectedWireId);
       this.selectedWireId = null;
       this.callbacks.onSelectWire(null);
@@ -586,6 +591,9 @@ export class CadCanvas {
     }
     if (this.isDraggingComponent) {
       this.isDraggingComponent = false;
+      if (this.selectedComponentId) {
+        AutoconnectEngine.clearSuppressedForComponent(this.activePage, this.selectedComponentId);
+      }
       if (this.autoconnectEnabled) {
         AutoconnectEngine.updatePageAutoconnections(this.activePage);
       }
@@ -774,6 +782,9 @@ export class CadCanvas {
     if (this.touchMode === 'drag') {
       this.isDraggingComponent = false;
       this.touchMode = 'none';
+      if (this.selectedComponentId) {
+        AutoconnectEngine.clearSuppressedForComponent(this.activePage, this.selectedComponentId);
+      }
       if (this.autoconnectEnabled) {
         AutoconnectEngine.updatePageAutoconnections(this.activePage);
       }
@@ -1024,10 +1035,19 @@ export class CadCanvas {
       const isSelected = comp.id === this.selectedComponentId;
       const strokeColor = isSelected ? '#63b3ed' : '#e2e8f0';
 
-      // Cross Reference text / Contact mirror
+      const bmkPos = computeBmkPosition(comp, sym);
+      const fnPos = computeFunctionTextPosition(comp, sym);
+      const techPos = computeTechnicalDataPosition(comp, sym);
+      const techText = comp.deviceTag
+        ? (comp.deviceTag + (comp.technicalCharacteristics ? ' · ' + comp.technicalCharacteristics : ''))
+        : (comp.technicalCharacteristics || '');
+      const hasTech = Boolean(techPos.visible && techText);
+
+      // Cross Reference text / Contact mirror (placed below technical data)
       let crossRefDisplay = '';
       if (comp.crossRef && !isConn) {
-        crossRefDisplay = `<text x="${sym.width / 2}" y="${sym.height + 24}" font-size="8" font-family="monospace" fill="#f6ad55" text-anchor="middle">${comp.crossRef}</text>`;
+        const crossRefY = sym.height + (hasTech ? 38 : 24);
+        crossRefDisplay = `<text x="${sym.width / 2}" y="${crossRefY}" font-size="8" font-family="monospace" fill="#f6ad55" text-anchor="middle">${comp.crossRef}</text>`;
       }
 
       // Pins render
@@ -1046,13 +1066,6 @@ export class CadCanvas {
           </g>
         `;
       }).join('');
-
-      const bmkPos = computeBmkPosition(comp, sym);
-      const fnPos = computeFunctionTextPosition(comp, sym);
-      const techPos = computeTechnicalDataPosition(comp, sym);
-      const techText = comp.deviceTag
-        ? (comp.deviceTag + (comp.technicalCharacteristics ? ' · ' + comp.technicalCharacteristics : ''))
-        : (comp.technicalCharacteristics || '');
 
       return `
         <g id="${comp.id}" class="component ${isSelected ? 'selected' : ''}" 

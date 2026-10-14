@@ -268,19 +268,19 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     width: 72,
     height: 72,
     pins: [
-      { id: 'U1', name: 'U1', x: 18, y: 0, direction: 'top' },
+      { id: 'U1', name: 'U1', x: 12, y: 0, direction: 'top' },
       { id: 'V1', name: 'V1', x: 36, y: 0, direction: 'top' },
-      { id: 'W1', name: 'W1', x: 54, y: 0, direction: 'top' },
-      { id: 'PE', name: 'PE', x: 68, y: 36, direction: 'right' }
+      { id: 'W1', name: 'W1', x: 60, y: 0, direction: 'top' },
+      { id: 'PE', name: 'PE', x: 68, y: 38, direction: 'right' }
     ],
     svgContent: `
-      <line x1="18" y1="0" x2="18" y2="12" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="0" x2="12" y2="28" stroke="currentColor" stroke-width="2"/>
       <line x1="36" y1="0" x2="36" y2="12" stroke="currentColor" stroke-width="2"/>
-      <line x1="54" y1="0" x2="54" y2="12" stroke="currentColor" stroke-width="2"/>
+      <line x1="60" y1="0" x2="60" y2="28" stroke="currentColor" stroke-width="2"/>
       <circle cx="36" cy="38" r="26" fill="none" stroke="currentColor" stroke-width="2"/>
       <text x="36" y="34" font-size="14" text-anchor="middle" font-family="sans-serif" font-weight="bold" fill="currentColor">M</text>
       <text x="36" y="50" font-size="11" text-anchor="middle" font-family="sans-serif" fill="currentColor">3 ~</text>
-      <line x1="62" y1="36" x2="68" y2="36" stroke="currentColor" stroke-width="2"/>
+      <line x1="62" y1="38" x2="68" y2="38" stroke="currentColor" stroke-width="2"/>
     `,
     description: 'Drehstrom-Asynchronmotor mit PE-Anschluss'
   },
@@ -935,6 +935,42 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
       <polygon points="14,4 2,10 14,16" fill="currentColor"/>
     `,
     description: 'Potentialweiterleitung / Abbruchstelle nach links'
+  },
+  {
+    id: 'potential_arrow_down',
+    name: 'Abbruchstelle / Potentialpfeil unten',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '/',
+    defaultFunctionText: '+24V',
+    width: 20,
+    height: 30,
+    pins: [
+      { id: '1', name: '1', x: 10, y: 30, direction: 'bottom' }
+    ],
+    svgContent: `
+      <line x1="10" y1="0" x2="10" y2="16" stroke="currentColor" stroke-width="2"/>
+      <polygon points="4,16 10,28 16,16" fill="currentColor"/>
+    `,
+    description: 'Potentialweiterleitung / Abbruchstelle nach unten'
+  },
+  {
+    id: 'potential_arrow_up',
+    name: 'Abbruchstelle / Potentialpfeil oben',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '/',
+    defaultFunctionText: '0V',
+    width: 20,
+    height: 30,
+    pins: [
+      { id: '1', name: '1', x: 10, y: 0, direction: 'top' }
+    ],
+    svgContent: `
+      <line x1="10" y1="30" x2="10" y2="14" stroke="currentColor" stroke-width="2"/>
+      <polygon points="4,14 10,2 16,14" fill="currentColor"/>
+    `,
+    description: 'Potentialweiterleitung / Abbruchstelle nach oben'
   }
 ];
 

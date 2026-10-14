@@ -18,7 +18,8 @@ const expectedSymbols = [
   't_piece_down', 't_piece_up', 't_piece_right', 't_piece_left',
   'corner_top_right', 'corner_top_left', 'corner_bottom_right', 'corner_bottom_left',
   'cross_junction', 'cross_bridge',
-  'potential_arrow_right', 'potential_arrow_left'
+  'potential_arrow_right', 'potential_arrow_left',
+  'potential_arrow_down', 'potential_arrow_up'
 ];
 
 for (const symId of expectedSymbols) {
@@ -196,5 +197,61 @@ for (const angle of [0, 90, 180, 270] as const) {
   assert(typeof p1.worldX === 'number' && !isNaN(p1.worldX), `Corner at ${angle}° pin 1 X is valid number`);
   assert(typeof p2.worldY === 'number' && !isNaN(p2.worldY), `Corner at ${angle}° pin 2 Y is valid number`);
 }
+
+console.log('\n--- 7. Testing 3-Phase Autoconnecting to Motor ---');
+const k1Power: PlacedComponent = {
+  id: 'k1',
+  symbolId: 'contactor_power_3p',
+  bmk: '-K1',
+  functionText: 'Schütz',
+  x: 220,
+  y: 280,
+  rotation: 0,
+  pins: {}
+};
+const motor: PlacedComponent = {
+  id: 'm1',
+  symbolId: 'motor_3phase',
+  bmk: '-M1',
+  functionText: 'Motor',
+  x: 220,
+  y: 400,
+  rotation: 0,
+  pins: {}
+};
+
+const threePhasePairs = AutoconnectEngine.findAutoconnectPairs([k1Power, motor]);
+assert(threePhasePairs.length === 3, `Found 3 autoconnect pairs for 3-phase motor (got ${threePhasePairs.length})`);
+assert(threePhasePairs[0].pin1.worldX === 232 && threePhasePairs[0].pin2.worldX === 232, 'Phase L1 pins aligned at X=232');
+assert(threePhasePairs[1].pin1.worldX === 256 && threePhasePairs[1].pin2.worldX === 256, 'Phase L2 pins aligned at X=256');
+assert(threePhasePairs[2].pin1.worldX === 280 && threePhasePairs[2].pin2.worldX === 280, 'Phase L3 pins aligned at X=280');
+
+console.log('\n--- 8. Testing Wire Disconnection & Suppression ---');
+const testPage: Page = {
+  id: 'p_test',
+  pageNumber: '1',
+  pageType: 'schematic',
+  title: 'Test',
+  higherLevel: '=A1',
+  location: '+S1',
+  components: [k1Power, motor],
+  wires: [],
+  plotFrame: {} as any
+};
+AutoconnectEngine.updatePageAutoconnections(testPage);
+assert(testPage.wires.length === 3, `Initially generated 3 autowires (got ${testPage.wires.length})`);
+
+// User disconnects wire 1
+const wireToDisconnect = testPage.wires[0];
+AutoconnectEngine.suppressAutoconnection(testPage, wireToDisconnect);
+testPage.wires = testPage.wires.filter(w => w.id !== wireToDisconnect.id);
+// Run updatePageAutoconnections again: wireToDisconnect should NOT be restored because it is suppressed
+AutoconnectEngine.updatePageAutoconnections(testPage);
+assert(testPage.wires.length === 2, `Suppressed wire stays disconnected (got ${testPage.wires.length})`);
+
+// When component moves, suppression is cleared and reconnection works
+AutoconnectEngine.clearSuppressedForComponent(testPage, k1Power.id);
+AutoconnectEngine.updatePageAutoconnections(testPage);
+assert(testPage.wires.length === 3, `Reconnecting restored after clearSuppressedForComponent (got ${testPage.wires.length})`);
 
 console.log('\n🎉 ALL TESTS PASSED SUCCESSFULLY! 100% EPLAN COMPATIBLE AUTOCONNECTING & CONNECTION PIECES!');

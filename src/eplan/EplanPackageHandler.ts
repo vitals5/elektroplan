@@ -7,6 +7,7 @@
 import JSZip from 'jszip';
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
 import { SYMBOL_DEFINITIONS } from '../model/symbols';
+import { AutoconnectEngine } from '../model/AutoconnectEngine';
 
 export interface EplanPackageEntry {
   path: string;
@@ -282,6 +283,37 @@ export class EplanPackageHandler {
       higherLevel: '=A1',
       location: '+S1',
       components: [
+        // Potenzial-Einspeisung oben (L1, L2, L3)
+        {
+          id: 'comp_pf_l1',
+          symbolId: 'potential_arrow_down',
+          bmk: '/1.1',
+          functionText: 'L1',
+          x: 222,
+          y: 80,
+          rotation: 0,
+          pins: {}
+        },
+        {
+          id: 'comp_pf_l2',
+          symbolId: 'potential_arrow_down',
+          bmk: '/1.2',
+          functionText: 'L2',
+          x: 246,
+          y: 80,
+          rotation: 0,
+          pins: {}
+        },
+        {
+          id: 'comp_pf_l3',
+          symbolId: 'potential_arrow_down',
+          bmk: '/1.3',
+          functionText: 'L3',
+          x: 270,
+          y: 80,
+          rotation: 0,
+          pins: {}
+        },
         // Motorschutzschalter -Q1 at Col 2
         {
           id: 'comp_q1',
@@ -294,7 +326,7 @@ export class EplanPackageHandler {
           articleNumber: '3RV2011-1EA10',
           manufacturer: 'Siemens',
           x: 220,
-          y: 180,
+          y: 160,
           rotation: 0,
           pins: {}
         },
@@ -310,18 +342,19 @@ export class EplanPackageHandler {
           articleNumber: '3RT2016-1BB41',
           manufacturer: 'Siemens',
           x: 220,
-          y: 300,
+          y: 280,
           rotation: 0,
           pins: {}
         },
-        // Klemmenleiste -X1 at Col 2
+        // Klemmenleiste -X1 at Col 2 (Reihenklemmen 1, 2, 3)
         {
           id: 'comp_x1_u',
           symbolId: 'terminal_single',
           bmk: '-X1',
-          functionText: 'Abgang Motor U1',
+          functionText: '1',
+          bmkPosition: { preset: 'left', offsetX: -6 },
           x: 222,
-          y: 420,
+          y: 400,
           rotation: 0,
           pins: {}
         },
@@ -329,9 +362,10 @@ export class EplanPackageHandler {
           id: 'comp_x1_v',
           symbolId: 'terminal_single',
           bmk: '-X1',
-          functionText: 'Abgang Motor V1',
+          functionText: '2',
+          bmkPosition: { visible: false },
           x: 246,
-          y: 420,
+          y: 400,
           rotation: 0,
           pins: {}
         },
@@ -339,9 +373,10 @@ export class EplanPackageHandler {
           id: 'comp_x1_w',
           symbolId: 'terminal_single',
           bmk: '-X1',
-          functionText: 'Abgang Motor W1',
+          functionText: '3',
+          bmkPosition: { visible: false },
           x: 270,
-          y: 420,
+          y: 400,
           rotation: 0,
           pins: {}
         },
@@ -356,86 +391,13 @@ export class EplanPackageHandler {
           technicalCharacteristics: '1.5kW 400V 50Hz 3.2A',
           articleNumber: '1LE1001-0DB22',
           manufacturer: 'Siemens',
-          x: 216,
-          y: 520,
+          x: 220,
+          y: 500,
           rotation: 0,
           pins: {}
         }
       ],
-      wires: [
-        {
-          id: 'w1',
-          from: { componentId: 'comp_q1', pinId: '2' },
-          to: { componentId: 'comp_k1_power', pinId: '1' },
-          potential: 'L1',
-          color: 'BK',
-          crossSection: '2.5mm²'
-        },
-        {
-          id: 'w2',
-          from: { componentId: 'comp_q1', pinId: '4' },
-          to: { componentId: 'comp_k1_power', pinId: '3' },
-          potential: 'L2',
-          color: 'BK',
-          crossSection: '2.5mm²'
-        },
-        {
-          id: 'w3',
-          from: { componentId: 'comp_q1', pinId: '6' },
-          to: { componentId: 'comp_k1_power', pinId: '5' },
-          potential: 'L3',
-          color: 'BK',
-          crossSection: '2.5mm²'
-        },
-        {
-          id: 'w4',
-          from: { componentId: 'comp_k1_power', pinId: '2' },
-          to: { componentId: 'comp_x1_u', pinId: '1' },
-          potential: 'L1',
-          color: 'BK',
-          crossSection: '2.5mm²'
-        },
-        {
-          id: 'w5',
-          from: { componentId: 'comp_k1_power', pinId: '4' },
-          to: { componentId: 'comp_x1_v', pinId: '1' },
-          potential: 'L2',
-          color: 'BK',
-          crossSection: '2.5mm²'
-        },
-        {
-          id: 'w6',
-          from: { componentId: 'comp_k1_power', pinId: '6' },
-          to: { componentId: 'comp_x1_w', pinId: '1' },
-          potential: 'L3',
-          color: 'BK',
-          crossSection: '2.5mm²'
-        },
-        {
-          id: 'w7',
-          from: { componentId: 'comp_x1_u', pinId: '2' },
-          to: { componentId: 'comp_m1', pinId: 'U1' },
-          potential: 'U1',
-          color: 'BK',
-          crossSection: '2.5mm²'
-        },
-        {
-          id: 'w8',
-          from: { componentId: 'comp_x1_v', pinId: '2' },
-          to: { componentId: 'comp_m1', pinId: 'V1' },
-          potential: 'V1',
-          color: 'BK',
-          crossSection: '2.5mm²'
-        },
-        {
-          id: 'w9',
-          from: { componentId: 'comp_x1_w', pinId: '2' },
-          to: { componentId: 'comp_m1', pinId: 'W1' },
-          potential: 'W1',
-          color: 'BK',
-          crossSection: '2.5mm²'
-        }
-      ],
+      wires: [],
       plotFrame: {
         type: 'DIN_A3_LANDSCAPE',
         width: 1000,
@@ -454,6 +416,8 @@ export class EplanPackageHandler {
         }
       }
     };
+    // Dynamisch alle Verbindungen per EPLAN Autoconnecting generieren
+    AutoconnectEngine.updatePageAutoconnections(pagePower);
 
     const pageControl: Page = {
       id: 'p_control',
@@ -463,6 +427,18 @@ export class EplanPackageHandler {
       higherLevel: '=A1',
       location: '+S1',
       components: [
+        // --- STROMPFAD 1 (Spulenkreis -K1) ---
+        // Potenzial +24V
+        {
+          id: 'comp_pf_24v_1',
+          symbolId: 'potential_arrow_down',
+          bmk: '/2.1',
+          functionText: '+24V',
+          x: 210,
+          y: 70,
+          rotation: 0,
+          pins: {}
+        },
         // Steuersicherung -F1
         {
           id: 'comp_f1',
@@ -473,8 +449,9 @@ export class EplanPackageHandler {
           functionText: 'Steuersicherung 24V',
           technicalCharacteristics: '2A gL/gG',
           articleNumber: '5SE2302',
-          x: 200,
-          y: 140,
+          manufacturer: 'Siemens',
+          x: 208,
+          y: 150,
           rotation: 0,
           pins: {}
         },
@@ -487,7 +464,8 @@ export class EplanPackageHandler {
           mountingLocation: '+T1',
           functionText: 'NOT-HALT Bedienpult',
           articleNumber: '3SU1801-0AA00-0AB1',
-          x: 196,
+          manufacturer: 'Siemens',
+          x: 204,
           y: 240,
           rotation: 0,
           pins: {}
@@ -500,7 +478,7 @@ export class EplanPackageHandler {
           higherLevelFunction: '=A1',
           mountingLocation: '+T1',
           functionText: 'Taster AUS',
-          x: 200,
+          x: 208,
           y: 330,
           rotation: 0,
           pins: {}
@@ -513,20 +491,7 @@ export class EplanPackageHandler {
           higherLevelFunction: '=A1',
           mountingLocation: '+T1',
           functionText: 'Taster EIN',
-          x: 200,
-          y: 420,
-          rotation: 0,
-          pins: {}
-        },
-        // Selbsthaltekontakt -K1:13-14 parallel zu -S3
-        {
-          id: 'comp_k1_self_hold',
-          symbolId: 'contact_no',
-          bmk: '-K1',
-          higherLevelFunction: '=A1',
-          mountingLocation: '+S1',
-          functionText: 'Selbsthaltung Hauptschütz',
-          x: 270,
+          x: 208,
           y: 420,
           rotation: 0,
           pins: {}
@@ -541,8 +506,46 @@ export class EplanPackageHandler {
           functionText: 'Hauptschütz Antrieb',
           technicalCharacteristics: '24V DC / 4kW',
           articleNumber: '3RT2016-1BB41',
-          x: 196,
-          y: 520,
+          manufacturer: 'Siemens',
+          x: 204,
+          y: 510,
+          rotation: 0,
+          pins: {}
+        },
+        // Potenzial 0V
+        {
+          id: 'comp_pf_0v_1',
+          symbolId: 'potential_arrow_up',
+          bmk: '/2.1',
+          functionText: '0V',
+          x: 210,
+          y: 610,
+          rotation: 0,
+          pins: {}
+        },
+
+        // --- STROMPFAD 2 (Meldekreis -P1) ---
+        // Potenzial +24V
+        {
+          id: 'comp_pf_24v_2',
+          symbolId: 'potential_arrow_down',
+          bmk: '/2.2',
+          functionText: '+24V',
+          x: 330,
+          y: 70,
+          rotation: 0,
+          pins: {}
+        },
+        // Meldekontakt -K1:13-14 (Hilfskontakt Schließer)
+        {
+          id: 'comp_k1_aux',
+          symbolId: 'contact_no',
+          bmk: '-K1',
+          higherLevelFunction: '=A1',
+          mountingLocation: '+S1',
+          functionText: 'Betriebsmeldung',
+          x: 328,
+          y: 420,
           rotation: 0,
           pins: {}
         },
@@ -553,49 +556,28 @@ export class EplanPackageHandler {
           bmk: '-P1',
           higherLevelFunction: '=A1',
           mountingLocation: '+T1',
-          functionText: 'Betriebsmeldung Grün',
+          functionText: 'Betriebsanzeige Grün',
           technicalCharacteristics: '24V DC LED',
           articleNumber: '3SU1102-6AA40-1AA0',
-          x: 400,
-          y: 520,
+          manufacturer: 'Siemens',
+          x: 324,
+          y: 510,
+          rotation: 0,
+          pins: {}
+        },
+        // Potenzial 0V
+        {
+          id: 'comp_pf_0v_2',
+          symbolId: 'potential_arrow_up',
+          bmk: '/2.2',
+          functionText: '0V',
+          x: 330,
+          y: 610,
           rotation: 0,
           pins: {}
         }
       ],
-      wires: [
-        {
-          id: 'wc1',
-          from: { componentId: 'comp_f1', pinId: '2' },
-          to: { componentId: 'comp_s1', pinId: '11' },
-          potential: '+24V',
-          color: 'RD',
-          crossSection: '0.75mm²'
-        },
-        {
-          id: 'wc2',
-          from: { componentId: 'comp_s1', pinId: '12' },
-          to: { componentId: 'comp_s2', pinId: '21' },
-          potential: '+24V',
-          color: 'RD',
-          crossSection: '0.75mm²'
-        },
-        {
-          id: 'wc3',
-          from: { componentId: 'comp_s2', pinId: '22' },
-          to: { componentId: 'comp_s3', pinId: '13' },
-          potential: '+24V',
-          color: 'RD',
-          crossSection: '0.75mm²'
-        },
-        {
-          id: 'wc4',
-          from: { componentId: 'comp_s3', pinId: '14' },
-          to: { componentId: 'comp_k1_coil', pinId: 'A1' },
-          potential: '+24V',
-          color: 'RD',
-          crossSection: '0.75mm²'
-        }
-      ],
+      wires: [],
       plotFrame: {
         type: 'DIN_A3_LANDSCAPE',
         width: 1000,
@@ -614,6 +596,8 @@ export class EplanPackageHandler {
         }
       }
     };
+    // Dynamisch alle Verbindungen per EPLAN Autoconnecting generieren
+    AutoconnectEngine.updatePageAutoconnections(pageControl);
 
     return {
       id: 'proj_' + Math.random().toString(36).substring(2, 9),

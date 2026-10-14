@@ -193,8 +193,15 @@ export class AutoconnectEngine {
     const newAutoWires: Wire[] = [];
 
     for (const pair of pairs) {
-      const key = `${pair.pin1.componentId}:${pair.pin1.pinId}|${pair.pin2.componentId}:${pair.pin2.pinId}`;
-      if (manualWireSet.has(key)) {
+      const key1 = `${pair.pin1.componentId}:${pair.pin1.pinId}|${pair.pin2.componentId}:${pair.pin2.pinId}`;
+      const key2 = `${pair.pin2.componentId}:${pair.pin2.pinId}|${pair.pin1.componentId}:${pair.pin1.pinId}`;
+
+      // Check if user manually disconnected / suppressed this autoconnection
+      if (page.suppressedAutoconnections && (page.suppressedAutoconnections.includes(key1) || page.suppressedAutoconnections.includes(key2))) {
+        continue;
+      }
+
+      if (manualWireSet.has(key1) || manualWireSet.has(key2)) {
         // User already drew a manual wire here; do not duplicate
         continue;
       }
@@ -346,30 +353,64 @@ export class AutoconnectEngine {
   /**
    * Infers wire potential and color from connected pin names.
    */
-  private static inferPotential(pin1: RotatedPinInfo, pin2: RotatedPinInfo): { potential: string; color: string } {
+  public static inferPotential(pin1: RotatedPinInfo, pin2: RotatedPinInfo): { potential: string; color: string } {
     const names = [pin1.pinName.toUpperCase(), pin2.pinName.toUpperCase(), pin1.pinId.toUpperCase(), pin2.pinId.toUpperCase()];
 
     if (names.some(n => n === 'PE' || n === 'GND')) {
       return { potential: 'PE', color: 'GNYE' };
     }
-    if (names.some(n => n === 'N')) {
-      return { potential: 'N', color: 'BU' };
-    }
-    if (names.some(n => n === 'L1' || n === '1' || n === '2')) {
-      return { potential: 'L1', color: 'BK' };
-    }
-    if (names.some(n => n === 'L2' || n === '3' || n === '4')) {
-      return { potential: 'L2', color: 'BK' };
-    }
-    if (names.some(n => n === 'L3' || n === '5' || n === '6')) {
-      return { potential: 'L3', color: 'BK' };
-    }
     if (names.some(n => n === '+24V' || n === '24V' || n === '+')) {
       return { potential: '+24V', color: 'RD' };
     }
-    if (names.some(n => n === '0V' || n === '-')) {
+    if (names.some(n => n === '0V' || n === '-' || n === 'M' || n === 'A2')) {
       return { potential: '0V', color: 'BU' };
+    }
+    if (names.some(n => n === 'N')) {
+      return { potential: 'N', color: 'BU' };
+    }
+    if (names.some(n => n === 'L1' || n === 'U1' || n === 'U')) {
+      return { potential: 'L1', color: 'BK' };
+    }
+    if (names.some(n => n === 'L2' || n === 'V1' || n === 'V')) {
+      return { potential: 'L2', color: 'BK' };
+    }
+    if (names.some(n => n === 'L3' || n === 'W1' || n === 'W')) {
+      return { potential: 'L3', color: 'BK' };
+    }
+    if (names.some(n => ['11', '12', '13', '14', '21', '22', 'A1', 'X1', 'X2'].includes(n))) {
+      return { potential: '+24V', color: 'RD' };
+    }
+    if (names.some(n => n === '1' || n === '2')) {
+      return { potential: 'L1', color: 'BK' };
+    }
+    if (names.some(n => n === '3' || n === '4')) {
+      return { potential: 'L2', color: 'BK' };
+    }
+    if (names.some(n => n === '5' || n === '6')) {
+      return { potential: 'L3', color: 'BK' };
     }
     return { potential: 'Signal', color: 'BK' };
   }
+
+  /**
+   * Suppresses an autoconnection so deleting/disconnecting it keeps it disconnected.
+   */
+  public static suppressAutoconnection(page: Page, wire: Wire): void {
+    if (!page.suppressedAutoconnections) {
+      page.suppressedAutoconnections = [];
+    }
+    const key = `${wire.from.componentId}:${wire.from.pinId}|${wire.to.componentId}:${wire.to.pinId}`;
+    if (!page.suppressedAutoconnections.includes(key)) {
+      page.suppressedAutoconnections.push(key);
+    }
+  }
+
+  /**
+   * Clears any suppressions for a component when it moves, allowing it to reconnect at its new position.
+   */
+  public static clearSuppressedForComponent(page: Page, componentId: string): void {
+    if (!page.suppressedAutoconnections) return;
+    page.suppressedAutoconnections = page.suppressedAutoconnections.filter(key => !key.includes(componentId));
+  }
 }
+

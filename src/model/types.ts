@@ -34,7 +34,7 @@ export interface SymbolDefinition {
 }
 
 export interface TextFormatConfig {
-  preset: 'top' | 'bottom' | 'left' | 'right' | 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right' | 'custom';
+  preset?: 'top' | 'bottom' | 'left' | 'right' | 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right' | 'custom';
   offsetX?: number;             // X offset in px relative to default position
   offsetY?: number;             // Y offset in px relative to default position
   alignment?: 'start' | 'middle' | 'end';
@@ -109,6 +109,7 @@ export interface Page {
   location: string;             // +Ort (z.B. "+S1")
   components: PlacedComponent[];
   wires: Wire[];
+  suppressedAutoconnections?: string[];
   plotFrame: {
     type: 'DIN_A3_LANDSCAPE';
     width: number;              // in mm, default 420
