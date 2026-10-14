@@ -21,12 +21,21 @@ Eine moderne, professionelle **Elektroplan- & Stromlaufplan-Software für Window
 * **Automatischer Querverweis- & Kontaktspiegel-Engine**:
   * Schützspulen berechnen und zeichnen automatisch den **Kontaktspiegel** aller zugehörigen Kontakte mit Blatt- und Pfadangabe (`/1.2`, `/2.1`).
   * Hilfskontakte zeigen automatisch die Blatt- und Pfadreferenz ihrer übergeordneten Spule an.
-* **DIN EN 60617 Symbolbibliothek**:
-  * **Schütze & Relais**: Schützspulen (A1-A2), 3-polige Hauptschaltglieder, Hilfsschließer (13-14), Hilfsöffner (21-22).
-  * **Schutzeinrichtungen**: 3-polige Motorschutzschalter (thermisch & magnetisch), Schmelzsicherungen.
-  * **Befehls- & Meldegeräte**: Drucktaster EIN, Taster AUS, NOT-HALT Pilztaster mit Rastung, Meldeleuchten.
+* **DIN EN 60617 Symbolbibliothek & EPLAN Hersteller-Komponenten**:
+  * **Fehlerstrom-Schutzeinrichtungen (RCD / FI)**:
+    * 4-polig: z.B. **Hager CDS440D** / **Siemens 5SV3344-6** (40A / 30mA Typ A mit Summenstromwandler & Prüftaste `T`).
+    * 2-polig: z.B. **ABB FH202** / **Hager CDA225D** (25A / 30mA).
+    * Kombischalter (RCBO): **Siemens 5SV1316-6KK16** (1P+N B16A / 30mA in nur 1 TE!).
+  * **Stromstoßrelais / Stromstoßschalter (Schrittschalter)**:
+    * 1 Schließer (1NO): **Finder 20.21.8.230.4000** / **Hager EPN510** (230V AC 16A mit Rastungs-/Schrittsymbol).
+    * 2 Schließer (2NO): **Finder 20.22.8.230.4000** (Serienschaltung für getrennte Leuchtengruppen).
+  * **Multifunktions-Zeitrelais**: **Eaton ETR4-69-A** / **Finder 80.01** (24-240V AC/DC mit Wechslerkontakt & Steuerkontakt B1).
+  * **Überspannungsschutz (SPD Typ 2)**: **Dehn DEHNguard M TNS 275** (4-polig mit Varistoren und PE-Sammelschiene).
+  * **Schütze & Motorschutz**: Siemens SIRIUS 3RT2016 (4kW 24VDC), Siemens 3RV2011 Motorschutzschalter (2.8 - 4.0A).
+  * **Befehls- & Meldegeräte**: NOT-HALT Pilztaster mit Rastung, EIN/AUS-Taster, Meldeleuchten.
   * **Antriebe**: Drehstrom-Asynchronmotoren (M 3~ mit U1, V1, W1, PE).
-  * **Klemmen & Versorgung**: Reihenklemmen `-X1`, PE-Schutzklemmen, 24V DC Schaltnetzteile, Potenzial-Abbruchstellen.
+  * **Klemmen & Versorgung**: Reihenklemmen `-X1`, PE-Schutzklemmen, 24V DC Schaltnetzteile.
+* **Integrierter EPLAN Artikelkatalog**: Direkte Suche nach Herstellern (Hager, Finder, Siemens, ABB, Eaton, Dehn) und 1-Klick-Zuweisung aller Bestelldaten zu platzierten Geräten.
 
 ### 📊 Automatische Auswertungen & Reports
 * **Klemmenplan (Terminal Diagram)**: Vollständige Klemmenleisten-Matrix (`-X1`) mit automatischer Zuordnung interner Schaltschrankziele und externer Feldkomponenten.

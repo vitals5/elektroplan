@@ -9,15 +9,18 @@ import { EplanPackageHandler, EplanInspectionResult } from '../eplan/EplanPackag
 import { TerminalDiagramGenerator } from '../reports/TerminalDiagram';
 import { PartsListGenerator } from '../reports/PartsList';
 import { PdfExportDialog } from './PdfExportDialog';
+import { PartCatalogue, MANUFACTURER_PARTS, ManufacturerPart } from '../model/PartCatalogue';
 
 export class App {
   private project!: Project;
   private canvas!: CadCanvas;
   private selectedComponent: PlacedComponent | null = null;
   private selectedWire: Wire | null = null;
-  private activeLeftTab: 'pages' | 'symbols' | 'terminals' | 'bom' = 'pages';
+  private activeLeftTab: 'pages' | 'symbols' | 'terminals' | 'bom' | 'parts' = 'pages';
   private activeRightTab: 'properties' | 'eplan' = 'properties';
   private symbolCategoryFilter: string = 'all';
+  private manufacturerFilter: string = 'all';
+  private manufacturerSearchQuery: string = '';
 
   constructor() {
     this.initDefaultProject();
@@ -88,7 +91,8 @@ export class App {
           <div class="tab-nav">
             <button class="tab-btn active" data-tab="pages">Seiten</button>
             <button class="tab-btn" data-tab="symbols">Symbole</button>
-            <button class="tab-btn" data-tab="terminals">Klemmenplan</button>
+            <button class="tab-btn" data-tab="parts">Artikel</button>
+            <button class="tab-btn" data-tab="terminals">Klemmen</button>
             <button class="tab-btn" data-tab="bom">Stückliste</button>
           </div>
           <div class="tab-content" id="leftTabContent"></div>
@@ -281,6 +285,8 @@ export class App {
       this.renderPagesTab(container);
     } else if (this.activeLeftTab === 'symbols') {
       this.renderSymbolsTab(container);
+    } else if (this.activeLeftTab === 'parts') {
+      this.renderPartsCatalogueTab(container);
     } else if (this.activeLeftTab === 'terminals') {
       this.renderTerminalsTab(container);
     } else if (this.activeLeftTab === 'bom') {
@@ -416,6 +422,109 @@ export class App {
     });
   }
 
+  private renderPartsCatalogueTab(container: HTMLElement): void {
+    let html = `
+      <div style="font-size: 11px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">
+        EPLAN Artikel-Stammdaten & Data Portal
+      </div>
+
+      <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+        <select class="form-input" id="mfrSelect" style="flex: 1;">
+          <option value="all" ${this.manufacturerFilter === 'all' ? 'selected' : ''}>Alle Hersteller</option>
+          <option value="Hager" ${this.manufacturerFilter === 'Hager' ? 'selected' : ''}>Hager</option>
+          <option value="Finder" ${this.manufacturerFilter === 'Finder' ? 'selected' : ''}>Finder</option>
+          <option value="Siemens" ${this.manufacturerFilter === 'Siemens' ? 'selected' : ''}>Siemens</option>
+          <option value="ABB" ${this.manufacturerFilter === 'ABB' ? 'selected' : ''}>ABB</option>
+          <option value="Eaton" ${this.manufacturerFilter === 'Eaton' ? 'selected' : ''}>Eaton</option>
+          <option value="Dehn" ${this.manufacturerFilter === 'Dehn' ? 'selected' : ''}>Dehn</option>
+        </select>
+        <input class="form-input" id="mfrSearch" placeholder="Suche (z.B. FI, Stromstoß)..." value="${this.manufacturerSearchQuery}" style="flex: 1.2;">
+      </div>
+
+      <div class="parts-list" style="display: flex; flex-direction: column; gap: 8px;">
+    `;
+
+    let parts = MANUFACTURER_PARTS;
+    if (this.manufacturerFilter !== 'all') {
+      parts = parts.filter(p => p.manufacturer.toLowerCase() === this.manufacturerFilter.toLowerCase());
+    }
+    if (this.manufacturerSearchQuery) {
+      const q = this.manufacturerSearchQuery.toLowerCase();
+      parts = parts.filter(p => 
+        p.name.toLowerCase().includes(q) || 
+        p.articleNumber.toLowerCase().includes(q) || 
+        p.description.toLowerCase().includes(q) ||
+        p.technicalData.toLowerCase().includes(q)
+      );
+    }
+
+    for (const part of parts) {
+      html += `
+        <div class="part-item-card" data-part-id="${part.id}" style="
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-color);
+          border-radius: 6px;
+          padding: 8px 10px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        ">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+            <span style="font-weight: 600; font-size: 11px; color: var(--accent-bright);">${part.manufacturer}</span>
+            <span style="font-family: monospace; font-size: 10px; background: rgba(246, 224, 94, 0.15); color: var(--warning); padding: 1px 4px; border-radius: 3px;">
+              ${part.articleNumber}
+            </span>
+          </div>
+
+          <div style="font-weight: 500; font-size: 11px; margin-bottom: 3px; color: var(--text-main);">
+            ${part.name}
+          </div>
+
+          <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 6px;">
+            ${part.technicalData}
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px;">
+            <span style="font-size: 9px; color: #718096;">${part.widthModules || 'Normbauform'}</span>
+            <button class="btn btn-primary btn-place-part" data-part-id="${part.id}" style="padding: 2px 6px; font-size: 10px;">
+              ⚡ Im Plan platzieren
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    html += `</div>`;
+    container.innerHTML = html;
+
+    // Events
+    document.getElementById('mfrSelect')?.addEventListener('change', (e) => {
+      this.manufacturerFilter = (e.target as HTMLSelectElement).value;
+      this.renderPartsCatalogueTab(container);
+    });
+
+    document.getElementById('mfrSearch')?.addEventListener('input', (e) => {
+      this.manufacturerSearchQuery = (e.target as HTMLInputElement).value;
+      this.renderPartsCatalogueTab(container);
+    });
+
+    container.querySelectorAll('.btn-place-part, .part-item-card').forEach(el => {
+      el.addEventListener('click', (e) => {
+        const partId = (e.currentTarget as HTMLElement).dataset.partId!;
+        const part = MANUFACTURER_PARTS.find(p => p.id === partId);
+        if (part) {
+          this.canvas.setSymbolToPlace(part.symbolId);
+          if (this.selectedComponent) {
+            this.selectedComponent.manufacturer = part.manufacturer;
+            this.selectedComponent.articleNumber = part.articleNumber;
+            this.selectedComponent.functionText = part.name;
+            this.selectedComponent.technicalCharacteristics = part.technicalData;
+            this.notifyChange();
+          }
+        }
+      });
+    });
+  }
+
   private renderTerminalsTab(container: HTMLElement): void {
     const strips = TerminalDiagramGenerator.generateTerminalReport(this.project);
 
@@ -532,6 +641,18 @@ export class App {
           <input class="form-input" id="propTechnical" value="${comp.technicalCharacteristics || ''}">
         </div>
 
+        <div class="form-group" style="background: rgba(99, 179, 237, 0.08); padding: 8px; border-radius: 4px; border: 1px dashed var(--accent);">
+          <label class="form-label" style="color: var(--accent-bright);">📦 EPLAN Artikel aus Katalog zuweisen</label>
+          <select class="form-input" id="propAssignPartSelect">
+            <option value="">-- Hersteller-Artikel wählen --</option>
+            ${MANUFACTURER_PARTS.map(p => `
+              <option value="${p.id}" ${comp.articleNumber === p.articleNumber ? 'selected' : ''}>
+                ${p.manufacturer} - ${p.articleNumber} (${p.name})
+              </option>
+            `).join('')}
+          </select>
+        </div>
+
         <div class="form-group">
           <label class="form-label">Artikelnummer</label>
           <input class="form-input" id="propArticle" value="${comp.articleNumber || ''}">
@@ -567,6 +688,17 @@ export class App {
       document.getElementById('propBmk')?.addEventListener('input', (e) => {
         comp.bmk = (e.target as HTMLInputElement).value;
         this.notifyChange();
+      });
+      document.getElementById('propAssignPartSelect')?.addEventListener('change', (e) => {
+        const partId = (e.target as HTMLSelectElement).value;
+        const part = MANUFACTURER_PARTS.find(p => p.id === partId);
+        if (part) {
+          comp.manufacturer = part.manufacturer;
+          comp.articleNumber = part.articleNumber;
+          comp.technicalCharacteristics = part.technicalData;
+          comp.functionText = part.name;
+          this.notifyChange();
+        }
       });
       document.getElementById('propFunctionText')?.addEventListener('input', (e) => {
         comp.functionText = (e.target as HTMLInputElement).value;

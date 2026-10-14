@@ -396,9 +396,306 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
       <polygon points="12,22 6,12 18,12" fill="currentColor"/>
     `,
     description: 'Abbruchstelle für Seitenquerverweis (Potenzialweiterführung)'
+  },
+
+  // --- 7. EXTERNE EPLAN HERSTELLER-KOMPONENTEN ---
+  {
+    id: 'rcd_4p',
+    name: 'FI-Schutzschalter (4-polig)',
+    category: 'protection',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-F',
+    defaultFunctionText: 'FI-Schutzschalter 40A/30mA',
+    manufacturer: 'Hager',
+    articleNumber: 'CDS440D',
+    technicalCharacteristics: '4-polig 40A / 30mA Typ A',
+    width: 84,
+    height: 60,
+    pins: [
+      { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 12, y: 60, direction: 'bottom' },
+      { id: '3', name: '3', x: 32, y: 0, direction: 'top' },
+      { id: '4', name: '4', x: 32, y: 60, direction: 'bottom' },
+      { id: '5', name: '5', x: 52, y: 0, direction: 'top' },
+      { id: '6', name: '6', x: 52, y: 60, direction: 'bottom' },
+      { id: 'N_in', name: 'N', x: 72, y: 0, direction: 'top' },
+      { id: 'N_out', name: 'N', x: 72, y: 60, direction: 'bottom' }
+    ],
+    svgContent: `
+      <!-- Pol 1 (L1) -->
+      <line x1="12" y1="0" x2="12" y2="16" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="16" x2="20" y2="34" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="36" x2="12" y2="60" stroke="currentColor" stroke-width="2"/>
+
+      <!-- Pol 2 (L2) -->
+      <line x1="32" y1="0" x2="32" y2="16" stroke="currentColor" stroke-width="2"/>
+      <line x1="32" y1="16" x2="40" y2="34" stroke="currentColor" stroke-width="2"/>
+      <line x1="32" y1="36" x2="32" y2="60" stroke="currentColor" stroke-width="2"/>
+
+      <!-- Pol 3 (L3) -->
+      <line x1="52" y1="0" x2="52" y2="16" stroke="currentColor" stroke-width="2"/>
+      <line x1="52" y1="16" x2="60" y2="34" stroke="currentColor" stroke-width="2"/>
+      <line x1="52" y1="36" x2="52" y2="60" stroke="currentColor" stroke-width="2"/>
+
+      <!-- Pol 4 (N) -->
+      <line x1="72" y1="0" x2="72" y2="16" stroke="currentColor" stroke-width="2"/>
+      <line x1="72" y1="16" x2="80" y2="34" stroke="currentColor" stroke-width="2"/>
+      <line x1="72" y1="36" x2="72" y2="60" stroke="currentColor" stroke-width="2"/>
+
+      <!-- Summenstromwandler (Ringkern-Oval) -->
+      <ellipse cx="42" cy="48" rx="36" ry="7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2,2"/>
+      
+      <!-- Auslöserelais & Wirklinie -->
+      <rect x="36" y="22" width="12" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="42" y1="32" x2="42" y2="41" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="16" y1="26" x2="76" y2="26" stroke="currentColor" stroke-width="1" stroke-dasharray="2,2"/>
+      
+      <!-- Prüftaste T -->
+      <text x="76" y="48" font-size="8" font-weight="bold" fill="currentColor">T</text>
+    `,
+    description: 'Hager CDS440D Fehlerstromschutzschalter 4-polig 40A / 30mA Typ A'
+  },
+  {
+    id: 'rcd_2p',
+    name: 'FI-Schutzschalter (2-polig)',
+    category: 'protection',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-F',
+    defaultFunctionText: 'FI-Schutzschalter 25A/30mA',
+    manufacturer: 'ABB',
+    articleNumber: 'FH202-25/0.03',
+    technicalCharacteristics: '2-polig 25A / 30mA Typ A',
+    width: 48,
+    height: 60,
+    pins: [
+      { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 12, y: 60, direction: 'bottom' },
+      { id: 'N_in', name: 'N', x: 36, y: 0, direction: 'top' },
+      { id: 'N_out', name: 'N', x: 36, y: 60, direction: 'bottom' }
+    ],
+    svgContent: `
+      <!-- Pol 1 (L) -->
+      <line x1="12" y1="0" x2="12" y2="16" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="16" x2="20" y2="34" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="36" x2="12" y2="60" stroke="currentColor" stroke-width="2"/>
+
+      <!-- Pol 2 (N) -->
+      <line x1="36" y1="0" x2="36" y2="16" stroke="currentColor" stroke-width="2"/>
+      <line x1="36" y1="16" x2="44" y2="34" stroke="currentColor" stroke-width="2"/>
+      <line x1="36" y1="36" x2="36" y2="60" stroke="currentColor" stroke-width="2"/>
+
+      <!-- Wandler & Auslöser -->
+      <ellipse cx="24" cy="48" rx="20" ry="6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2,2"/>
+      <rect x="18" y="22" width="12" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="24" y1="32" x2="24" y2="42" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="16" y1="26" x2="40" y2="26" stroke="currentColor" stroke-width="1" stroke-dasharray="2,2"/>
+      <text x="40" y="48" font-size="8" font-weight="bold" fill="currentColor">T</text>
+    `,
+    description: 'ABB FH202 2-poliger Fehlerstromschutzschalter 25A / 30mA'
+  },
+  {
+    id: 'rcbo_1p_n',
+    name: 'FI/LS-Kombischalter (1P+N)',
+    category: 'protection',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-F',
+    defaultFunctionText: 'FI/LS B16/30mA',
+    manufacturer: 'Siemens',
+    articleNumber: '5SV1316-6KK16',
+    technicalCharacteristics: '1P+N B16A / 30mA 6kA (1 TE)',
+    width: 48,
+    height: 60,
+    pins: [
+      { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 12, y: 60, direction: 'bottom' },
+      { id: 'N_in', name: 'N', x: 36, y: 0, direction: 'top' },
+      { id: 'N_out', name: 'N', x: 36, y: 60, direction: 'bottom' }
+    ],
+    svgContent: `
+      <!-- Pol 1 mit thermischer & magnetischer Auslösung -->
+      <line x1="12" y1="0" x2="12" y2="16" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="16" x2="20" y2="34" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="36" x2="12" y2="60" stroke="currentColor" stroke-width="2"/>
+      <rect x="8" y="42" width="8" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <polygon points="16,25 20,21 20,29" fill="currentColor"/>
+
+      <!-- Pol 2 (N) -->
+      <line x1="36" y1="0" x2="36" y2="16" stroke="currentColor" stroke-width="2"/>
+      <line x1="36" y1="16" x2="44" y2="34" stroke="currentColor" stroke-width="2"/>
+      <line x1="36" y1="36" x2="36" y2="60" stroke="currentColor" stroke-width="2"/>
+
+      <!-- Differenzstromwandler -->
+      <ellipse cx="24" cy="50" rx="18" ry="5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2,2"/>
+      <text x="40" y="48" font-size="7" font-weight="bold" fill="currentColor">T</text>
+    `,
+    description: 'Siemens 5SV1 FI/LS-Schalter B16A / 30mA in 1 Teilungseinheit'
+  },
+  {
+    id: 'impulse_relay_1no',
+    name: 'Stromstoßrelais (1 Schließer)',
+    category: 'relays',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-K',
+    defaultFunctionText: 'Stromstoßschalter Licht',
+    manufacturer: 'Finder',
+    articleNumber: '20.21.8.230.4000',
+    technicalCharacteristics: '230V AC 16A 1 Schließer',
+    width: 48,
+    height: 52,
+    pins: [
+      { id: 'A1', name: 'A1', x: 12, y: 0, direction: 'top' },
+      { id: 'A2', name: 'A2', x: 12, y: 52, direction: 'bottom' },
+      { id: '1', name: '1', x: 36, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 36, y: 52, direction: 'bottom' }
+    ],
+    svgContent: `
+      <!-- Spulenkörper mit Stromstoß-Schrittsymbol -->
+      <rect x="4" y="14" width="16" height="24" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="0" x2="12" y2="14" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="38" x2="12" y2="52" stroke="currentColor" stroke-width="2"/>
+      <!-- Treppen-/Schrittsymbol im Relais -->
+      <path d="M 6 30 L 10 30 L 10 24 L 14 24 L 14 18 L 18 18" fill="none" stroke="currentColor" stroke-width="1.5"/>
+
+      <!-- Schaltglied (1-2) -->
+      <line x1="36" y1="0" x2="36" y2="18" stroke="currentColor" stroke-width="2"/>
+      <line x1="36" y1="18" x2="44" y2="34" stroke="currentColor" stroke-width="2"/>
+      <line x1="36" y1="34" x2="36" y2="52" stroke="currentColor" stroke-width="2"/>
+      
+      <!-- Mechanische Kopplung -->
+      <line x1="20" y1="26" x2="40" y2="26" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2"/>
+    `,
+    description: 'Finder Serie 20 / Hager EPN510 Stromstoßschalter 230V AC 16A'
+  },
+  {
+    id: 'impulse_relay_2no',
+    name: 'Stromstoßrelais (2 Schließer)',
+    category: 'relays',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-K',
+    defaultFunctionText: 'Stromstoßschalter 2-Kanal',
+    manufacturer: 'Finder',
+    articleNumber: '20.22.8.230.4000',
+    technicalCharacteristics: '230V AC 16A 2 Schließer (Serienschaltung)',
+    width: 64,
+    height: 52,
+    pins: [
+      { id: 'A1', name: 'A1', x: 12, y: 0, direction: 'top' },
+      { id: 'A2', name: 'A2', x: 12, y: 52, direction: 'bottom' },
+      { id: '1', name: '1', x: 32, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 32, y: 52, direction: 'bottom' },
+      { id: '3', name: '3', x: 52, y: 0, direction: 'top' },
+      { id: '4', name: '4', x: 52, y: 52, direction: 'bottom' }
+    ],
+    svgContent: `
+      <!-- Spulenkörper -->
+      <rect x="4" y="14" width="16" height="24" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="0" x2="12" y2="14" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="38" x2="12" y2="52" stroke="currentColor" stroke-width="2"/>
+      <path d="M 6 30 L 10 30 L 10 24 L 14 24 L 14 18 L 18 18" fill="none" stroke="currentColor" stroke-width="1.5"/>
+
+      <!-- Kontakt 1 (1-2) -->
+      <line x1="32" y1="0" x2="32" y2="18" stroke="currentColor" stroke-width="2"/>
+      <line x1="32" y1="18" x2="40" y2="34" stroke="currentColor" stroke-width="2"/>
+      <line x1="32" y1="34" x2="32" y2="52" stroke="currentColor" stroke-width="2"/>
+
+      <!-- Kontakt 2 (3-4) -->
+      <line x1="52" y1="0" x2="52" y2="18" stroke="currentColor" stroke-width="2"/>
+      <line x1="52" y1="18" x2="60" y2="34" stroke="currentColor" stroke-width="2"/>
+      <line x1="52" y1="34" x2="52" y2="52" stroke="currentColor" stroke-width="2"/>
+
+      <!-- Mechanische Koppelachse -->
+      <line x1="20" y1="26" x2="56" y2="26" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2"/>
+    `,
+    description: 'Finder Serie 20 / Eltako S12-200 Stromstoßschalter mit 2 Schließern'
+  },
+  {
+    id: 'timer_relay_multifunction',
+    name: 'Multifunktions-Zeitrelais',
+    category: 'relays',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-K',
+    defaultFunctionText: 'Zeitrelais Ansprechverzögert',
+    manufacturer: 'Eaton',
+    articleNumber: 'ETR4-69-A',
+    technicalCharacteristics: '24-240V AC/DC 1 Wechsler',
+    width: 48,
+    height: 56,
+    pins: [
+      { id: 'A1', name: 'A1', x: 12, y: 0, direction: 'top' },
+      { id: 'A2', name: 'A2', x: 12, y: 56, direction: 'bottom' },
+      { id: 'B1', name: 'B1', x: 24, y: 0, direction: 'top' },
+      { id: '15', name: '15', x: 38, y: 0, direction: 'top' },
+      { id: '16', name: '16', x: 32, y: 56, direction: 'bottom' },
+      { id: '18', name: '18', x: 44, y: 56, direction: 'bottom' }
+    ],
+    svgContent: `
+      <!-- Zeitrelais-Spule mit gekreuztem Feld -->
+      <rect x="4" y="14" width="16" height="24" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="4" y1="14" x2="12" y2="38" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="12" y1="0" x2="12" y2="14" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="38" x2="12" y2="56" stroke="currentColor" stroke-width="2"/>
+      <line x1="24" y1="0" x2="24" y2="20" stroke="currentColor" stroke-width="1.5"/>
+
+      <!-- Wechslerkontakt (15, 16, 18) mit Verzögerungssymbol -->
+      <line x1="38" y1="0" x2="38" y2="16" stroke="currentColor" stroke-width="2"/>
+      <line x1="38" y1="16" x2="32" y2="34" stroke="currentColor" stroke-width="2"/>
+      <line x1="32" y1="36" x2="32" y2="56" stroke="currentColor" stroke-width="2"/>
+      <line x1="44" y1="36" x2="44" y2="56" stroke="currentColor" stroke-width="2"/>
+      <!-- Fallschirm / Verzögerungskappe -->
+      <path d="M 33 22 A 4 4 0 0 1 39 22" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    `,
+    description: 'Eaton ETR4-69-A / Finder 80.01 Multifunktionszeitrelais (Ansprech- & Rückfallverzögert)'
+  },
+  {
+    id: 'surge_arrester_spd',
+    name: 'Überspannungsableiter Typ 2',
+    category: 'protection',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-F',
+    defaultFunctionText: 'Überspannungsschutz Typ 2',
+    manufacturer: 'Dehn',
+    articleNumber: 'DEHNguard DG M TNS 275',
+    technicalCharacteristics: 'Typ 2 TNS-Netz 4-polig 20kA',
+    width: 64,
+    height: 52,
+    pins: [
+      { id: 'L1', name: 'L1', x: 10, y: 0, direction: 'top' },
+      { id: 'L2', name: 'L2', x: 24, y: 0, direction: 'top' },
+      { id: 'L3', name: 'L3', x: 38, y: 0, direction: 'top' },
+      { id: 'N', name: 'N', x: 52, y: 0, direction: 'top' },
+      { id: 'PE', name: 'PE', x: 31, y: 52, direction: 'bottom' }
+    ],
+    svgContent: `
+      <!-- 4 Varistoren nebeneinander -->
+      <rect x="6" y="16" width="8" height="18" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="4" y1="32" x2="16" y2="18" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="10" y1="0" x2="10" y2="16" stroke="currentColor" stroke-width="1.5"/>
+
+      <rect x="20" y="16" width="8" height="18" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="18" y1="32" x2="30" y2="18" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="24" y1="0" x2="24" y2="16" stroke="currentColor" stroke-width="1.5"/>
+
+      <rect x="34" y="16" width="8" height="18" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="32" y1="32" x2="44" y2="18" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="38" y1="0" x2="38" y2="16" stroke="currentColor" stroke-width="1.5"/>
+
+      <rect x="48" y="16" width="8" height="18" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="46" y1="32" x2="58" y2="18" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="52" y1="0" x2="52" y2="16" stroke="currentColor" stroke-width="1.5"/>
+
+      <!-- Sammelschiene unten auf PE -->
+      <line x1="10" y1="34" x2="10" y2="42" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="24" y1="34" x2="24" y2="42" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="38" y1="34" x2="38" y2="42" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="52" y1="34" x2="52" y2="42" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="10" y1="42" x2="52" y2="42" stroke="currentColor" stroke-width="2"/>
+      <line x1="31" y1="42" x2="31" y2="52" stroke="currentColor" stroke-width="2"/>
+    `,
+    description: 'Dehn DEHNguard M TNS 275 Überspannungsableiter Typ 2'
   }
 ];
 
 export function getSymbolById(id: string): SymbolDefinition | undefined {
   return SYMBOL_DEFINITIONS.find(s => s.id === id);
 }
+

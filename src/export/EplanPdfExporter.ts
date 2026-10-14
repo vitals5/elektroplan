@@ -457,6 +457,69 @@ export class EplanPdfExporter {
         doc.line(x + w * 0.5, y + h * 0.6, x + w * 0.5, y + h);
         break;
       }
+      case 'rcd_4p':
+      case 'rcd_2p':
+      case 'rcbo_1p_n': {
+        const poles = symId === 'rcd_4p' ? 4 : 2;
+        for (let p = 0; p < poles; p++) {
+          const px = x + w * ((p + 0.5) / poles);
+          doc.line(px, y, px, y + h * 0.28);
+          doc.line(px, y + h * 0.28, px + w * 0.1, y + h * 0.58);
+          doc.line(px, y + h * 0.62, px, y + h);
+        }
+        // Differential current transformer loop
+        doc.ellipse(x + w * 0.5, y + h * 0.8, w * 0.42, h * 0.12);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6);
+        doc.text('T', x + w * 0.9, y + h * 0.8);
+        break;
+      }
+      case 'impulse_relay_1no':
+      case 'impulse_relay_2no': {
+        // Coil with pulse step symbol
+        doc.rect(x + w * 0.08, y + h * 0.25, w * 0.35, h * 0.48);
+        doc.line(x + w * 0.25, y, x + w * 0.25, y + h * 0.25);
+        doc.line(x + w * 0.25, y + h * 0.73, x + w * 0.25, y + h);
+        // Step wave
+        doc.line(x + w * 0.12, y + h * 0.55, x + w * 0.2, y + h * 0.55);
+        doc.line(x + w * 0.2, y + h * 0.55, x + w * 0.2, y + h * 0.4);
+        doc.line(x + w * 0.2, y + h * 0.4, x + w * 0.35, y + h * 0.4);
+
+        // Contact(s)
+        const contacts = symId === 'impulse_relay_2no' ? 2 : 1;
+        for (let c = 0; c < contacts; c++) {
+          const cx = x + w * (0.55 + c * 0.3);
+          doc.line(cx, y, cx, y + h * 0.35);
+          doc.line(cx, y + h * 0.35, cx + w * 0.15, y + h * 0.65);
+          doc.line(cx, y + h * 0.65, cx, y + h);
+        }
+        break;
+      }
+      case 'timer_relay_multifunction': {
+        doc.rect(x + w * 0.1, y + h * 0.25, w * 0.35, h * 0.45);
+        doc.line(x + w * 0.1, y + h * 0.25, x + w * 0.45, y + h * 0.7);
+        doc.line(x + w * 0.27, y, x + w * 0.27, y + h * 0.25);
+        doc.line(x + w * 0.27, y + h * 0.7, x + w * 0.27, y + h);
+        // Changeover
+        doc.line(x + w * 0.75, y, x + w * 0.75, y + h * 0.3);
+        doc.line(x + w * 0.75, y + h * 0.3, x + w * 0.6, y + h * 0.6);
+        doc.line(x + w * 0.6, y + h * 0.65, x + w * 0.6, y + h);
+        doc.line(x + w * 0.85, y + h * 0.65, x + w * 0.85, y + h);
+        break;
+      }
+      case 'surge_arrester_spd': {
+        for (let s = 0; s < 4; s++) {
+          const sx = x + w * (0.15 + s * 0.22);
+          doc.rect(sx - 1.5, y + h * 0.3, 3, 5);
+          doc.line(sx - 2, y + h * 0.6, sx + 2, y + h * 0.3);
+          doc.line(sx, y, sx, y + h * 0.3);
+          doc.line(sx, y + h * 0.65, sx, y + h * 0.8);
+        }
+        // PE bus line
+        doc.line(x + w * 0.15, y + h * 0.8, x + w * 0.81, y + h * 0.8);
+        doc.line(x + w * 0.48, y + h * 0.8, x + w * 0.48, y + h);
+        break;
+      }
       default: {
         doc.rect(x, y, w, h);
         break;

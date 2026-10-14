@@ -28,6 +28,9 @@ export interface SymbolDefinition {
   isMaster?: boolean; // e.g. Contactor coil
   isContact?: boolean; // e.g. Contactor auxiliary contact
   contactType?: 'NO' | 'NC' | 'Changeover' | 'PowerNO';
+  manufacturer?: string;
+  articleNumber?: string;
+  technicalCharacteristics?: string;
 }
 
 export interface PlacedComponent {
