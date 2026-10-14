@@ -223,13 +223,39 @@ export class App {
             <button class="btn-banner-close" id="btnCancelPlace" title="Platzieren abbrechen">✕</button>
           </div>
 
+          <!-- Floating Selection Action Bar (always visible on canvas when component selected) -->
+          <div class="selection-floating-bar" id="selectionFloatingBar" style="
+            position: absolute;
+            bottom: 64px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            background: rgba(30, 36, 46, 0.96);
+            backdrop-filter: blur(12px);
+            border: 1px solid #4a5568;
+            box-shadow: 0 10px 28px rgba(0,0,0,0.7);
+            border-radius: 8px;
+            padding: 8px 14px;
+            z-index: 1000;
+            align-items: center;
+            gap: 10px;
+          ">
+            <span id="selectionFloatingTag" style="font-weight: bold; font-family: monospace; color: #f6e05e; font-size: 13px;">-K1</span>
+            <button class="btn btn-primary" id="btnFloatingEdit" style="padding: 6px 14px; font-size: 12px; font-weight: 600; background: #3182ce; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+              <span>⚡ BMK & Beschriftung bearbeiten...</span>
+            </button>
+            <button class="btn" id="btnFloatingRotate" style="padding: 6px 10px; font-size: 12px;" title="90° Drehen">🔄</button>
+            <button class="btn" id="btnFloatingDelete" style="padding: 6px 10px; font-size: 12px; color: #fc8181; border-color: #e53e3e;" title="Löschen">🗑️</button>
+          </div>
+
           <!-- Mobile Floating Action Bar -->
           <div class="mobile-floating-bar" id="mobileFloatingBar">
+            <button class="btn-fab btn-fab-primary" id="fabEdit" title="BMK & Beschriftung editieren">⚡ Edit</button>
             <button class="btn-fab" id="fabFit" title="Blatt anpassen">🔍 Fit</button>
             <button class="btn-fab" id="fabWire" title="Verdrahten">🔌 Draht</button>
             <button class="btn-fab" id="fabRotate" title="Drehen">🔄 Drehen</button>
             <button class="btn-fab" id="fabDelete" title="Löschen">🗑️ Löschen</button>
-            <button class="btn-fab btn-fab-primary" id="fabPdf" title="PDF Export">📑 PDF</button>
+            <button class="btn-fab" id="fabPdf" title="PDF Export">📑 PDF</button>
           </div>
         </main>
 
@@ -271,25 +297,17 @@ export class App {
       onSelectComponent: (comp) => {
         this.selectedComponent = comp;
         this.selectedWire = null;
+        this.updateFloatingSelectionBar();
         this.renderRightTab();
       },
       onSelectWire: (wire) => {
         this.selectedWire = wire;
         this.selectedComponent = null;
+        this.updateFloatingSelectionBar();
         this.renderRightTab();
       },
       onOpenProperties: (comp) => {
-        new EplanPropertiesDialog(comp, this.project, {
-          onSave: (updated) => {
-            this.selectedComponent = updated;
-            if (this.canvas.autoconnectEnabled) {
-              const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
-              if (activePage) AutoconnectEngine.updatePageAutoconnections(activePage);
-            }
-            this.canvas.render();
-            this.renderRightTab();
-          }
-        }).show();
+        this.openPropertiesDialog(comp);
       },
       onOpenSymbolSelection: () => {
         new EplanSymbolSelectionDialog({
@@ -311,6 +329,34 @@ export class App {
 
     // Make sure initial page is loaded
     this.canvas.setPage(this.project.activePageId || this.project.pages[0].id);
+  }
+
+  public openPropertiesDialog(comp: PlacedComponent): void {
+    new EplanPropertiesDialog(comp, this.project, {
+      onSave: (updated) => {
+        this.selectedComponent = updated;
+        if (this.canvas.autoconnectEnabled) {
+          const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
+          if (activePage) AutoconnectEngine.updatePageAutoconnections(activePage);
+        }
+        this.canvas.render();
+        this.updateFloatingSelectionBar();
+        this.renderRightTab();
+      }
+    }).show();
+  }
+
+  public updateFloatingSelectionBar(): void {
+    const bar = document.getElementById('selectionFloatingBar');
+    const tag = document.getElementById('selectionFloatingTag');
+    if (bar && tag) {
+      if (this.selectedComponent) {
+        tag.textContent = `${this.selectedComponent.bmk} (${this.selectedComponent.functionText || 'Bauteil'})`;
+        bar.style.display = 'flex';
+      } else {
+        bar.style.display = 'none';
+      }
+    }
   }
 
   public setLeftPanelCollapsed(collapsed: boolean): void {
@@ -498,7 +544,31 @@ export class App {
       this.canvas.fitToScreen();
     });
 
-    // Floating action buttons (mobile bar)
+    // Floating action buttons (mobile bar & selection bar)
+    document.getElementById('fabEdit')?.addEventListener('click', () => {
+      if (this.selectedComponent) {
+        this.openPropertiesDialog(this.selectedComponent);
+      } else {
+        alert('Bitte tippen Sie zuerst ein Bauteil im Plan an.');
+      }
+    });
+
+    document.getElementById('btnFloatingEdit')?.addEventListener('click', () => {
+      if (this.selectedComponent) {
+        this.openPropertiesDialog(this.selectedComponent);
+      }
+    });
+
+    document.getElementById('btnFloatingRotate')?.addEventListener('click', () => {
+      this.canvas.rotateSelected();
+      this.updateFloatingSelectionBar();
+    });
+
+    document.getElementById('btnFloatingDelete')?.addEventListener('click', () => {
+      this.canvas.deleteSelected();
+      this.updateFloatingSelectionBar();
+    });
+
     document.getElementById('fabFit')?.addEventListener('click', () => {
       this.canvas.fitToScreen();
     });
@@ -1293,17 +1363,7 @@ export class App {
 
       // Form bindings
       document.getElementById('btnOpenFullPropModal')?.addEventListener('click', () => {
-        new EplanPropertiesDialog(comp, this.project, {
-          onSave: (updated) => {
-            this.selectedComponent = updated;
-            if (this.canvas.autoconnectEnabled) {
-              const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
-              if (activePage) AutoconnectEngine.updatePageAutoconnections(activePage);
-            }
-            this.canvas.render();
-            this.renderRightTab();
-          }
-        }).show();
+        this.openPropertiesDialog(comp);
       });
 
       document.getElementById('propBmk')?.addEventListener('input', (e) => {

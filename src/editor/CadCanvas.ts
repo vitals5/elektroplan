@@ -57,6 +57,8 @@ export class CadCanvas {
   private initialPinchScale: number = 1.0;
   private initialPinchCenter: { x: number; y: number } = { x: 0, y: 0 };
   private initialPan: { x: number; y: number } = { x: 0, y: 0 };
+  private lastTapTime: number = 0;
+  private lastTapComponentId: string | null = null;
 
   constructor(container: HTMLElement, project: Project, callbacks: CadCanvasCallbacks) {
     this.container = container;
@@ -654,6 +656,17 @@ export class CadCanvas {
         this.selectedWireId = null;
         this.callbacks.onSelectComponent(clickedComp);
         this.callbacks.onSelectWire(null);
+
+        // Touch double-tap detection to open properties on mobile
+        const now = Date.now();
+        if (now - this.lastTapTime < 350 && this.lastTapComponentId === clickedComp.id) {
+          this.callbacks.onOpenProperties?.(clickedComp);
+          this.lastTapTime = 0;
+          this.lastTapComponentId = null;
+          return;
+        }
+        this.lastTapTime = now;
+        this.lastTapComponentId = clickedComp.id;
 
         this.touchMode = 'drag';
         this.isDraggingComponent = true;
