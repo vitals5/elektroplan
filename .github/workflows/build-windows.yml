@@ -25,6 +25,8 @@ jobs:
         run: npm ci
 
       - name: Build Application & Package Windows Exe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run dist:win
 
       - name: Upload Windows Installer & Portable Binary
