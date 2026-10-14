@@ -1,0 +1,335 @@
+/* src/style.css - EPLAN Electric P8 CAD Style */
+
+:root {
+  --bg-primary: #12161f;
+  --bg-secondary: #1a202c;
+  --bg-tertiary: #2d3748;
+  --bg-panel: #1f2737;
+  --border-color: #3e4c63;
+  --text-main: #edf2f7;
+  --text-muted: #a0aec0;
+  --accent: #3182ce;
+  --accent-hover: #4299e1;
+  --accent-bright: #63b3ed;
+  --warning: #f6e05e;
+  --success: #68d391;
+  --danger: #fc8181;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* App Header */
+.app-header {
+  height: 48px;
+  background-color: var(--bg-panel);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  user-select: none;
+}
+
+.brand-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent-bright);
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge-eplan {
+  background: linear-gradient(135deg, #dd6b20, #c05621);
+  color: white;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn {
+  background-color: var(--bg-secondary);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.btn:hover {
+  background-color: var(--bg-tertiary);
+  border-color: var(--accent);
+}
+
+.btn.active {
+  background-color: var(--accent);
+  color: white;
+  border-color: var(--accent-bright);
+}
+
+.btn-primary {
+  background-color: var(--accent);
+  color: white;
+  border-color: var(--accent-bright);
+}
+.btn-primary:hover {
+  background-color: var(--accent-hover);
+}
+
+/* Main Layout */
+.main-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Sidebar Panels */
+.sidebar {
+  width: 320px;
+  background-color: var(--bg-panel);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar.right {
+  border-right: none;
+  border-left: 1px solid var(--border-color);
+}
+
+.tab-nav {
+  display: flex;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  color: var(--text-main);
+}
+
+.tab-btn.active {
+  color: var(--accent-bright);
+  border-bottom-color: var(--accent-bright);
+  background-color: var(--bg-panel);
+}
+
+.tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+/* Page Navigator Tree */
+.tree-node {
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.tree-node:hover {
+  background-color: var(--bg-tertiary);
+}
+
+.tree-node.active {
+  background-color: var(--accent);
+  color: white;
+  font-weight: 600;
+}
+
+/* Symbol Palette Grid */
+.symbol-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.symbol-card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.symbol-card:hover {
+  border-color: var(--accent-bright);
+  transform: translateY(-1px);
+}
+
+.symbol-card.selected {
+  border-color: var(--warning);
+  background-color: rgba(246, 224, 94, 0.1);
+}
+
+.symbol-preview-svg {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.symbol-title {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.symbol-bmk {
+  font-size: 9px;
+  color: var(--warning);
+  font-family: monospace;
+  margin-top: 2px;
+}
+
+/* Center CAD Workspace */
+.canvas-wrapper {
+  flex: 1;
+  background-color: #0d1117;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Properties Form */
+.form-group {
+  margin-bottom: 12px;
+}
+
+.form-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.form-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  border-radius: 4px;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent-bright);
+}
+
+/* Table Reports (Klemmenplan & Stückliste) */
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+.report-table th {
+  background-color: var(--bg-secondary);
+  color: var(--text-muted);
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.report-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.report-table tr:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* Bottom Status Bar */
+.status-bar {
+  height: 24px;
+  background-color: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+/* File Dropzone */
+.dropzone {
+  border: 2px dashed var(--border-color);
+  border-radius: 6px;
+  padding: 20px;
+  text-align: center;
+  background-color: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 12px;
+}
+
+.dropzone:hover {
+  border-color: var(--accent-bright);
+  background-color: rgba(99, 179, 237, 0.05);
+}

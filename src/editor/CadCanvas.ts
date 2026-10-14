@@ -1,0 +1,619 @@
+// src/editor/CadCanvas.ts
+// Interactive SVG-based CAD drawing canvas for electrical schematics (EPLAN P8 style)
+
+import { Project, Page, PlacedComponent, Wire } from '../model/types';
+import { getSymbolById } from '../model/symbols';
+import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
+
+export type EditorMode = 'select' | 'wire' | 'place_symbol' | 'pan';
+
+export interface CadCanvasCallbacks {
+  onSelectComponent: (component: PlacedComponent | null) => void;
+  onSelectWire: (wire: Wire | null) => void;
+  onProjectModified: () => void;
+}
+
+export class CadCanvas {
+  private container: HTMLElement;
+  private svg: SVGSVGElement;
+  private project: Project;
+  private activePage: Page;
+  private callbacks: CadCanvasCallbacks;
+
+  // Viewport transformation
+  private scale: number = 1.0;
+  private panX: number = 20;
+  private panY: number = 20;
+  private isPanning: boolean = false;
+  private startPan: { x: number; y: number } = { x: 0, y: 0 };
+
+  // Editor State
+  public mode: EditorMode = 'select';
+  public gridSnap: boolean = true;
+  public gridSize: number = 10; // 10px per raster unit
+  public activeSymbolToPlace: string | null = null;
+  public selectedComponentId: string | null = null;
+  public selectedWireId: string | null = null;
+
+  // Dragging components
+  private isDraggingComponent: boolean = false;
+  private dragOffset: { x: number; y: number } = { x: 0, y: 0 };
+
+  // Wiring State
+  private wireStart: { componentId: string; pinId: string } | null = null;
+  private currentMousePos: { x: number; y: number } = { x: 0, y: 0 };
+
+  constructor(container: HTMLElement, project: Project, callbacks: CadCanvasCallbacks) {
+    this.container = container;
+    this.project = project;
+    this.callbacks = callbacks;
+    this.activePage = this.getOrCreateActivePage();
+
+    this.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.svg.setAttribute('class', 'cad-viewport');
+    this.svg.style.width = '100%';
+    this.svg.style.height = '100%';
+    this.svg.style.display = 'block';
+    this.svg.style.userSelect = 'none';
+    this.container.appendChild(this.svg);
+
+    this.bindEvents();
+    this.render();
+  }
+
+  public setPage(pageId: string): void {
+    const page = this.project.pages.find(p => p.id === pageId);
+    if (page) {
+      this.activePage = page;
+      this.project.activePageId = pageId;
+      this.selectedComponentId = null;
+      this.selectedWireId = null;
+      this.callbacks.onSelectComponent(null);
+      this.callbacks.onSelectWire(null);
+      this.render();
+    }
+  }
+
+  public setProject(project: Project): void {
+    this.project = project;
+    this.activePage = this.getOrCreateActivePage();
+    this.selectedComponentId = null;
+    this.selectedWireId = null;
+    CrossReferenceEngine.updateProjectCrossReferences(this.project);
+    this.render();
+  }
+
+  public setMode(mode: EditorMode): void {
+    this.mode = mode;
+    this.wireStart = null;
+    this.render();
+  }
+
+  public setSymbolToPlace(symbolId: string): void {
+    this.activeSymbolToPlace = symbolId;
+    this.mode = 'place_symbol';
+    this.render();
+  }
+
+  public zoomIn(): void {
+    this.scale = Math.min(3.0, this.scale * 1.15);
+    this.render();
+  }
+
+  public zoomOut(): void {
+    this.scale = Math.max(0.3, this.scale / 1.15);
+    this.render();
+  }
+
+  public resetZoom(): void {
+    this.scale = 1.0;
+    this.panX = 30;
+    this.panY = 30;
+    this.render();
+  }
+
+  public rotateSelected(): void {
+    if (!this.selectedComponentId) return;
+    const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
+    if (comp) {
+      comp.rotation = ((comp.rotation + 90) % 360) as any;
+      this.notifyModified();
+      this.render();
+    }
+  }
+
+  public deleteSelected(): void {
+    if (this.selectedComponentId) {
+      this.activePage.components = this.activePage.components.filter(c => c.id !== this.selectedComponentId);
+      // Remove attached wires
+      this.activePage.wires = this.activePage.wires.filter(
+        w => w.from.componentId !== this.selectedComponentId && w.to.componentId !== this.selectedComponentId
+      );
+      this.selectedComponentId = null;
+      this.callbacks.onSelectComponent(null);
+      this.notifyModified();
+      this.render();
+    } else if (this.selectedWireId) {
+      this.activePage.wires = this.activePage.wires.filter(w => w.id !== this.selectedWireId);
+      this.selectedWireId = null;
+      this.callbacks.onSelectWire(null);
+      this.notifyModified();
+      this.render();
+    }
+  }
+
+  private getOrCreateActivePage(): Page {
+    let page = this.project.pages.find(p => p.id === this.project.activePageId);
+    if (!page && this.project.pages.length > 0) {
+      page = this.project.pages[0];
+      this.project.activePageId = page.id;
+    }
+    return page!;
+  }
+
+  private snap(val: number): number {
+    if (!this.gridSnap) return Math.round(val);
+    return Math.round(val / this.gridSize) * this.gridSize;
+  }
+
+  private screenToWorld(clientX: number, clientY: number): { x: number; y: number } {
+    const rect = this.svg.getBoundingClientRect();
+    const x = (clientX - rect.left - this.panX) / this.scale;
+    const y = (clientY - rect.top - this.panY) / this.scale;
+    return { x, y };
+  }
+
+  private bindEvents(): void {
+    this.svg.addEventListener('mousedown', (e) => this.onMouseDown(e));
+    window.addEventListener('mousemove', (e) => this.onMouseMove(e));
+    window.addEventListener('mouseup', () => this.onMouseUp());
+    this.svg.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        this.deleteSelected();
+      } else if (e.key === 'r' || e.key === 'R') {
+        this.rotateSelected();
+      } else if (e.key === 'Escape') {
+        this.mode = 'select';
+        this.wireStart = null;
+        this.render();
+      }
+    });
+  }
+
+  private onMouseDown(e: MouseEvent): void {
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      // Middle click or Alt+Click -> Pan
+      this.isPanning = true;
+      this.startPan = { x: e.clientX - this.panX, y: e.clientY - this.panY };
+      return;
+    }
+
+    if (e.button !== 0) return;
+
+    const world = this.screenToWorld(e.clientX, e.clientY);
+    const snapped = { x: this.snap(world.x), y: this.snap(world.y) };
+
+    if (this.mode === 'place_symbol' && this.activeSymbolToPlace) {
+      const sym = getSymbolById(this.activeSymbolToPlace);
+      if (sym) {
+        // Auto generate next BMK
+        const existingCount = this.activePage.components.filter(c => c.symbolId === sym.id).length;
+        const bmk = `${sym.defaultBmkPrefix}${existingCount + 1}`;
+
+        const newComp: PlacedComponent = {
+          id: 'comp_' + Math.random().toString(36).substring(2, 9),
+          symbolId: sym.id,
+          bmk,
+          higherLevelFunction: this.activePage.higherLevel,
+          mountingLocation: this.activePage.location,
+          functionText: sym.defaultFunctionText,
+          x: snapped.x,
+          y: snapped.y,
+          rotation: 0,
+          pins: {}
+        };
+
+        this.activePage.components.push(newComp);
+        this.selectedComponentId = newComp.id;
+        this.callbacks.onSelectComponent(newComp);
+        this.notifyModified();
+        this.render();
+      }
+      return;
+    }
+
+    // Check if clicked on a pin
+    const clickedPin = this.findPinAt(world.x, world.y);
+    if (clickedPin) {
+      if (this.mode === 'wire' || this.wireStart !== null) {
+        if (!this.wireStart) {
+          this.wireStart = clickedPin;
+          this.mode = 'wire';
+        } else if (this.wireStart.componentId !== clickedPin.componentId || this.wireStart.pinId !== clickedPin.pinId) {
+          // Complete wire
+          const wire: Wire = {
+            id: 'w_' + Math.random().toString(36).substring(2, 9),
+            from: this.wireStart,
+            to: clickedPin,
+            potential: 'L1',
+            color: 'BK',
+            crossSection: '1.5mm²'
+          };
+          this.activePage.wires.push(wire);
+          this.wireStart = null;
+          this.notifyModified();
+        }
+        this.render();
+        return;
+      }
+    }
+
+    // Check if clicked on a component
+    const clickedComp = this.findComponentAt(world.x, world.y);
+    if (clickedComp) {
+      this.selectedComponentId = clickedComp.id;
+      this.selectedWireId = null;
+      this.callbacks.onSelectComponent(clickedComp);
+      this.callbacks.onSelectWire(null);
+
+      this.isDraggingComponent = true;
+      this.dragOffset = {
+        x: world.x - clickedComp.x,
+        y: world.y - clickedComp.y
+      };
+      this.render();
+      return;
+    }
+
+    // Check if clicked on a wire
+    const clickedWire = this.findWireAt(world.x, world.y);
+    if (clickedWire) {
+      this.selectedWireId = clickedWire.id;
+      this.selectedComponentId = null;
+      this.callbacks.onSelectWire(clickedWire);
+      this.callbacks.onSelectComponent(null);
+      this.render();
+      return;
+    }
+
+    // Clicked empty background
+    this.selectedComponentId = null;
+    this.selectedWireId = null;
+    this.callbacks.onSelectComponent(null);
+    this.callbacks.onSelectWire(null);
+    this.render();
+  }
+
+  private onMouseMove(e: MouseEvent): void {
+    if (this.isPanning) {
+      this.panX = e.clientX - this.startPan.x;
+      this.panY = e.clientY - this.startPan.y;
+      this.render();
+      return;
+    }
+
+    const world = this.screenToWorld(e.clientX, e.clientY);
+    this.currentMousePos = world;
+
+    if (this.isDraggingComponent && this.selectedComponentId) {
+      const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
+      if (comp) {
+        comp.x = this.snap(world.x - this.dragOffset.x);
+        comp.y = this.snap(world.y - this.dragOffset.y);
+        this.render();
+      }
+    } else if (this.wireStart) {
+      this.render();
+    }
+  }
+
+  private onMouseUp(): void {
+    if (this.isPanning) {
+      this.isPanning = false;
+    }
+    if (this.isDraggingComponent) {
+      this.isDraggingComponent = false;
+      this.notifyModified();
+      this.render();
+    }
+  }
+
+  private onWheel(e: WheelEvent): void {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+    const mouseX = e.clientX;
+    const mouseY = e.clientY;
+
+    const newScale = Math.max(0.3, Math.min(3.0, this.scale * zoomFactor));
+    this.panX = mouseX - (mouseX - this.panX) * (newScale / this.scale);
+    this.panY = mouseY - (mouseY - this.panY) * (newScale / this.scale);
+    this.scale = newScale;
+    this.render();
+  }
+
+  private notifyModified(): void {
+    CrossReferenceEngine.updateProjectCrossReferences(this.project);
+    this.callbacks.onProjectModified();
+  }
+
+  private findComponentAt(x: number, y: number): PlacedComponent | null {
+    for (let i = this.activePage.components.length - 1; i >= 0; i--) {
+      const comp = this.activePage.components[i];
+      const sym = getSymbolById(comp.symbolId);
+      if (!sym) continue;
+      if (x >= comp.x && x <= comp.x + sym.width && y >= comp.y && y <= comp.y + sym.height) {
+        return comp;
+      }
+    }
+    return null;
+  }
+
+  private findPinAt(x: number, y: number): { componentId: string; pinId: string } | null {
+    const pinRadius = 6;
+    for (const comp of this.activePage.components) {
+      const sym = getSymbolById(comp.symbolId);
+      if (!sym) continue;
+      for (const pin of sym.pins) {
+        const px = comp.x + pin.x;
+        const py = comp.y + pin.y;
+        const dist = Math.hypot(x - px, y - py);
+        if (dist <= pinRadius) {
+          return { componentId: comp.id, pinId: pin.id };
+        }
+      }
+    }
+    return null;
+  }
+
+  private findWireAt(x: number, y: number): Wire | null {
+    const hitTolerance = 6;
+    for (const wire of this.activePage.wires) {
+      const p1 = this.getPinCoordinates(wire.from.componentId, wire.from.pinId);
+      const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
+      if (!p1 || !p2) continue;
+
+      // Distance to orthogonal segment
+      const midY = (p1.y + p2.y) / 2;
+      const d1 = this.distToSegment(x, y, p1.x, p1.y, p1.x, midY);
+      const d2 = this.distToSegment(x, y, p1.x, midY, p2.x, midY);
+      const d3 = this.distToSegment(x, y, p2.x, midY, p2.x, p2.y);
+
+      if (d1 < hitTolerance || d2 < hitTolerance || d3 < hitTolerance) {
+        return wire;
+      }
+    }
+    return null;
+  }
+
+  private distToSegment(x: number, y: number, x1: number, y1: number, x2: number, y2: number): number {
+    const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+    if (l2 === 0) return Math.hypot(x - x1, y - y1);
+    let t = ((x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(x - (x1 + t * (x2 - x1)), y - (y1 + t * (y2 - y1)));
+  }
+
+  public getPinCoordinates(componentId: string, pinId: string): { x: number; y: number } | null {
+    const comp = this.activePage.components.find(c => c.id === componentId);
+    if (!comp) return null;
+    const sym = getSymbolById(comp.symbolId);
+    if (!sym) return null;
+    const pin = sym.pins.find(p => p.id === pinId);
+    if (!pin) return null;
+    return { x: comp.x + pin.x, y: comp.y + pin.y };
+  }
+
+  /**
+   * Main rendering loop (generates SVG DOM elements)
+   */
+  public render(): void {
+    const pageWidth = this.activePage.plotFrame.width;
+    const pageHeight = this.activePage.plotFrame.height;
+
+    this.svg.innerHTML = `
+      <defs>
+        <pattern id="cadGrid" width="${this.gridSize}" height="${this.gridSize}" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="0.75" fill="#4a5568"/>
+        </pattern>
+      </defs>
+      <g id="viewportTransform" transform="translate(${this.panX}, ${this.panY}) scale(${this.scale})">
+        <!-- Page Paper -->
+        <rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="#1a202c" stroke="#2d3748" stroke-width="2"/>
+        <rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="url(#cadGrid)"/>
+        
+        <!-- EPLAN DIN A3 Normblatt Plot Frame -->
+        ${this.renderPlotFrame(pageWidth, pageHeight)}
+
+        <!-- Wires -->
+        <g id="wiresLayer">
+          ${this.renderWires()}
+        </g>
+
+        <!-- Components -->
+        <g id="componentsLayer">
+          ${this.renderComponents()}
+        </g>
+
+        <!-- Interactive Temp Wire -->
+        ${this.renderInteractiveWire()}
+      </g>
+    `;
+  }
+
+  private renderPlotFrame(w: number, h: number): string {
+    const margin = 20;
+    const innerMargin = 30;
+    const cols = 10;
+    const colWidth = (w - 2 * innerMargin) / cols;
+
+    let colHeaders = '';
+    for (let i = 0; i < cols; i++) {
+      const cx = innerMargin + i * colWidth + colWidth / 2;
+      colHeaders += `
+        <text x="${cx}" y="${innerMargin - 5}" font-size="10" font-family="monospace" fill="#a0aec0" text-anchor="middle">${i}</text>
+        <text x="${cx}" y="${h - innerMargin + 12}" font-size="10" font-family="monospace" fill="#a0aec0" text-anchor="middle">${i}</text>
+        <line x1="${innerMargin + i * colWidth}" y1="${innerMargin - 10}" x2="${innerMargin + i * colWidth}" y2="${innerMargin}" stroke="#4a5568" stroke-width="1"/>
+      `;
+    }
+
+    const rows = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const rowHeight = (h - 2 * innerMargin - 60) / rows.length;
+    let rowHeaders = '';
+    for (let r = 0; r < rows.length; r++) {
+      const ry = innerMargin + r * rowHeight + rowHeight / 2;
+      rowHeaders += `
+        <text x="${innerMargin - 8}" y="${ry + 3}" font-size="10" font-family="monospace" fill="#a0aec0" text-anchor="middle">${rows[r]}</text>
+        <text x="${w - innerMargin + 8}" y="${ry + 3}" font-size="10" font-family="monospace" fill="#a0aec0" text-anchor="middle">${rows[r]}</text>
+      `;
+    }
+
+    // Title Block (Schriftfeld nach DIN EN ISO 7200)
+    const tbWidth = 320;
+    const tbHeight = 65;
+    const tbX = w - innerMargin - tbWidth;
+    const tbY = h - innerMargin - tbHeight;
+    const tb = this.activePage.plotFrame.titleBlock;
+
+    const titleBlock = `
+      <g id="titleBlock" transform="translate(${tbX}, ${tbY})">
+        <rect x="0" y="0" width="${tbWidth}" height="${tbHeight}" fill="#171923" stroke="#e2e8f0" stroke-width="1.5"/>
+        <line x1="0" y1="22" x2="${tbWidth}" y2="22" stroke="#4a5568"/>
+        <line x1="0" y1="44" x2="${tbWidth}" y2="44" stroke="#4a5568"/>
+        <line x1="160" y1="0" x2="160" y2="44" stroke="#4a5568"/>
+        <line x1="240" y1="22" x2="240" y2="${tbHeight}" stroke="#4a5568"/>
+        
+        <!-- Texts in Titleblock -->
+        <text x="6" y="14" font-size="11" font-weight="bold" fill="#63b3ed">${tb.company || 'EPLAN Electric Suite'}</text>
+        <text x="166" y="14" font-size="9" fill="#e2e8f0">Kommission: ${tb.commission}</text>
+        
+        <text x="6" y="36" font-size="9" fill="#cbd5e0">Projekt: ${tb.projectTitle}</text>
+        <text x="166" y="36" font-size="8" fill="#a0aec0">Datum: ${tb.date}</text>
+        <text x="246" y="36" font-size="8" fill="#a0aec0">Gez.: ${tb.author}</text>
+        
+        <text x="6" y="56" font-size="11" font-weight="bold" fill="#f6e05e">${this.activePage.title}</text>
+        <text x="246" y="58" font-size="11" font-weight="bold" fill="#ffffff">Blatt: ${this.activePage.pageNumber} / ${tb.totalSheets}</text>
+      </g>
+    `;
+
+    return `
+      <!-- Normblatt Outer & Inner Border -->
+      <rect x="${margin}" y="${margin}" width="${w - 2 * margin}" height="${h - 2 * margin}" fill="none" stroke="#718096" stroke-width="1.5"/>
+      <rect x="${innerMargin}" y="${innerMargin}" width="${w - 2 * innerMargin}" height="${h - 2 * innerMargin}" fill="none" stroke="#4a5568" stroke-width="1"/>
+      ${colHeaders}
+      ${rowHeaders}
+      ${titleBlock}
+    `;
+  }
+
+  private renderComponents(): string {
+    return this.activePage.components.map(comp => {
+      const sym = getSymbolById(comp.symbolId);
+      if (!sym) return '';
+
+      const isSelected = comp.id === this.selectedComponentId;
+      const strokeColor = isSelected ? '#63b3ed' : '#e2e8f0';
+
+      // Cross Reference text / Contact mirror
+      let crossRefDisplay = '';
+      if (comp.crossRef) {
+        crossRefDisplay = `<text x="${sym.width / 2}" y="${sym.height + 24}" font-size="8" font-family="monospace" fill="#f6ad55" text-anchor="middle">${comp.crossRef}</text>`;
+      }
+
+      // Pins render
+      const pinsSvg = sym.pins.map(pin => {
+        return `
+          <g class="pin" transform="translate(${pin.x}, ${pin.y})">
+            <circle cx="0" cy="0" r="3.5" fill="#2d3748" stroke="#63b3ed" stroke-width="1.5"/>
+            <text x="${pin.direction === 'top' ? 0 : 6}" y="${pin.direction === 'top' ? -5 : 4}" font-size="7" font-family="monospace" fill="#a0aec0" text-anchor="${pin.direction === 'top' ? 'middle' : 'start'}">${pin.name}</text>
+          </g>
+        `;
+      }).join('');
+
+      return `
+        <g id="${comp.id}" class="component ${isSelected ? 'selected' : ''}" 
+           transform="translate(${comp.x}, ${comp.y}) rotate(${comp.rotation || 0}, ${sym.width / 2}, ${sym.height / 2})"
+           style="cursor: pointer;">
+          
+          <!-- Selection Highlight -->
+          ${isSelected ? `<rect x="-6" y="-6" width="${sym.width + 12}" height="${sym.height + 34}" fill="rgba(99, 179, 237, 0.15)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="3,2" rx="4"/>` : ''}
+
+          <!-- BMK Label (z.B. -K1, -Q1) -->
+          <text x="${sym.width / 2}" y="-8" font-size="10" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${comp.bmk}</text>
+          
+          <!-- Function text (Funktionstext) -->
+          <text x="${sym.width / 2}" y="${sym.height + 12}" font-size="8" font-family="sans-serif" fill="#e2e8f0" text-anchor="middle">${comp.functionText || ''}</text>
+
+          <!-- Cross Reference -->
+          ${crossRefDisplay}
+
+          <!-- Symbol Vector Graphics -->
+          <g color="${strokeColor}">
+            ${sym.svgContent}
+          </g>
+
+          <!-- Terminal Pins -->
+          ${pinsSvg}
+        </g>
+      `;
+    }).join('');
+  }
+
+  private renderWires(): string {
+    return this.activePage.wires.map(wire => {
+      const p1 = this.getPinCoordinates(wire.from.componentId, wire.from.pinId);
+      const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
+      if (!p1 || !p2) return '';
+
+      const isSelected = wire.id === this.selectedWireId;
+      const wireColor = this.getWireColor(wire.potential, wire.color);
+      const midY = (p1.y + p2.y) / 2;
+
+      // Orthogonal path
+      const pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
+
+      return `
+        <g id="${wire.id}" class="wire ${isSelected ? 'selected' : ''}" style="cursor: pointer;">
+          <!-- Hit area -->
+          <path d="${pathData}" fill="none" stroke="transparent" stroke-width="10"/>
+          <!-- Active Wire -->
+          <path d="${pathData}" fill="none" stroke="${isSelected ? '#63b3ed' : wireColor}" stroke-width="${isSelected ? 2.5 : 2}"/>
+          <!-- Junction Dots -->
+          <circle cx="${p1.x}" cy="${p1.y}" r="2.5" fill="${wireColor}"/>
+          <circle cx="${p2.x}" cy="${p2.y}" r="2.5" fill="${wireColor}"/>
+        </g>
+      `;
+    }).join('');
+  }
+
+  private renderInteractiveWire(): string {
+    if (!this.wireStart) return '';
+    const startCoord = this.getPinCoordinates(this.wireStart.componentId, this.wireStart.pinId);
+    if (!startCoord) return '';
+
+    const midY = (startCoord.y + this.currentMousePos.y) / 2;
+    const pathData = `M ${startCoord.x} ${startCoord.y} L ${startCoord.x} ${midY} L ${this.currentMousePos.x} ${midY} L ${this.currentMousePos.x} ${this.currentMousePos.y}`;
+
+    return `
+      <path d="${pathData}" fill="none" stroke="#63b3ed" stroke-width="2" stroke-dasharray="4,4"/>
+      <circle cx="${startCoord.x}" cy="${startCoord.y}" r="4" fill="#63b3ed"/>
+      <circle cx="${this.currentMousePos.x}" cy="${this.currentMousePos.y}" r="3" fill="#63b3ed"/>
+    `;
+  }
+
+  private getWireColor(potential: string, customColor?: string): string {
+    if (customColor) {
+      if (customColor === 'RD') return '#fc8181';
+      if (customColor === 'BU') return '#63b3ed';
+      if (customColor === 'GNYE') return '#68d391';
+      if (customColor === 'BK') return '#e2e8f0';
+    }
+    if (potential === 'PE') return '#68d391';
+    if (potential === 'N') return '#63b3ed';
+    if (potential === '+24V') return '#fc8181';
+    if (potential === '0V') return '#4299e1';
+    return '#cbd5e0';
+  }
+}
