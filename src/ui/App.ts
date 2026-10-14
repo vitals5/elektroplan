@@ -334,12 +334,24 @@ export class App {
   public openPropertiesDialog(comp: PlacedComponent): void {
     new EplanPropertiesDialog(comp, this.project, {
       onSave: (updated) => {
-        this.selectedComponent = updated;
-        if (this.canvas.autoconnectEnabled) {
-          const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
-          if (activePage) AutoconnectEngine.updatePageAutoconnections(activePage);
+        // 1. Mutate the original comp in-place so all references stay updated
+        Object.assign(comp, updated);
+        this.selectedComponent = comp;
+
+        // 2. Also ensure activePage components array has this exact updated object
+        const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
+        if (activePage) {
+          const idx = activePage.components.findIndex(c => c.id === comp.id);
+          if (idx !== -1) {
+            activePage.components[idx] = comp;
+          }
+          if (this.canvas.autoconnectEnabled) {
+            AutoconnectEngine.updatePageAutoconnections(activePage);
+          }
         }
-        this.canvas.render();
+
+        // 3. Mark change, recalculate cross references, re-render canvas and UI
+        this.notifyChange();
         this.updateFloatingSelectionBar();
         this.renderRightTab();
       }
@@ -1355,13 +1367,55 @@ export class App {
           </div>
         </div>
 
-        <div style="display: flex; gap: 8px; margin-top: 16px;">
+        <div style="display: flex; gap: 8px; margin-top: 14px;">
+          <button class="btn btn-primary" id="btnPropApply" style="flex: 1; font-weight: 600; padding: 7px 10px; background: #38a169;">
+            💾 Übernehmen (OK)
+          </button>
+        </div>
+
+        <div style="display: flex; gap: 8px; margin-top: 8px;">
           <button class="btn" id="btnPropRotate" style="flex: 1;">🔄 90° Drehen</button>
           <button class="btn" id="btnPropDelete" style="flex: 1; border-color: var(--danger); color: var(--danger);">🗑️ Löschen</button>
         </div>
       `;
 
       // Form bindings
+      document.getElementById('btnPropApply')?.addEventListener('click', () => {
+        const bmkInput = document.getElementById('propBmk') as HTMLInputElement;
+        if (bmkInput) comp.bmk = bmkInput.value.trim() || comp.bmk;
+
+        const devInput = document.getElementById('propDeviceTag') as HTMLInputElement;
+        if (devInput) comp.deviceTag = devInput.value.trim();
+
+        const fnInput = document.getElementById('propFunctionText') as HTMLInputElement;
+        if (fnInput) comp.functionText = fnInput.value.trim();
+
+        const techInput = document.getElementById('propTechnical') as HTMLInputElement;
+        if (techInput) comp.technicalCharacteristics = techInput.value.trim();
+
+        const artInput = document.getElementById('propArticle') as HTMLInputElement;
+        if (artInput) comp.articleNumber = artInput.value.trim();
+
+        const mfrInput = document.getElementById('propManufacturer') as HTMLInputElement;
+        if (mfrInput) comp.manufacturer = mfrInput.value.trim();
+
+        const hlInput = document.getElementById('propHigherLevel') as HTMLInputElement;
+        if (hlInput) comp.higherLevelFunction = hlInput.value.trim();
+
+        const locInput = document.getElementById('propLocation') as HTMLInputElement;
+        if (locInput) comp.mountingLocation = locInput.value.trim();
+
+        this.notifyChange();
+        this.updateFloatingSelectionBar();
+
+        const applyBtn = document.getElementById('btnPropApply');
+        if (applyBtn) {
+          const orig = applyBtn.innerHTML;
+          applyBtn.innerHTML = '✓ Übernommen!';
+          setTimeout(() => { applyBtn.innerHTML = orig; }, 1200);
+        }
+      });
+
       document.getElementById('btnOpenFullPropModal')?.addEventListener('click', () => {
         this.openPropertiesDialog(comp);
       });

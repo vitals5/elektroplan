@@ -578,10 +578,31 @@ export class EplanPropertiesDialog {
       });
     });
 
+    // Modal keyboard shortcuts (Enter = OK, Escape = Cancel)
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault();
+        this.collectFormData(modal);
+        this.callbacks.onSave(this.component);
+        closeModal();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeModal();
+      }
+    });
+
     // Apply & Save
     modal.querySelector('#btnApplyProp')?.addEventListener('click', () => {
       this.collectFormData(modal);
       this.callbacks.onSave(this.component);
+      const applyBtn = modal.querySelector('#btnApplyProp') as HTMLElement;
+      if (applyBtn) {
+        const origText = applyBtn.textContent || 'Übernehmen';
+        applyBtn.textContent = '✓ Übernommen';
+        setTimeout(() => {
+          applyBtn.textContent = origText;
+        }, 1200);
+      }
     });
 
     modal.querySelector('#btnSaveProp')?.addEventListener('click', () => {
@@ -677,10 +698,14 @@ export class EplanPropertiesDialog {
     if (rot) this.component.rotation = parseInt(rot.value, 10) as any;
 
     const posX = modal.querySelector('#propPosX') as HTMLInputElement;
-    if (posX) this.component.x = parseInt(posX.value, 10) || this.component.x;
+    if (posX && !isNaN(parseInt(posX.value, 10))) {
+      this.component.x = parseInt(posX.value, 10);
+    }
 
     const posY = modal.querySelector('#propPosY') as HTMLInputElement;
-    if (posY) this.component.y = parseInt(posY.value, 10) || this.component.y;
+    if (posY && !isNaN(parseInt(posY.value, 10))) {
+      this.component.y = parseInt(posY.value, 10);
+    }
 
     // Pin labels
     modal.querySelectorAll('.prop-pin-label').forEach(input => {
