@@ -679,8 +679,8 @@ export class CadCanvas {
         return;
       }
 
-      // Check wire
-      const clickedWire = this.findWireAt(world.x, world.y);
+      // Check wire (with touch padding)
+      const clickedWire = this.findWireAt(world.x, world.y, true);
       if (clickedWire) {
         e.preventDefault();
         this.selectedWireId = clickedWire.id;
@@ -859,8 +859,8 @@ export class CadCanvas {
     return null;
   }
 
-  private findWireAt(x: number, y: number): Wire | null {
-    const hitTolerance = 8;
+  private findWireAt(x: number, y: number, isTouch: boolean = false): Wire | null {
+    const hitTolerance = isTouch ? 22 : 12;
     for (const wire of this.activePage.wires) {
       const p1 = this.getPinCoordinates(wire.from.componentId, wire.from.pinId);
       const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);

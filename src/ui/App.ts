@@ -361,9 +361,28 @@ export class App {
   public updateFloatingSelectionBar(): void {
     const bar = document.getElementById('selectionFloatingBar');
     const tag = document.getElementById('selectionFloatingTag');
+    const btnEdit = document.getElementById('btnFloatingEdit');
+    const btnRot = document.getElementById('btnFloatingRotate');
+    const btnDel = document.getElementById('btnFloatingDelete');
+
     if (bar && tag) {
       if (this.selectedComponent) {
         tag.textContent = `${this.selectedComponent.bmk} (${this.selectedComponent.functionText || 'Bauteil'})`;
+        if (btnEdit) btnEdit.style.display = 'inline-flex';
+        if (btnRot) btnRot.style.display = 'inline-block';
+        if (btnDel) {
+          btnDel.title = 'Bauteil löschen';
+          btnDel.textContent = '🗑️';
+        }
+        bar.style.display = 'flex';
+      } else if (this.selectedWire) {
+        tag.textContent = `🔌 Leitung: ${this.selectedWire.potential} (${this.selectedWire.color || 'BK'}, ${this.selectedWire.crossSection || '1.5mm²'})`;
+        if (btnEdit) btnEdit.style.display = 'none';
+        if (btnRot) btnRot.style.display = 'none';
+        if (btnDel) {
+          btnDel.title = 'Leitung trennen / löschen';
+          btnDel.textContent = '🗑️ Trennen';
+        }
         bar.style.display = 'flex';
       } else {
         bar.style.display = 'none';
