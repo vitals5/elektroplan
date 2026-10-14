@@ -8,6 +8,7 @@ import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
 import { EplanPackageHandler, EplanInspectionResult } from '../eplan/EplanPackageHandler';
 import { TerminalDiagramGenerator } from '../reports/TerminalDiagram';
 import { PartsListGenerator } from '../reports/PartsList';
+import { PdfExportDialog } from './PdfExportDialog';
 
 export class App {
   private project!: Project;
@@ -59,6 +60,7 @@ export class App {
           
           <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 4px;"></div>
 
+          <button class="btn btn-primary" id="btnExportPdf" title="Intelligenter EPLAN P8 PDF-Export mit interaktiven Querverweisen">📑 PDF Export</button>
           <button class="btn" id="btnExportZw1" title="Als EPLAN .zw1 Backup exportieren">📦 EPLAN .zw1</button>
           <button class="btn" id="btnExportXml" title="Als EPLAN XML exportieren">📋 EPLAN XML</button>
           <button class="btn" id="btnPrintSvg" title="Drucken / Als SVG speichern">🖨️ Drucken / SVG</button>
@@ -224,6 +226,11 @@ export class App {
       this.exportXml();
     });
 
+    // Smart EPLAN PDF Export
+    document.getElementById('btnExportPdf')?.addEventListener('click', () => {
+      new PdfExportDialog(this.project, this.project.activePageId).show();
+    });
+
     // Print / SVG
     document.getElementById('btnPrintSvg')?.addEventListener('click', () => {
       window.print();
@@ -236,6 +243,7 @@ export class App {
       api.onMenuAction('menu:save', () => this.saveProjectJson());
       api.onMenuAction('menu:exportZw1', () => this.exportZw1());
       api.onMenuAction('menu:exportXml', () => this.exportXml());
+      api.onMenuAction('menu:exportPdf', () => new PdfExportDialog(this.project, this.project.activePageId).show());
       api.onMenuAction('menu:rotate', () => this.canvas.rotateSelected());
       api.onMenuAction('menu:fileOpened', (fileInfo: { path: string; name: string; data: number[] }) => {
         const uint8 = new Uint8Array(fileInfo.data);

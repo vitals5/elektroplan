@@ -87,9 +87,14 @@ function createMenu() {
           label: 'Exportieren als EPLAN XML...',
           click: () => mainWindow?.webContents.send('menu:exportXml')
         },
+        {
+          label: 'EPLAN PDF-Exportieren (Smart PDF)...',
+          accelerator: 'CmdOrCtrl+E',
+          click: () => mainWindow?.webContents.send('menu:exportPdf')
+        },
         { type: 'separator' },
         {
-          label: 'Drucken / PDF...',
+          label: 'Drucken...',
           accelerator: 'CmdOrCtrl+P',
           click: () => mainWindow?.webContents.print()
         },

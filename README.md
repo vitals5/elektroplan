@@ -32,6 +32,13 @@ Eine moderne, professionelle **Elektroplan- & Stromlaufplan-Software für Window
 * **Klemmenplan (Terminal Diagram)**: Vollständige Klemmenleisten-Matrix (`-X1`) mit automatischer Zuordnung interner Schaltschrankziele und externer Feldkomponenten.
 * **Stückliste (Bill of Materials / BOM)**: Aggregierte Artikelliste mit Hersteller, Bestellnummer, technischer Beschreibung, Mengenzählung und BMK-Referenzliste.
 
+### 📑 EPLAN Smart PDF-Export (Interaktive Vektor-PDFs)
+* **Klickbare Querverweis-Hyperlinks**: Beim Anklicken eines Querverweises im PDF (z.B. `/1.4` an einem Hilfskontakt oder `/2.1` im Kontaktspiegel einer Schützspule) springt der PDF-Reader direkt auf das Zielblatt zum Gegenstück!
+* **Strukturierter Lesezeichenbaum (Bookmarks)**: Dokumentengliederung nach DIN EN 81346 (`=Anlage` ➔ `+Ort` ➔ `Blatt-Nr: Titel`).
+* **Vektor-Normblatt**: Druck des EPLAN DIN A3 / DIN A4 Normblatts mit Spalten `0..9`, Zeilen `A..F` und Schriftfeld nach DIN EN ISO 7200.
+* **Integrierte Auswertungsseiten**: Optionales automatisches Anhängen des Klemmenplans und der Stückliste als vollformatierte PDF-Seiten.
+* **Farb- & Monochrom-Modus**: Ausgabe in EPLAN-Farbgebung oder optimiert für Schwarz/Weiß-Großformatplotter.
+
 ---
 
 ## 💻 Windows Anwendung (Desktop)
