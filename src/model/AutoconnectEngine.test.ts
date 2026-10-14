@@ -1,5 +1,5 @@
 // src/model/AutoconnectEngine.test.ts
-// Automated verification test suite for EPLAN Autoconnecting and Connection Symbols
+// Automated verification test suite for Autoconnecting and Connection Symbols
 
 import { SYMBOL_DEFINITIONS, getSymbolById } from './symbols';
 import { AutoconnectEngine } from './AutoconnectEngine';
@@ -291,4 +291,4 @@ halfTermBottom.x = 232 - 12;
 const diffPairs = AutoconnectEngine.findAutoconnectPairs([halfTermTop, halfTermBottom]);
 assert(diffPairs.length === 0, `Pins on different raster columns (4px apart) do NOT false-connect (got ${diffPairs.length})`);
 
-console.log('\n🎉 ALL TESTS PASSED SUCCESSFULLY! 100% EPLAN COMPATIBLE AUTOCONNECTING & HALBRASTER SUPPORT!');
+console.log('\n🎉 ALL TESTS PASSED SUCCESSFULLY! 100% COMPATIBLE AUTOCONNECTING & HALBRASTER SUPPORT!');

@@ -1,5 +1,5 @@
-// src/ui/EplanPlausibilityDialog.ts
-// EPLAN Electric P8 Plausibility Check & Message Management ("Prüflauf / Meldungsverwaltung")
+// src/ui/PlausibilityDialog.ts
+// Plausibility Check & Message Management ("Prüflauf / Meldungsverwaltung")
 
 import { Project, PlacedComponent } from '../model/types';
 import { getSymbolById } from '../model/symbols';
@@ -16,7 +16,7 @@ export interface PlausibilityMessage {
   recommendation: string;
 }
 
-export class EplanPlausibilityDialog {
+export class PlausibilityDialog {
   private project: Project;
   private onNavigate: (pageId: string, componentId?: string) => void;
 
@@ -30,13 +30,13 @@ export class EplanPlausibilityDialog {
   }
 
   public show(): void {
-    const existing = document.getElementById('eplanPlausibilityModal');
+    const existing = document.getElementById('plausibilityModal');
     if (existing) existing.remove();
 
     const messages = this.runCheck();
 
     const modal = document.createElement('div');
-    modal.id = 'eplanPlausibilityModal';
+    modal.id = 'plausibilityModal';
     modal.className = 'modal-backdrop';
     modal.style.position = 'fixed';
     modal.style.inset = '0';
@@ -52,7 +52,7 @@ export class EplanPlausibilityDialog {
     const infos = messages.filter(m => m.severity === 'info').length;
 
     modal.innerHTML = `
-      <div class="modal-card eplan-window" style="
+      <div class="modal-card ecad-window" style="
         background: #232731;
         border: 1px solid #4a5568;
         border-radius: 6px;
@@ -68,7 +68,7 @@ export class EplanPlausibilityDialog {
         flex-direction: column;
       ">
         <!-- Titlebar -->
-        <div class="eplan-window-header" style="
+        <div class="ecad-window-header" style="
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -79,7 +79,7 @@ export class EplanPlausibilityDialog {
         ">
           <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px;">
             <span style="color: #68d391;">📋</span>
-            <span>EPLAN P8 Prüflauf - Meldungsverwaltung (Plausibilitätsprüfung)</span>
+            <span>Prüflauf - Meldungsverwaltung (Plausibilitätsprüfung)</span>
           </div>
           <button id="btnClosePlausModal" style="background: none; border: none; color: #a0aec0; font-size: 18px; cursor: pointer;">&times;</button>
         </div>

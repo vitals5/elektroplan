@@ -1,29 +1,29 @@
-// src/ui/EplanSymbolSelectionDialog.ts
-// EPLAN Electric P8 style Symbol Selection modal ("Symbolauswahl")
+// src/ui/SymbolSelectionDialog.ts
+// Symbol Selection modal ("Symbolauswahl")
 
 import { SymbolDefinition } from '../model/types';
 import { SYMBOL_DEFINITIONS } from '../model/symbols';
 
-export interface EplanSymbolSelectionCallbacks {
+export interface SymbolSelectionCallbacks {
   onSelect: (symbol: SymbolDefinition) => void;
 }
 
-export class EplanSymbolSelectionDialog {
-  private callbacks: EplanSymbolSelectionCallbacks;
+export class SymbolSelectionDialog {
+  private callbacks: SymbolSelectionCallbacks;
   private selectedCategory: string = 'all';
   private searchQuery: string = '';
   private selectedSymbolId: string = SYMBOL_DEFINITIONS[0].id;
 
-  constructor(callbacks: EplanSymbolSelectionCallbacks) {
+  constructor(callbacks: SymbolSelectionCallbacks) {
     this.callbacks = callbacks;
   }
 
   public show(): void {
-    const existing = document.getElementById('eplanSymbolSelectionModal');
+    const existing = document.getElementById('symbolSelectionModal');
     if (existing) existing.remove();
 
     const modal = document.createElement('div');
-    modal.id = 'eplanSymbolSelectionModal';
+    modal.id = 'symbolSelectionModal';
     modal.className = 'modal-backdrop';
     modal.style.position = 'fixed';
     modal.style.inset = '0';
@@ -35,7 +35,7 @@ export class EplanSymbolSelectionDialog {
     modal.style.padding = '12px';
 
     modal.innerHTML = `
-      <div class="modal-card eplan-window" style="
+      <div class="modal-card ecad-window" style="
         background: #232731;
         border: 1px solid #4a5568;
         border-radius: 6px;
@@ -51,7 +51,7 @@ export class EplanSymbolSelectionDialog {
         flex-direction: column;
       ">
         <!-- Window Titlebar -->
-        <div class="eplan-window-header" style="
+        <div class="ecad-window-header" style="
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -92,7 +92,7 @@ export class EplanSymbolSelectionDialog {
           </span>
         </div>
 
-        <!-- Main Body: 3-Column EPLAN Layout (Tree | Grid | Details) -->
+        <!-- Main Body: 3-Column Layout (Tree | Grid | Details) -->
         <div style="flex: 1; display: flex; overflow: hidden;">
           <!-- Left Column: Category Tree -->
           <div style="

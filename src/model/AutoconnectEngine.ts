@@ -1,5 +1,5 @@
 // src/model/AutoconnectEngine.ts
-// EPLAN Electric P8 compatible Autoconnecting Engine
+// Elektroplan Autoconnecting Engine
 // Automatically detects and forms orthogonal electrical connections between aligned pins
 
 import { PlacedComponent, PinDefinition, SymbolDefinition, Wire, Page } from './types';
@@ -93,11 +93,6 @@ export class AutoconnectEngine {
   }
 
   /**
-   * Finds all valid autoconnect pairs according to EPLAN Electric P8 rules:
-   * - Vertical: pin1.x === pin2.x, pin1 points 'bottom', pin2 points 'top', no intermediate pins
-   * - Horizontal: pin1.y === pin2.y, pin1 points 'right', pin2 points 'left', no intermediate pins
-   */
-  /**
    * Clusters pins into groups where coordinate difference is within tolerance (default <= 2px).
    * Ensures components on half-raster or with subpixel differences connect reliably.
    */
@@ -128,7 +123,7 @@ export class AutoconnectEngine {
   }
 
   /**
-   * Finds all valid autoconnect pairs according to EPLAN Electric P8 rules:
+   * Finds all valid autoconnect pairs:
    * - Vertical: pin1.x === pin2.x (with tolerance <= 2px), pin1 points 'bottom', pin2 points 'top', no intermediate pins
    * - Horizontal: pin1.y === pin2.y (with tolerance <= 2px), pin1 points 'right', pin2 points 'left', no intermediate pins
    */

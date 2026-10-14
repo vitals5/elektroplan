@@ -1,19 +1,19 @@
 // src/ui/App.ts
-// Main application controller for Elektroplan (EPLAN Electric P8 compatible CAD Suite)
+// Main application controller for Elektroplan (Elektro-CAD CAE Suite)
 
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
 import { SYMBOL_DEFINITIONS, getSymbolById } from '../model/symbols';
 import { CadCanvas } from '../editor/CadCanvas';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
-import { EplanPackageHandler, EplanInspectionResult } from '../eplan/EplanPackageHandler';
+import { PackageHandler, PackageInspectionResult } from '../packages/PackageHandler';
 import { TerminalDiagramGenerator } from '../reports/TerminalDiagram';
 import { PartsListGenerator } from '../reports/PartsList';
 import { PdfExportDialog } from './PdfExportDialog';
 import { PartCatalogue, MANUFACTURER_PARTS, ManufacturerPart } from '../model/PartCatalogue';
 import { MobileConnectDialog } from './MobileConnectDialog';
-import { EplanPropertiesDialog } from './EplanPropertiesDialog';
-import { EplanSymbolSelectionDialog } from './EplanSymbolSelectionDialog';
-import { EplanPlausibilityDialog } from './EplanPlausibilityDialog';
+import { PropertiesDialog } from './PropertiesDialog';
+import { SymbolSelectionDialog } from './SymbolSelectionDialog';
+import { PlausibilityDialog } from './PlausibilityDialog';
 import { AutoconnectEngine } from '../model/AutoconnectEngine';
 
 export class App {
@@ -22,7 +22,7 @@ export class App {
   private selectedComponent: PlacedComponent | null = null;
   private selectedWire: Wire | null = null;
   private activeLeftTab: 'pages' | 'symbols' | 'terminals' | 'bom' | 'parts' = 'pages';
-  private activeRightTab: 'properties' | 'eplan' = 'properties';
+  private activeRightTab: 'properties' | 'archive' = 'properties';
   private symbolCategoryFilter: string = 'all';
   private manufacturerFilter: string = 'all';
   private manufacturerSearchQuery: string = '';
@@ -59,7 +59,7 @@ export class App {
   private initDefaultProject(): void {
     const dummyFile = new File([''], 'Projekt_Einspeisung.zw1');
     // Generates the initial project with Cover, 400V Motor circuit, and 24V DC control circuit
-    const res = (EplanPackageHandler as any).createProjectFromEplanMetadata('Anlagensteuerung_P8', '', []);
+    const res = (PackageHandler as any).createProjectFromPackageMetadata('Anlagensteuerung', '', []);
     this.project = res;
     for (const p of this.project.pages) {
       AutoconnectEngine.updatePageAutoconnections(p);
@@ -72,8 +72,8 @@ export class App {
     if (!root) return;
 
     root.innerHTML = `
-      <!-- EPLAN Classic Desktop Menu Bar -->
-      <nav class="eplan-menubar" id="eplanMenubar">
+      <!-- Elektro-CAD Menüzeile -->
+      <nav class="ecad-menubar" id="ecadMenubar">
         <div class="menu-item">
           Projekt
           <div class="menu-dropdown">
@@ -82,8 +82,8 @@ export class App {
             <div class="menu-opt" id="menuSave">💾 Speichern <span class="opt-key">Strg+S</span></div>
             <div class="menu-sep"></div>
             <div class="menu-opt" id="menuExportPdf">📑 Intelligenter PDF-Export (DIN A3)... <span class="opt-key">Strg+P</span></div>
-            <div class="menu-opt" id="menuExportZw1">📦 Als EPLAN .zw1 Backup exportieren...</div>
-            <div class="menu-opt" id="menuExportXml">📋 Als EPLAN XML exportieren...</div>
+            <div class="menu-opt" id="menuExportZw1">📦 Als Projekt-Archiv (.zw1) exportieren...</div>
+            <div class="menu-opt" id="menuExportXml">📋 Als Projekt-XML exportieren...</div>
             <div class="menu-sep"></div>
             <div class="menu-opt" id="menuPrint">🖨️ Drucken / Plotten...</div>
           </div>
@@ -135,8 +135,8 @@ export class App {
           Hilfe
           <div class="menu-dropdown">
             <div class="menu-opt" id="menuMobile">📱 Auf dem Smartphone testen (QR-Code)...</div>
-            <div class="menu-opt" id="menuShortcuts">⌨️ EPLAN P8 Tastenkürzel-Übersicht...</div>
-            <div class="menu-opt" id="menuAbout">ℹ️ Über Elektroplan (EPLAN Electric P8 Edition)</div>
+            <div class="menu-opt" id="menuShortcuts">⌨️ Tastenkürzel-Übersicht...</div>
+            <div class="menu-opt" id="menuAbout">ℹ️ Über Elektroplan</div>
           </div>
         </div>
       </nav>
@@ -146,7 +146,7 @@ export class App {
         <div class="brand-section">
           <button class="btn btn-drawer-toggle" id="btnToggleLeftSidebar" title="Menü (Seiten, Symbole, Artikel)">☰ <span class="hide-mobile">Seiten</span></button>
           <div class="brand-logo">
-            ⚡ Elektroplan <span class="badge-eplan">EPLAN P8</span>
+            ⚡ Elektroplan <span class="badge-cad">CAD</span>
           </div>
           <span style="font-size: 11px; color: var(--text-muted); border-left: 1px solid var(--border-color); padding-left: 10px;" class="hide-mobile" id="headerProjectName">
             ${this.project.name}
@@ -159,7 +159,7 @@ export class App {
           <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
 
           <button class="btn" id="btnNewProject" title="Neues Projekt anlegen (Strg+N)">📄 <span class="hide-mobile">Neu</span></button>
-          <label class="btn" title="EPLAN .zw1, .edz, .xml oder .json öffnen" style="margin: 0; cursor: pointer;">
+          <label class="btn" title="Projekt (.zw1, .edz, .xml oder .json) öffnen" style="margin: 0; cursor: pointer;">
             📂 <span class="hide-mobile">Öffnen</span>
             <input type="file" id="fileInput" accept=".zw1,.edz,.xml,.json,.elk" style="display: none;">
           </label>
@@ -167,8 +167,8 @@ export class App {
           
           <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
 
-          <!-- EPLAN Insertion Tools -->
-          <button class="btn btn-primary" id="btnOpenSymbolSelection" title="EPLAN Symbolauswahl öffnen (Einfg)">⚡ <span class="hide-mobile">Symbol (Einfg)</span></button>
+          <!-- Symbol & Insertion Tools -->
+          <button class="btn btn-primary" id="btnOpenSymbolSelection" title="Symbolauswahl öffnen (Einfg)">⚡ <span class="hide-mobile">Symbol (Einfg)</span></button>
           <button class="btn active" id="btnToolSelect" title="Auswahlwerkzeug">👆 <span class="hide-mobile">Auswählen</span></button>
           <button class="btn" id="btnToolWire" title="Verbindungslinie zeichnen (D)">🔌 <span class="hide-mobile">Verdrahten</span></button>
           <button class="btn" id="btnToolRotate" title="Ausgewähltes Bauteil um 90° drehen (R)">🔄 <span class="hide-mobile">Drehen (R)</span></button>
@@ -177,10 +177,10 @@ export class App {
 
           <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
 
-          <!-- EPLAN Engineering & Export Tools -->
-          <button class="btn" id="btnPlausibility" title="EPLAN Prüflauf / Plausibilitätskontrolle durchführen">📋 <span class="hide-mobile">Prüflauf</span></button>
-          <button class="btn btn-primary" id="btnExportPdf" title="Intelligenter EPLAN P8 PDF-Export mit interaktiven Querverweisen">📑 PDF</button>
-          <button class="btn hide-mobile" id="btnExportZw1" title="Als EPLAN .zw1 Backup exportieren">📦 .zw1</button>
+          <!-- Engineering & Export Tools -->
+          <button class="btn" id="btnPlausibility" title="Prüflauf / Plausibilitätskontrolle durchführen">📋 <span class="hide-mobile">Prüflauf</span></button>
+          <button class="btn btn-primary" id="btnExportPdf" title="Intelligenter PDF-Export mit interaktiven Querverweisen">📑 PDF</button>
+          <button class="btn hide-mobile" id="btnExportZw1" title="Als Projekt-Archiv (.zw1) exportieren">📦 .zw1</button>
 
           <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
 
@@ -189,7 +189,7 @@ export class App {
           <button class="btn" id="btnZoomOut" title="Verkleinern">➖</button>
           <button class="btn" id="btnZoomFit" title="Blatt formatfüllend anpassen (F)">🔍 Fit</button>
           <button class="btn active" id="btnGridSnap" title="Raster umschalten (Vollraster 8px / Halbraster 4px / Feinraster 2px / Aus - Tastenkürzel: H)">📐 <span class="hide-mobile">Raster: </span>1x</button>
-          <button class="btn hide-mobile active" id="btnAutoconnect" title="EPLAN Autoconnecting ein/aus">⚡ Autoconnect</button>
+          <button class="btn hide-mobile active" id="btnAutoconnect" title="Autoconnecting ein/aus">⚡ Autoconnect</button>
 
           <button class="btn btn-drawer-toggle" id="btnToggleRightSidebar" title="Eigenschaften & Inspektor">⚙️ <span class="hide-mobile">Eigenschaften</span></button>
         </div>
@@ -280,7 +280,7 @@ export class App {
           </div>
           <div class="tab-nav">
             <button class="tab-btn active" data-right-tab="properties">Eigenschaften</button>
-            <button class="tab-btn" data-right-tab="eplan">EPLAN / REA</button>
+            <button class="tab-btn" data-right-tab="archive">Archiv / REA</button>
           </div>
           <div class="tab-content" id="rightTabContent"></div>
         </aside>
@@ -288,7 +288,7 @@ export class App {
 
       <!-- Bottom Status Bar -->
       <footer class="status-bar">
-        <div id="statusLeft">Bereit | DIN EN 81346 / IEC 60617 | EPLAN Electric P8 Modus</div>
+        <div id="statusLeft">Bereit | DIN EN 81346 / IEC 60617 | Elektro-CAD Modus</div>
         <div id="statusRight">Seite 1 / 3 | Raster: 10px (4mm) | Querverweise: Aktiv</div>
       </footer>
     `;
@@ -317,7 +317,7 @@ export class App {
         this.openPropertiesDialog(comp);
       },
       onOpenSymbolSelection: () => {
-        new EplanSymbolSelectionDialog({
+        new SymbolSelectionDialog({
           onSelect: (sym) => {
             this.canvas.setSymbolToPlace(sym.id);
           }
@@ -339,7 +339,7 @@ export class App {
   }
 
   public openPropertiesDialog(comp: PlacedComponent): void {
-    new EplanPropertiesDialog(comp, this.project, {
+    new PropertiesDialog(comp, this.project, {
       onSave: (updated) => {
         // 1. Mutate the original comp in-place so all references stay updated
         Object.assign(comp, updated);
@@ -676,9 +676,9 @@ export class App {
       this.canvas.deleteSelected();
     });
 
-    // EPLAN Toolbar Actions
+    // Toolbar Actions
     document.getElementById('btnOpenSymbolSelection')?.addEventListener('click', () => {
-      new EplanSymbolSelectionDialog({
+      new SymbolSelectionDialog({
         onSelect: (sym) => this.canvas.setSymbolToPlace(sym.id)
       }).show();
     });
@@ -688,7 +688,7 @@ export class App {
     });
 
     document.getElementById('btnPlausibility')?.addEventListener('click', () => {
-      new EplanPlausibilityDialog(this.project, {
+      new PlausibilityDialog(this.project, {
         onNavigateToPage: (pageId) => {
           this.canvas.setPage(pageId);
           this.updateUI();
@@ -744,17 +744,17 @@ export class App {
       this.saveProjectJson();
     });
 
-    // Export EPLAN .zw1
+    // Export .zw1
     document.getElementById('btnExportZw1')?.addEventListener('click', async () => {
       await this.exportZw1();
     });
 
-    // Export EPLAN XML
+    // Export XML
     document.getElementById('btnExportXml')?.addEventListener('click', () => {
       this.exportXml();
     });
 
-    // Smart EPLAN PDF Export
+    // Smart PDF Export
     document.getElementById('btnExportPdf')?.addEventListener('click', () => {
       new PdfExportDialog(this.project, this.project.activePageId).show();
     });
@@ -782,7 +782,7 @@ export class App {
   }
 
   private bindMenubarEvents(): void {
-    const menubar = document.getElementById('eplanMenubar');
+    const menubar = document.getElementById('ecadMenubar');
     if (!menubar) return;
 
     const menuItems = menubar.querySelectorAll<HTMLElement>('.menu-item');
@@ -882,7 +882,7 @@ export class App {
 
     // Einfügen
     bindMenuOpt('menuInsertSym', () => {
-      new EplanSymbolSelectionDialog({
+      new SymbolSelectionDialog({
         onSelect: (sym) => this.canvas.setSymbolToPlace(sym.id)
       }).show();
     });
@@ -894,7 +894,7 @@ export class App {
 
     // Projektdaten
     bindMenuOpt('menuPlausibility', () => {
-      new EplanPlausibilityDialog(this.project, {
+      new PlausibilityDialog(this.project, {
         onNavigateToPage: (pageId) => {
           this.canvas.setPage(pageId);
           this.updateUI();
@@ -921,12 +921,12 @@ export class App {
     bindMenuOpt('menuMobile', () => MobileConnectDialog.show());
     bindMenuOpt('menuShortcuts', () => {
       alert(
-        'EPLAN Electric P8 Tastatur-Kürzel:\n\n' +
-        '• Einfg: EPLAN Symbolauswahl öffnen\n' +
+        'Elektro-CAD Tastatur-Kürzel:\n\n' +
+        '• Einfg: Symbolauswahl öffnen\n' +
         '• Tab: Symbol während Vorschau um 90° drehen\n' +
         '• D / W: Verbindungslinie zeichnen (Verdrahten)\n' +
         '• Doppelklick: Eigenschaften (Schaltzeichen)\n' +
-        '• Rechtsklick: EPLAN Kontextmenü\n' +
+        '• Rechtsklick: Kontextmenü\n' +
         '• Strg+D: Ausgewähltes Bauteil duplizieren\n' +
         '• R: Ausgewähltes Bauteil um 90° drehen\n' +
         '• Entf / Backspace: Ausgewähltes Element löschen\n' +
@@ -941,12 +941,12 @@ export class App {
     });
     bindMenuOpt('menuAbout', () => {
       alert(
-        'Elektroplan - EPLAN Electric P8 Edition\n' +
+        'Elektroplan - CAE & Elektro-CAD Suite\n' +
         'Version 2.0 (CAD & Engineering Suite)\n\n' +
-        'Kompatibilität:\n' +
-        '• EPLAN .zw1 Projektarchive (Backup/Restore)\n' +
-        '• EPLAN Data Portal .edz Makro- und Artikelpakete\n' +
-        '• EPLAN Electric P8 XML Schaltplan-Schemata\n' +
+        'Unterstützte Standards:\n' +
+        '• Projektarchive (.zw1) (Backup/Restore)\n' +
+        '• Artikel- und Makropakete (.edz)\n' +
+        '• XML Schaltplan-Schemata\n' +
         '• DIN EN 81346 Strukturierung (=Anlage +Ort -BMK :Pin)\n' +
         '• IEC 60617 genormte elektrotechnische Symbole\n' +
         '• Automatische Querverweisberechnung & Kontaktspiegel\n' +
@@ -1147,7 +1147,7 @@ export class App {
   private renderPartsCatalogueTab(container: HTMLElement): void {
     let html = `
       <div style="font-size: 11px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">
-        EPLAN Artikel-Stammdaten & Data Portal
+        Artikel-Stammdaten & Katalog
       </div>
 
       <div style="display: flex; gap: 6px; margin-bottom: 8px;">
@@ -1334,7 +1334,7 @@ export class App {
     if (this.activeRightTab === 'properties') {
       this.renderPropertiesTab(container);
     } else {
-      this.renderEplanInspectorTab(container);
+      this.renderArchiveInspectorTab(container);
     }
   }
 
@@ -1347,7 +1347,7 @@ export class App {
 
       container.innerHTML = `
         <button class="btn btn-primary" id="btnOpenFullPropModal" style="width: 100%; margin-bottom: 12px; font-weight: 600; font-size: 12px; padding: 8px 12px; display: flex; align-items: center; justify-content: center; gap: 8px; background: #3182ce; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">
-          <span>⚡ EPLAN Editierfenster...</span>
+          <span>⚡ Eigenschaften-Editierfenster...</span>
           <span style="font-size: 10px; opacity: 0.8; font-family: monospace;">[Enter / F2]</span>
         </button>
 
@@ -1390,7 +1390,7 @@ export class App {
         </div>
 
         <div class="form-group" style="background: rgba(99, 179, 237, 0.08); padding: 8px; border-radius: 4px; border: 1px dashed var(--accent);">
-          <label class="form-label" style="color: var(--accent-bright);">📦 EPLAN Artikel aus Katalog zuweisen</label>
+          <label class="form-label" style="color: var(--accent-bright);">📦 Artikel aus Katalog zuweisen</label>
           <select class="form-input" id="propAssignPartSelect">
             <option value="">-- Hersteller-Artikel wählen --</option>
             ${MANUFACTURER_PARTS.map(p => `
@@ -1420,7 +1420,7 @@ export class App {
         </div>
 
         <div class="form-group">
-          <label class="form-label">EPLAN Querverweis / Kontaktspiegel</label>
+          <label class="form-label">Querverweis / Kontaktspiegel</label>
           <div style="padding: 8px; background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; font-family: monospace; font-size: 11px; color: var(--warning);">
             ${comp.crossRef || 'Keine Querverweise aktiv'}
           </div>
@@ -1652,30 +1652,30 @@ export class App {
     }
   }
 
-  private renderEplanInspectorTab(container: HTMLElement): void {
+  private renderArchiveInspectorTab(container: HTMLElement): void {
     container.innerHTML = `
       <div style="font-size: 11px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">
-        EPLAN Electric P8 & REA Inspektor
+        Archiv & REA Inspektor
       </div>
 
-      <div class="dropzone" id="eplanDropzone">
+      <div class="dropzone" id="archiveDropzone">
         <div style="font-size: 24px; margin-bottom: 8px;">📦</div>
-        <div style="font-size: 12px; font-weight: 500;">EPLAN-Datei hier ablegen</div>
+        <div style="font-size: 12px; font-weight: 500;">Projekt- oder Archiv-Datei hier ablegen</div>
         <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">Unterstützt .zw1 (Backup), .edz (Makros), .xml, .elk</div>
       </div>
 
       <div id="inspectorDetails" style="font-size: 11px;">
         <div style="padding: 10px; background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; line-height: 1.5; color: var(--text-muted);">
-          <strong style="color: var(--accent-bright);">Kompatibilität mit EPLAN Electric P8:</strong><br>
-          • <strong>.zw1:</strong> Komprimiertes EPLAN Projektbackup (enthält .elk und *.edb Datenbankverzeichnis).<br>
-          • <strong>.edz:</strong> EPLAN Data Portal Artikel- und Makropaket.<br>
-          • <strong>XML:</strong> EPLAN-Schema für Stromlaufpläne und Stammdaten.<br>
+          <strong style="color: var(--accent-bright);">Unterstützte Formate:</strong><br>
+          • <strong>.zw1:</strong> Komprimiertes Projektbackup (enthält .elk und *.edb Datenbankverzeichnis).<br>
+          • <strong>.edz:</strong> Artikel- und Makropakete.<br>
+          • <strong>XML:</strong> XML-Schema für Stromlaufpläne und Stammdaten.<br>
           • <strong>Querverweise:</strong> Automatische Berechnung von Kontaktspiegeln und Abbruchstellen nach DIN EN 81346.
         </div>
       </div>
     `;
 
-    const dropzone = document.getElementById('eplanDropzone');
+    const dropzone = document.getElementById('archiveDropzone');
     if (dropzone) {
       dropzone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -1700,7 +1700,7 @@ export class App {
 
   private async handleFileOpen(file: File): Promise<void> {
     try {
-      const result: EplanInspectionResult = await EplanPackageHandler.inspectFile(file);
+      const result: PackageInspectionResult = await PackageHandler.inspectFile(file);
       
       if (result.extractedProject) {
         this.project = result.extractedProject;
@@ -1794,12 +1794,12 @@ export class App {
   }
 
   private async exportZw1(): Promise<void> {
-    const blob = await EplanPackageHandler.exportToZw1(this.project);
+    const blob = await PackageHandler.exportToZw1(this.project);
     this.downloadBlob(blob, `${this.project.name}.zw1`);
   }
 
   private exportXml(): void {
-    const xml = EplanPackageHandler.generateEplanXml(this.project);
+    const xml = PackageHandler.generateProjectXml(this.project);
     const blob = new Blob([xml], { type: 'application/xml' });
     this.downloadBlob(blob, `${this.project.name}.xml`);
   }

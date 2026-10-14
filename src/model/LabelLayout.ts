@@ -1,5 +1,5 @@
 // src/model/LabelLayout.ts
-// Calculates exact screen coordinates, anchors, rotations, and styles for EPLAN component labels
+// Calculates exact screen coordinates, anchors, rotations, and styles for component labels
 
 import { PlacedComponent, TextFormatConfig, SymbolDefinition } from './types';
 

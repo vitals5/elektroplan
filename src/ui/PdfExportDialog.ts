@@ -1,8 +1,8 @@
 // src/ui/PdfExportDialog.ts
-// Modal dialog replicating EPLAN Electric P8 PDF-Export settings
+// Modal dialog for Smart PDF-Export settings
 
 import { Project } from '../model/types';
-import { EplanPdfExporter, PdfExportOptions } from '../export/EplanPdfExporter';
+import { PdfExporter, PdfExportOptions } from '../export/PdfExporter';
 
 export class PdfExportDialog {
   private project: Project;
@@ -55,7 +55,7 @@ export class PdfExportDialog {
           justify-content: space-between;
         ">
           <div style="font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px;">
-            📑 EPLAN Electric P8 – PDF-Export
+            📑 Elektroplan – PDF-Export
           </div>
           <button id="btnPdfClose" style="background: none; border: none; color: #a0aec0; cursor: pointer; font-size: 16px;">✕</button>
         </div>
@@ -81,7 +81,7 @@ export class PdfExportDialog {
           <div style="margin-bottom: 14px;">
             <div style="font-weight: bold; color: #63b3ed; margin-bottom: 6px; text-transform: uppercase; font-size: 11px;">2. Papierformat</div>
             <select id="pdfFormatSelect" style="width: 100%; padding: 6px; background: #2d3748; border: 1px solid #4a5568; color: white; border-radius: 4px;">
-              <option value="a3" selected>DIN A3 Querformat (420 × 297 mm - EPLAN Standard)</option>
+              <option value="a3" selected>DIN A3 Querformat (420 × 297 mm - Standard)</option>
               <option value="a4">DIN A4 Querformat (297 × 210 mm)</option>
             </select>
           </div>
@@ -92,7 +92,7 @@ export class PdfExportDialog {
             <div style="display: flex; gap: 16px;">
               <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
                 <input type="radio" name="pdfColorMode" value="color" checked>
-                Farbe (Standard EPLAN Farbschema)
+                Farbe (Standard Farbschema)
               </label>
               <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
                 <input type="radio" name="pdfColorMode" value="monochrome">
@@ -101,10 +101,10 @@ export class PdfExportDialog {
             </div>
           </div>
 
-          <!-- 4. EPLAN Smart PDF Optionen -->
+          <!-- 4. Smart PDF Optionen -->
           <div style="margin-bottom: 16px; background: #232d3d; padding: 12px; border-radius: 6px; border: 1px solid #3e4c63;">
             <div style="font-weight: bold; color: #f6e05e; margin-bottom: 8px; font-size: 11px; text-transform: uppercase;">
-              ✨ Intelligente EPLAN P8 Funktionen
+              ✨ Intelligente PDF-Funktionen
             </div>
             
             <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -130,7 +130,7 @@ export class PdfExportDialog {
 
               <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
                 <input type="checkbox" id="chkPlotFrame" checked>
-                EPLAN Normblatt & Schriftfeld nach DIN EN ISO 7200 drucken
+                Normblatt & Schriftfeld nach DIN EN ISO 7200 drucken
               </label>
             </div>
           </div>
@@ -196,7 +196,7 @@ export class PdfExportDialog {
         plotFrame: chkPlotFrame?.checked ?? true
       };
 
-      const pdfBlob = await EplanPdfExporter.exportToPdf(this.project, options);
+      const pdfBlob = await PdfExporter.exportToPdf(this.project, options);
       
       // Trigger download
       const filename = `${this.project.name.replace(/[^a-zA-Z0-9_\-]/g, '_')}_Stromlaufplan.pdf`;

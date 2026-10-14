@@ -1,5 +1,5 @@
 // src/editor/CadCanvas.ts
-// Interactive SVG-based CAD drawing canvas for electrical schematics (EPLAN P8 style)
+// Interactive SVG-based CAD drawing canvas for electrical schematics
 
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
 import { getSymbolById } from '../model/symbols';
@@ -36,7 +36,7 @@ export class CadCanvas {
   // Editor State
   public mode: EditorMode = 'select';
   public gridSnap: boolean = true;
-  public gridSize: number = 8; // 8px per base raster unit (DIN EN 60617 / EPLAN)
+  public gridSize: number = 8; // 8px per base raster unit (DIN EN 60617)
   public gridResolution: GridResolution = 'full'; // 'full' (8px), 'half' (4px), 'fine' (2px), 'off' (1px)
   public autoconnectEnabled: boolean = true;
   public activeSymbolToPlace: string | null = null;
@@ -311,7 +311,7 @@ export class CadCanvas {
     window.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
     window.addEventListener('touchcancel', (e) => this.onTouchEnd(e), { passive: false });
 
-    // Keyboard shortcuts (EPLAN P8 standard shortcuts)
+    // Keyboard shortcuts
     window.addEventListener('keydown', (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       
@@ -412,12 +412,12 @@ export class CadCanvas {
   }
 
   private showContextMenu(clientX: number, clientY: number, comp: PlacedComponent | null, wire: Wire | null): void {
-    const existing = document.getElementById('eplanContextMenu');
+    const existing = document.getElementById('ecadContextMenu');
     if (existing) existing.remove();
 
     const menu = document.createElement('div');
-    menu.id = 'eplanContextMenu';
-    menu.className = 'eplan-context-menu';
+    menu.id = 'ecadContextMenu';
+    menu.className = 'ecad-context-menu';
     menu.style.position = 'fixed';
     menu.style.left = `${clientX}px`;
     menu.style.top = `${clientY}px`;
@@ -1020,7 +1020,7 @@ export class CadCanvas {
         <rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="#1a202c" stroke="#2d3748" stroke-width="2"/>
         <rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="url(#cadGrid)"/>
         
-        <!-- EPLAN DIN A3 Normblatt Plot Frame -->
+        <!-- DIN A3 Normblatt Plot Frame -->
         ${this.renderPlotFrame(pageWidth, pageHeight)}
 
         <!-- Wires -->
@@ -1033,7 +1033,7 @@ export class CadCanvas {
           ${this.renderComponents()}
         </g>
 
-        <!-- Live Autoconnect Previews (EPLAN Cyan Dashed Guide Lines & Targets) -->
+        <!-- Live Autoconnect Previews (Cyan Dashed Guide Lines & Targets) -->
         <g id="autoconnectPreviewLayer">
           ${this.renderAutoconnectPreview()}
         </g>
@@ -1044,7 +1044,7 @@ export class CadCanvas {
         <!-- Pin Hover Snap Highlight -->
         ${this.renderHoveredPin()}
 
-        <!-- Ghost Symbol under Cursor (EPLAN P8 Placement Preview) -->
+        <!-- Ghost Symbol under Cursor (Placement Preview) -->
         ${this.renderGhostSymbol()}
       </g>
     `;
@@ -1093,7 +1093,7 @@ export class CadCanvas {
         <line x1="240" y1="22" x2="240" y2="${tbHeight}" stroke="#4a5568"/>
         
         <!-- Texts in Titleblock -->
-        <text x="6" y="14" font-size="11" font-weight="bold" fill="#63b3ed">${tb.company || 'EPLAN Electric Suite'}</text>
+        <text x="6" y="14" font-size="11" font-weight="bold" fill="#63b3ed">${tb.company || 'Elektroplan CAE Suite'}</text>
         <text x="166" y="14" font-size="9" fill="#e2e8f0">Kommission: ${tb.commission}</text>
         
         <text x="6" y="36" font-size="9" fill="#cbd5e0">Projekt: ${tb.projectTitle}</text>

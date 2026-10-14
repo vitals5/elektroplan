@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "main": "electron/main.cjs",
-  "description": "Elektroplan CAE Suite - EPLAN Electric P8 compatible CAD software for electrical schematics (Windows Desktop)",
+  "description": "Elektroplan CAE Suite - Professional CAD software for electrical schematics (Windows Desktop & Web)",
   "author": "VitalS5",
   "license": "MIT",
   "scripts": {

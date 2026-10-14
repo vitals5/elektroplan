@@ -1,38 +1,38 @@
-// src/eplan/EplanPackageHandler.ts
-// Parser and generator for EPLAN Electric P8 files:
-// - .zw1: EPLAN Project Backup Archive (ZIP containing .elk and *.edb)
-// - .edz: EPLAN Data Portal Macro/Part Archive (ZIP with XML, macros, and images)
-// - .xml: EPLAN XML Project & Schema Exchange Format
+// src/packages/PackageHandler.ts
+// Parser and generator for CAD project archive files:
+// - .zw1: Project Backup Archive (ZIP containing .elk and *.edb)
+// - .edz: Component / Macro Archive (ZIP with XML, macros, and images)
+// - .xml: XML Project & Schema Exchange Format
 
 import JSZip from 'jszip';
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
 import { SYMBOL_DEFINITIONS } from '../model/symbols';
 import { AutoconnectEngine } from '../model/AutoconnectEngine';
 
-export interface EplanPackageEntry {
+export interface PackageEntry {
   path: string;
   size: number;
   isDir: boolean;
   type: 'elk' | 'edb' | 'macro' | 'xml' | 'image' | 'other';
 }
 
-export interface EplanInspectionResult {
+export interface PackageInspectionResult {
   filename: string;
   projectName: string;
-  format: 'ZW1_PROJECT_BACKUP' | 'EDZ_PART_PACKAGE' | 'EPLAN_XML' | 'UNKNOWN';
+  format: 'ZW1_PROJECT_BACKUP' | 'EDZ_PART_PACKAGE' | 'PROJECT_XML' | 'UNKNOWN';
   entryCount: number;
-  entries: EplanPackageEntry[];
+  entries: PackageEntry[];
   elkContent?: string;
   partMetadata?: Record<string, any>;
   extractedProject?: Project;
   messages: string[];
 }
 
-export class EplanPackageHandler {
+export class PackageHandler {
   /**
-   * Inspects and opens any EPLAN file (.zw1, .edz, .xml, .elk, .json)
+   * Inspects and opens any project file (.zw1, .edz, .xml, .elk, .json)
    */
-  public static async inspectFile(file: File): Promise<EplanInspectionResult> {
+  public static async inspectFile(file: File): Promise<PackageInspectionResult> {
     const filename = file.name;
     const lowerName = filename.toLowerCase();
 
@@ -40,9 +40,9 @@ export class EplanPackageHandler {
       return this.parseZw1Backup(file);
     } else if (lowerName.endsWith('.edz')) {
       return this.parseEdzPackage(file);
-    } else if (lowerName.endsWith('.xml') || lowerName.endsWith('.eplanxml')) {
+    } else if (lowerName.endsWith('.xml') || lowerName.endsWith('.projxml')) {
       const text = await file.text();
-      return this.parseEplanXml(text, filename);
+      return this.parseProjectXml(text, filename);
     } else if (lowerName.endsWith('.json')) {
       const text = await file.text();
       const proj = JSON.parse(text) as Project;
@@ -62,24 +62,24 @@ export class EplanPackageHandler {
         return this.parseGenericZip(zip, filename);
       } catch {
         const text = await file.text();
-        return this.parseEplanXml(text, filename);
+        return this.parseProjectXml(text, filename);
       }
     }
   }
 
   /**
-   * Parses an EPLAN .zw1 project backup archive
+   * Parses a .zw1 project backup archive
    */
-  private static async parseZw1Backup(file: File): Promise<EplanInspectionResult> {
+  private static async parseZw1Backup(file: File): Promise<PackageInspectionResult> {
     const zip = await JSZip.loadAsync(file);
-    const entries: EplanPackageEntry[] = [];
+    const entries: PackageEntry[] = [];
     let elkContent = '';
     let projectName = file.name.replace(/\.zw1$/i, '');
     const messages: string[] = [];
 
     // Analyze archive entries
     zip.forEach((relativePath, zipEntry) => {
-      let type: EplanPackageEntry['type'] = 'other';
+      let type: PackageEntry['type'] = 'other';
       if (relativePath.toLowerCase().endsWith('.elk')) {
         type = 'elk';
       } else if (relativePath.toLowerCase().includes('.edb/')) {
@@ -98,13 +98,13 @@ export class EplanPackageHandler {
       });
     });
 
-    // Find and read the .elk file (EPLAN Project Descriptor)
+    // Find and read the .elk file (Project Descriptor)
     const elkFile = entries.find(e => e.type === 'elk');
     if (elkFile) {
       const zipFile = zip.file(elkFile.path);
       if (zipFile) {
         elkContent = await zipFile.async('text');
-        messages.push(`EPLAN Projekt-Steuerdatei gefunden: ${elkFile.path}`);
+        messages.push(`Projekt-Steuerdatei gefunden: ${elkFile.path}`);
         
         // Extract project name from .elk file path or contents
         const matchedName = elkFile.path.split('/').pop()?.replace(/\.elk$/i, '');
@@ -112,9 +112,9 @@ export class EplanPackageHandler {
       }
     }
 
-    // Attempt to reconstruct project or fallback to structured default with EPLAN metadata
-    const project = this.createProjectFromEplanMetadata(projectName, elkContent, entries);
-    messages.push(`EPLAN Projekt "${projectName}" mit ${entries.length} Elementen erfolgreich strukturiert.`);
+    // Attempt to reconstruct project or fallback to structured default with metadata
+    const project = this.createProjectFromPackageMetadata(projectName, elkContent, entries);
+    messages.push(`Projekt "${projectName}" mit ${entries.length} Elementen erfolgreich strukturiert.`);
 
     return {
       filename: file.name,
@@ -129,16 +129,16 @@ export class EplanPackageHandler {
   }
 
   /**
-   * Parses an EPLAN .edz Data Portal parts / macro package
+   * Parses an .edz parts / macro package
    */
-  private static async parseEdzPackage(file: File): Promise<EplanInspectionResult> {
+  private static async parseEdzPackage(file: File): Promise<PackageInspectionResult> {
     const zip = await JSZip.loadAsync(file);
-    const entries: EplanPackageEntry[] = [];
+    const entries: PackageEntry[] = [];
     const messages: string[] = [];
     let partMetadata: Record<string, any> = {};
 
     zip.forEach((relativePath, zipEntry) => {
-      let type: EplanPackageEntry['type'] = 'other';
+      let type: PackageEntry['type'] = 'other';
       if (relativePath.toLowerCase().endsWith('.xml')) type = 'xml';
       else if (relativePath.toLowerCase().endsWith('.ema') || relativePath.toLowerCase().endsWith('.ems')) type = 'macro';
       else if (relativePath.toLowerCase().match(/\.(png|jpg|jpeg|bmp|svg)$/)) type = 'image';
@@ -168,23 +168,23 @@ export class EplanPackageHandler {
 
     return {
       filename: file.name,
-      projectName: `EPLAN Part: ${partName}`,
+      projectName: `Artikel: ${partName}`,
       format: 'EDZ_PART_PACKAGE',
       entryCount: entries.length,
       entries,
       partMetadata,
       messages: [
-        `EPLAN Data Portal Paket "${file.name}" geladen.`,
+        `Artikelpaket "${file.name}" geladen.`,
         `Enthält Makros, 2D/3D-Grafiken und Stammdaten für Artikel: ${partName}`
       ]
     };
   }
 
   /**
-   * Parses a generic ZIP that may contain EPLAN files
+   * Parses a generic ZIP archive
    */
-  private static async parseGenericZip(zip: JSZip, filename: string): Promise<EplanInspectionResult> {
-    const entries: EplanPackageEntry[] = [];
+  private static async parseGenericZip(zip: JSZip, filename: string): Promise<PackageInspectionResult> {
+    const entries: PackageEntry[] = [];
     zip.forEach((relativePath, zipEntry) => {
       entries.push({
         path: relativePath,
@@ -205,31 +205,31 @@ export class EplanPackageHandler {
   }
 
   /**
-   * Parses an EPLAN XML export file
+   * Parses an XML project export file
    */
-  private static parseEplanXml(xmlContent: string, filename: string): EplanInspectionResult {
+  private static parseProjectXml(xmlContent: string, filename: string): PackageInspectionResult {
     const messages: string[] = [];
-    let projectName = filename.replace(/\.(xml|eplanxml)$/i, '');
+    let projectName = filename.replace(/\.(xml|projxml)$/i, '');
 
-    // Basic DOM parsing of EPLAN XML schema
+    // Basic DOM parsing of XML schema
     const parser = new DOMParser();
     const doc = parser.parseFromString(xmlContent, 'text/xml');
 
-    const projectNode = doc.querySelector('EplanP8Project, Project, eplanProject');
+    const projectNode = doc.querySelector('ProjectXml, ElektroplanProject, Project');
     if (projectNode) {
       const nameAttr = projectNode.getAttribute('name') || projectNode.getAttribute('P90001');
       if (nameAttr) projectName = nameAttr;
-      messages.push(`EPLAN XML Schema erkannt: Projekt "${projectName}".`);
+      messages.push(`XML-Schema erkannt: Projekt "${projectName}".`);
     } else {
       messages.push('XML-Datei eingelesen (generisches Schema).');
     }
 
-    const project = this.createProjectFromEplanMetadata(projectName, xmlContent, []);
+    const project = this.createProjectFromPackageMetadata(projectName, xmlContent, []);
 
     return {
       filename,
       projectName,
-      format: 'EPLAN_XML',
+      format: 'PROJECT_XML',
       entryCount: 1,
       entries: [{ path: filename, size: xmlContent.length, isDir: false, type: 'xml' }],
       extractedProject: project,
@@ -238,9 +238,9 @@ export class EplanPackageHandler {
   }
 
   /**
-   * Constructs an editable Project model from EPLAN metadata
+   * Constructs an editable Project model from metadata
    */
-  private static createProjectFromEplanMetadata(projectName: string, _rawMeta: string, entries: EplanPackageEntry[]): Project {
+  private static createProjectFromPackageMetadata(projectName: string, _rawMeta: string, entries: PackageEntry[]): Project {
     const now = new Date().toISOString().split('T')[0];
 
     // Create a realistic multi-page industrial circuit diagram project
@@ -266,7 +266,7 @@ export class EplanPackageHandler {
           projectTitle: projectName,
           commission: 'KOM-2026-0815',
           company: 'Elektro Engineering GmbH',
-          author: 'EPLAN Electric P8 Import',
+          author: 'Projekt-Import',
           date: now,
           revision: '1.0',
           sheetNumber: '0',
@@ -408,7 +408,7 @@ export class EplanPackageHandler {
           projectTitle: projectName,
           commission: 'KOM-2026-0815',
           company: 'Elektro Engineering GmbH',
-          author: 'EPLAN Electric P8 Import',
+          author: 'Projekt-Import',
           date: now,
           revision: '1.0',
           sheetNumber: '1',
@@ -416,7 +416,7 @@ export class EplanPackageHandler {
         }
       }
     };
-    // Dynamisch alle Verbindungen per EPLAN Autoconnecting generieren
+    // Dynamisch alle Verbindungen per Autoconnecting generieren
     AutoconnectEngine.updatePageAutoconnections(pagePower);
 
     const pageControl: Page = {
@@ -588,7 +588,7 @@ export class EplanPackageHandler {
           projectTitle: projectName,
           commission: 'KOM-2026-0815',
           company: 'Elektro Engineering GmbH',
-          author: 'EPLAN Electric P8 Import',
+          author: 'Projekt-Import',
           date: now,
           revision: '1.0',
           sheetNumber: '2',
@@ -596,18 +596,18 @@ export class EplanPackageHandler {
         }
       }
     };
-    // Dynamisch alle Verbindungen per EPLAN Autoconnecting generieren
+    // Dynamisch alle Verbindungen per Autoconnecting generieren
     AutoconnectEngine.updatePageAutoconnections(pageControl);
 
     return {
       id: 'proj_' + Math.random().toString(36).substring(2, 9),
       name: projectName,
-      description: `Importiertes EPLAN Electric P8 Projekt (${entries.length} gepackte Artefakte)`,
+      description: `Importiertes Projekt (${entries.length} gepackte Artefakte)`,
       standard: 'DIN EN 81346-2 / IEC 60617',
       version: '2024.0',
       created: now,
       modified: now,
-      author: 'EPLAN System',
+      author: 'Elektroplan System',
       company: 'Elektroplan Suite',
       pages: [pageCover, pagePower, pageControl],
       activePageId: 'p_power'
@@ -627,14 +627,14 @@ export class EplanPackageHandler {
   }
 
   /**
-   * Exports the project as an EPLAN-compatible .zw1 backup archive
+   * Exports the project as a .zw1 backup archive
    */
   public static async exportToZw1(project: Project): Promise<Blob> {
     const zip = new JSZip();
     const safeName = project.name.replace(/[^a-zA-Z0-9_\-]/g, '_');
 
-    // 1. Create .elk file (EPLAN Project Status File)
-    const elkContent = `[EPLAN]
+    // 1. Create .elk file (Project Status File)
+    const elkContent = `[Project]
 Version=2024.0.3
 Type=Project
 ProjectName=${project.name}
@@ -652,7 +652,7 @@ PageCount=${project.pages.length}
     const edbFolder = zip.folder(`${safeName}.edb`);
     if (edbFolder) {
       // Export pages as structured XML/JSON
-      edbFolder.file('Pages.xml', this.generateEplanXml(project));
+      edbFolder.file('Pages.xml', this.generateProjectXml(project));
       edbFolder.file('ProjectSettings.ini', `[Settings]\nGrid=4.0\nStandard=IEC81346\n`);
       edbFolder.file('project_data.json', JSON.stringify(project, null, 2));
     }
@@ -661,11 +661,11 @@ PageCount=${project.pages.length}
   }
 
   /**
-   * Exports project into standard EPLAN XML format
+   * Exports project into standard XML format
    */
-  public static generateEplanXml(project: Project): string {
+  public static generateProjectXml(project: Project): string {
     let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-    xml += `<EplanP8Project version="2024.0" name="${this.escapeXml(project.name)}">\n`;
+    xml += `<ProjectXml version="2024.0" name="${this.escapeXml(project.name)}">\n`;
     xml += `  <ProjectInfo author="${this.escapeXml(project.author)}" company="${this.escapeXml(project.company)}" date="${project.modified}"/>\n`;
     xml += `  <Pages count="${project.pages.length}">\n`;
 
@@ -685,7 +685,7 @@ PageCount=${project.pages.length}
     }
 
     xml += `  </Pages>\n`;
-    xml += `</EplanP8Project>\n`;
+    xml += `</ProjectXml>\n`;
     return xml;
   }
 

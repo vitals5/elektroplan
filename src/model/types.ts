@@ -1,5 +1,5 @@
 // src/model/types.ts
-// Data structures following IEC 81346 / DIN EN 60617 / EPLAN Electric P8 standard
+// Data structures following IEC 81346 / DIN EN 60617 standards
 
 export type PageType = 'cover' | 'schematic' | 'terminal_diagram' | 'parts_list' | 'overview';
 
@@ -65,7 +65,7 @@ export interface PlacedComponent {
     };
   };
   crossRef?: string;            // Calculated cross-reference, e.g. "/1.4"
-  // EPLAN P8 Label positioning & display properties
+  // Label positioning & display properties
   bmkPosition?: TextFormatConfig;
   functionTextPosition?: TextFormatConfig;
   technicalDataPosition?: TextFormatConfig;

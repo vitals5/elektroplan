@@ -1,27 +1,30 @@
-# ⚡ Elektroplan CAE Suite (EPLAN Electric P8 Edition)
+# ⚡ Elektroplan CAE Suite
 
-Eine moderne, professionelle **Elektroplan- & Stromlaufplan-Software für Windows** mit voller nativer Kompatibilität für **EPLAN Electric P8**-Dateien (`.zw1`, `.edz`, `.xml`) und normgerechter Schaltungsplanung nach **DIN EN 81346-2** und **IEC 60617**.
+Eine moderne, professionelle **Elektroplan- & Stromlaufplan-Software für Windows und Web** mit Unterstützung für Projekt-Archive (`.zw1`, `.edz`, `.xml`) und normgerechter Schaltungsplanung nach **DIN EN 81346-2**, **IEC 60617** und **DIN EN ISO 7200**.
 
 ---
 
 ## 🚀 Highlights & Features
 
-### 📦 EPLAN Electric P8 Kompatibilität
-* **Projekt-Backups (`.zw1`)**: Öffnen, Entpacken, Bearbeiten und erneuter Export von kompletten EPLAN `.zw1` Projektarchiven inklusive `.elk` Steuerdatei und `*.edb` Projektdatenbank-Verzeichnis.
-* **EPLAN Data Portal Makros (`.edz`)**: Import und Inspektion von Artikel- und Makropaketen mit 2D/3D-Stammdaten (`.ema`/`.ems`) und XML-Artikelspezifikationen.
-* **EPLAN-XML**: Standardisiertes XML-Austauschformat für Schaltpläne, Symbole und Verbindungen.
+### 📦 Projekt- & Archiv-Verwaltung
+* **Projekt-Backups (`.zw1`)**: Öffnen, Entpacken, Bearbeiten und erneuter Export von kompletten Projektarchiven inklusive Steuerdatei und Projektdatenbank-Verzeichnis.
+* **Artikel- & Makropakete (`.edz`)**: Import und Inspektion von Artikel- und Makropaketen mit 2D/3D-Stammdaten und XML-Artikelspezifikationen.
+* **Projekt-XML**: Standardisiertes XML-Austauschformat für Schaltpläne, Symbole und Verbindungen.
 * **Reverse-Engineering via REA**: Integrierte Container- und Artefakt-Analyse für Binärarchive und Datenstrukturen.
 
 ### 📐 Normgerechte Schaltungsplanung (DIN EN 81346 / IEC 60617)
 * **Kennzeichnungsstruktur**: Vollständige Unterstützung von `=Anlage` (z.B. `=A1`), `+Ort` (z.B. `+S1`) und `-BMK` (Betriebsmittelkennzeichen wie `-K1`, `-Q1`, `-M1`).
-* **EPLAN Normblatt (DIN A3 Landscape)**:
+* **CAD Normblatt (DIN A3 Landscape)**:
   * Pfad-Spalten `0` bis `9` für präzise Querverweise.
   * Zeilenraster `A` bis `F`.
   * Genormtes Schriftfeld nach **DIN EN ISO 7200** (Projektname, Zeichnungsnummer, Datum, Ersteller, Blattnummer).
 * **Automatischer Querverweis- & Kontaktspiegel-Engine**:
   * Schützspulen berechnen und zeichnen automatisch den **Kontaktspiegel** aller zugehörigen Kontakte mit Blatt- und Pfadangabe (`/1.2`, `/2.1`).
   * Hilfskontakte zeigen automatisch die Blatt- und Pfadreferenz ihrer übergeordneten Spule an.
-* **DIN EN 60617 Symbolbibliothek & EPLAN Hersteller-Komponenten**:
+* **Autoconnecting & Leitungsverbindungen**:
+  * Automatisches Verbinden von Anschlusspunkten in Fluchtlinie.
+  * Automatische T-Stücke und Knotenpunkte bei abzweigenden Leitungen.
+* **DIN EN 60617 Symbolbibliothek & Hersteller-Komponenten**:
   * **Fehlerstrom-Schutzeinrichtungen (RCD / FI)**:
     * 4-polig: z.B. **Hager CDS440D** / **Siemens 5SV3344-6** (40A / 30mA Typ A mit Summenstromwandler & Prüftaste `T`).
     * 2-polig: z.B. **ABB FH202** / **Hager CDA225D** (25A / 30mA).
@@ -35,18 +38,18 @@ Eine moderne, professionelle **Elektroplan- & Stromlaufplan-Software für Window
   * **Befehls- & Meldegeräte**: NOT-HALT Pilztaster mit Rastung, EIN/AUS-Taster, Meldeleuchten.
   * **Antriebe**: Drehstrom-Asynchronmotoren (M 3~ mit U1, V1, W1, PE).
   * **Klemmen & Versorgung**: Reihenklemmen `-X1`, PE-Schutzklemmen, 24V DC Schaltnetzteile.
-* **Integrierter EPLAN Artikelkatalog**: Direkte Suche nach Herstellern (Hager, Finder, Siemens, ABB, Eaton, Dehn) und 1-Klick-Zuweisung aller Bestelldaten zu platzierten Geräten.
+* **Integrierter Artikelkatalog**: Direkte Suche nach Herstellern (Hager, Finder, Siemens, ABB, Eaton, Dehn) und 1-Klick-Zuweisung aller Bestelldaten zu platzierten Geräten.
 
 ### 📊 Automatische Auswertungen & Reports
 * **Klemmenplan (Terminal Diagram)**: Vollständige Klemmenleisten-Matrix (`-X1`) mit automatischer Zuordnung interner Schaltschrankziele und externer Feldkomponenten.
 * **Stückliste (Bill of Materials / BOM)**: Aggregierte Artikelliste mit Hersteller, Bestellnummer, technischer Beschreibung, Mengenzählung und BMK-Referenzliste.
 
-### 📑 EPLAN Smart PDF-Export (Interaktive Vektor-PDFs)
+### 📑 Smart PDF-Export (Interaktive Vektor-PDFs)
 * **Klickbare Querverweis-Hyperlinks**: Beim Anklicken eines Querverweises im PDF (z.B. `/1.4` an einem Hilfskontakt oder `/2.1` im Kontaktspiegel einer Schützspule) springt der PDF-Reader direkt auf das Zielblatt zum Gegenstück!
 * **Strukturierter Lesezeichenbaum (Bookmarks)**: Dokumentengliederung nach DIN EN 81346 (`=Anlage` ➔ `+Ort` ➔ `Blatt-Nr: Titel`).
-* **Vektor-Normblatt**: Druck des EPLAN DIN A3 / DIN A4 Normblatts mit Spalten `0..9`, Zeilen `A..F` und Schriftfeld nach DIN EN ISO 7200.
+* **Vektor-Normblatt**: Druck des DIN A3 / DIN A4 Normblatts mit Spalten `0..9`, Zeilen `A..F` und Schriftfeld nach DIN EN ISO 7200.
 * **Integrierte Auswertungsseiten**: Optionales automatisches Anhängen des Klemmenplans und der Stückliste als vollformatierte PDF-Seiten.
-* **Farb- & Monochrom-Modus**: Ausgabe in EPLAN-Farbgebung oder optimiert für Schwarz/Weiß-Großformatplotter.
+* **Farb- & Monochrom-Modus**: Ausgabe in Standard-Farbgebung oder optimiert für Schwarz/Weiß-Großformatplotter.
 
 ---
 
@@ -89,7 +92,7 @@ Elektroplan unterstützt mobile Endgeräte (iOS Safari, Android Chrome) mit nati
   * **Touch-Platzierung**: Symbol im Menü auswählen und mit Fingertipp auf dem Plan positionieren.
   * **Verschieben von Bauteilen**: Bauteile antippen und an die gewünschte Rasterposition ziehen.
 * **Mobiles UI-Design**:
-  * Einklappbare Off-Canvas Drawers (Menü `☰` für Seiten, Symbole & Artikelkatalog; Info `⚙️` für Eigenschaften & EPLAN Inspektor).
+  * Einklappbare Off-Canvas Drawers (Menü `☰` für Seiten, Symbole & Artikelkatalog; Info `⚙️` für Eigenschaften & Archiv-Inspektor).
   * **Floating Quick Bar**: Schnellzugriff auf Zoom-Fit (`🔍 Fit`), Verdrahten (`🔌`), Drehen (`🔄`), Löschen (`🗑️`) und PDF-Export.
 * **Progressive Web App (PWA)**:
   * Im mobilen Browser kann Elektroplan über *"Zum Home-Bildschirm hinzufügen"* als eigenständige Vollbild-App ohne Browser-Leiste installiert werden.

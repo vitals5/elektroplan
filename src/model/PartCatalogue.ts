@@ -1,5 +1,5 @@
 // src/model/PartCatalogue.ts
-// EPLAN Electric P8 Manufacturer Parts Catalogue & Data Portal Component Database
+// Elektroplan Manufacturer Parts Catalogue & Component Database
 
 export interface ManufacturerPart {
   id: string;

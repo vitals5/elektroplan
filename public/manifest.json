@@ -1,7 +1,7 @@
 {
   "name": "Elektroplan CAE Suite",
   "short_name": "Elektroplan",
-  "description": "EPLAN Electric P8 kompatible Elektro-CAD Web & Mobile Suite",
+  "description": "Elektroplan CAE Suite - Professionelle Elektro-CAD Web & Mobile Suite",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#12161f",

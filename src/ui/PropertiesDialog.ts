@@ -1,36 +1,36 @@
-// src/ui/EplanPropertiesDialog.ts
-// EPLAN Electric P8 style component properties modal ("Eigenschaften (Schaltzeichen)")
+// src/ui/PropertiesDialog.ts
+// Component properties modal ("Eigenschaften (Schaltzeichen)")
 
 import { PlacedComponent, Project, TextFormatConfig } from '../model/types';
 import { getSymbolById } from '../model/symbols';
 import { MANUFACTURER_PARTS } from '../model/PartCatalogue';
 import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
 
-export interface EplanPropertiesDialogCallbacks {
+export interface PropertiesDialogCallbacks {
   onSave: (updated: PlacedComponent) => void;
   onNavigateToPage?: (pageId: string) => void;
 }
 
-export class EplanPropertiesDialog {
+export class PropertiesDialog {
   private component: PlacedComponent;
   private project: Project;
-  private callbacks: EplanPropertiesDialogCallbacks;
+  private callbacks: PropertiesDialogCallbacks;
   private activeTab: 'symbol' | 'display' | 'part' | 'crossref' | 'format' = 'symbol';
 
-  constructor(component: PlacedComponent, project: Project, callbacks: EplanPropertiesDialogCallbacks) {
+  constructor(component: PlacedComponent, project: Project, callbacks: PropertiesDialogCallbacks) {
     this.component = JSON.parse(JSON.stringify(component)); // deep clone for editing
     this.project = project;
     this.callbacks = callbacks;
   }
 
   public show(): void {
-    const existing = document.getElementById('eplanPropertiesModal');
+    const existing = document.getElementById('propertiesModal');
     if (existing) existing.remove();
 
     const sym = getSymbolById(this.component.symbolId);
 
     const modal = document.createElement('div');
-    modal.id = 'eplanPropertiesModal';
+    modal.id = 'propertiesModal';
     modal.className = 'modal-backdrop';
     modal.style.position = 'fixed';
     modal.style.inset = '0';
@@ -42,7 +42,7 @@ export class EplanPropertiesDialog {
     modal.style.padding = '12px';
 
     modal.innerHTML = `
-      <div class="modal-card eplan-window" style="
+      <div class="modal-card ecad-window" style="
         background: #232731;
         border: 1px solid #4a5568;
         border-radius: 6px;
@@ -56,7 +56,7 @@ export class EplanPropertiesDialog {
         flex-direction: column;
       ">
         <!-- Titlebar -->
-        <div class="eplan-window-header" style="
+        <div class="ecad-window-header" style="
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -72,19 +72,19 @@ export class EplanPropertiesDialog {
           <button id="btnClosePropModal" style="background: none; border: none; color: #a0aec0; font-size: 20px; cursor: pointer; line-height: 1;">&times;</button>
         </div>
 
-        <!-- EPLAN Tab Navigation -->
-        <div class="eplan-tab-bar" style="
+        <!-- Tab Navigation -->
+        <div class="ecad-tab-bar" style="
           display: flex;
           background: #1c1f26;
           border-bottom: 1px solid #3e4656;
           padding: 0 8px;
           overflow-x: auto;
         ">
-          <button class="eplan-tab-btn ${this.activeTab === 'symbol' ? 'active' : ''}" data-tab="symbol">Schaltzeichen</button>
-          <button class="eplan-tab-btn ${this.activeTab === 'display' ? 'active' : ''}" data-tab="display">Anzeige / Beschriftung</button>
-          <button class="eplan-tab-btn ${this.activeTab === 'part' ? 'active' : ''}" data-tab="part">Artikel</button>
-          <button class="eplan-tab-btn ${this.activeTab === 'crossref' ? 'active' : ''}" data-tab="crossref">Querverweise / Kontakte</button>
-          <button class="eplan-tab-btn ${this.activeTab === 'format' ? 'active' : ''}" data-tab="format">Darstellung & Lage</button>
+          <button class="ecad-tab-btn ${this.activeTab === 'symbol' ? 'active' : ''}" data-tab="symbol">Schaltzeichen</button>
+          <button class="ecad-tab-btn ${this.activeTab === 'display' ? 'active' : ''}" data-tab="display">Anzeige / Beschriftung</button>
+          <button class="ecad-tab-btn ${this.activeTab === 'part' ? 'active' : ''}" data-tab="part">Artikel</button>
+          <button class="ecad-tab-btn ${this.activeTab === 'crossref' ? 'active' : ''}" data-tab="crossref">Querverweise / Kontakte</button>
+          <button class="ecad-tab-btn ${this.activeTab === 'format' ? 'active' : ''}" data-tab="format">Darstellung & Lage</button>
         </div>
 
         <!-- Tab Body Content -->
@@ -375,7 +375,7 @@ export class EplanPropertiesDialog {
         <div style="display: flex; flex-direction: column; gap: 12px;">
           <div style="background: #1c212c; border: 1px solid #3e4656; border-radius: 6px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center;">
             <div>
-              <div style="font-size: 12px; font-weight: 600; color: #63b3ed;">EPLAN Data Portal / Herstellerartikel zuweisen</div>
+              <div style="font-size: 12px; font-weight: 600; color: #63b3ed;">Herstellerartikel / Katalogdaten zuweisen</div>
               <div style="font-size: 11px; color: #a0aec0;">Wählen Sie einen vorgefertigten Normartikel aus der Datenbank</div>
             </div>
             <select id="quickPartSelect" class="form-input" style="width: auto; max-width: 260px;">
@@ -413,7 +413,7 @@ export class EplanPropertiesDialog {
         <div style="display: flex; flex-direction: column; gap: 12px;">
           <div style="background: #181d26; border: 1px solid #3e4656; border-radius: 6px; padding: 12px;">
             <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: #f6ad55; margin-bottom: 6px;">
-              Querverweis-Status (DIN EN 81346 / EPLAN P8):
+              Querverweis-Status (DIN EN 81346 / IEC 60617):
             </div>
             <div style="font-size: 14px; font-family: monospace; color: #edf2f7; font-weight: bold; margin-bottom: 6px;">
               ${crossRefText}
@@ -562,12 +562,12 @@ export class EplanPropertiesDialog {
     });
 
     // Tab buttons
-    modal.querySelectorAll('.eplan-tab-btn').forEach(btn => {
+    modal.querySelectorAll('.ecad-tab-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         this.collectFormData(modal);
         const target = e.currentTarget as HTMLElement;
         this.activeTab = target.dataset.tab as any;
-        modal.querySelectorAll('.eplan-tab-btn').forEach(b => b.classList.remove('active'));
+        modal.querySelectorAll('.ecad-tab-btn').forEach(b => b.classList.remove('active'));
         target.classList.add('active');
 
         const content = modal.querySelector('#propTabContent');

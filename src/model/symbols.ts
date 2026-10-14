@@ -398,7 +398,7 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     description: 'Abbruchstelle für Seitenquerverweis (Potenzialweiterführung)'
   },
 
-  // --- 7. EXTERNE EPLAN HERSTELLER-KOMPONENTEN ---
+  // --- 7. HERSTELLER-KOMPONENTEN & SCHALTGERÄTE ---
   {
     id: 'rcd_4p',
     name: 'FI-Schutzschalter (4-polig)',
@@ -694,7 +694,7 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     description: 'Dehn DEHNguard M TNS 275 Überspannungsableiter Typ 2'
   },
 
-  // --- 8. VERBINDUNGSSYMBOLE & T-STÜCKE (EPLAN P8 STANDARD) ---
+  // --- 8. VERBINDUNGSSYMBOLE & T-STÜCKE (DIN EN 60617 STANDARD) ---
   {
     id: 't_piece_down',
     name: 'T-Stück (Abzweig unten)',
@@ -714,7 +714,7 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
       <line x1="10" y1="10" x2="10" y2="20" stroke="currentColor" stroke-width="2"/>
       <circle cx="10" cy="10" r="3" fill="currentColor"/>
     `,
-    description: 'EPLAN T-Verbindung Durchgang waagerecht mit Abzweig nach unten'
+    description: 'T-Verbindung Durchgang waagerecht mit Abzweig nach unten'
   },
   {
     id: 't_piece_up',
@@ -732,10 +732,10 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     ],
     svgContent: `
       <line x1="0" y1="10" x2="20" y2="10" stroke="currentColor" stroke-width="2"/>
-      <line x1="10" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="10" y1="10" x2="10" y2="10" stroke="currentColor" stroke-width="2"/>
       <circle cx="10" cy="10" r="3" fill="currentColor"/>
     `,
-    description: 'EPLAN T-Verbindung Durchgang waagerecht mit Abzweig nach oben'
+    description: 'T-Verbindung Durchgang waagerecht mit Abzweig nach oben'
   },
   {
     id: 't_piece_right',
@@ -756,7 +756,7 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
       <line x1="10" y1="10" x2="20" y2="10" stroke="currentColor" stroke-width="2"/>
       <circle cx="10" cy="10" r="3" fill="currentColor"/>
     `,
-    description: 'EPLAN T-Verbindung Durchgang senkrecht mit Abzweig nach rechts'
+    description: 'T-Verbindung Durchgang senkrecht mit Abzweig nach rechts'
   },
   {
     id: 't_piece_left',
@@ -777,7 +777,7 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
       <line x1="0" y1="10" x2="10" y2="10" stroke="currentColor" stroke-width="2"/>
       <circle cx="10" cy="10" r="3" fill="currentColor"/>
     `,
-    description: 'EPLAN T-Verbindung Durchgang senkrecht mit Abzweig nach links'
+    description: 'T-Verbindung Durchgang senkrecht mit Abzweig nach links'
   },
   {
     id: 'corner_top_right',

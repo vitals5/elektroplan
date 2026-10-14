@@ -11,7 +11,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 700,
-    title: 'Elektroplan CAE Suite (EPLAN Electric P8 Edition)',
+    title: 'Elektroplan CAE Suite',
     backgroundColor: '#12161f',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -51,12 +51,12 @@ function createMenu() {
           accelerator: 'CmdOrCtrl+O',
           click: async () => {
             const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-              title: 'EPLAN / Elektroplan Projekt öffnen',
+              title: 'Projekt öffnen',
               filters: [
-                { name: 'EPLAN & Elektroplan Dateien', extensions: ['zw1', 'edz', 'xml', 'json', 'elk'] },
-                { name: 'EPLAN Backup (*.zw1)', extensions: ['zw1'] },
-                { name: 'EPLAN Data Portal Makro (*.edz)', extensions: ['edz'] },
-                { name: 'EPLAN XML (*.xml)', extensions: ['xml'] },
+                { name: 'Elektroplan- & Projektdateien', extensions: ['zw1', 'edz', 'xml', 'json', 'elk'] },
+                { name: 'Projekt-Archiv (*.zw1)', extensions: ['zw1'] },
+                { name: 'Artikel-/Makro-Paket (*.edz)', extensions: ['edz'] },
+                { name: 'Projekt-XML (*.xml)', extensions: ['xml'] },
                 { name: 'Elektroplan Projekt (*.json)', extensions: ['json'] },
                 { name: 'Alle Dateien', extensions: ['*'] }
               ],
@@ -80,15 +80,15 @@ function createMenu() {
           click: () => mainWindow?.webContents.send('menu:save')
         },
         {
-          label: 'Exportieren als EPLAN .zw1...',
+          label: 'Exportieren als Projekt-Archiv (.zw1)...',
           click: () => mainWindow?.webContents.send('menu:exportZw1')
         },
         {
-          label: 'Exportieren als EPLAN XML...',
+          label: 'Exportieren als Projekt-XML...',
           click: () => mainWindow?.webContents.send('menu:exportXml')
         },
         {
-          label: 'EPLAN PDF-Exportieren (Smart PDF)...',
+          label: 'PDF exportieren (Smart PDF)...',
           accelerator: 'CmdOrCtrl+E',
           click: () => mainWindow?.webContents.send('menu:exportPdf')
         },
@@ -146,8 +146,8 @@ function createMenu() {
             dialog.showMessageBox(mainWindow, {
               type: 'info',
               title: 'Über Elektroplan Suite',
-              message: 'Elektroplan CAE Suite 1.0 (Windows Edition)',
-              detail: 'Professionelle Elektroplan-Software mit nativer Kompatibilität für EPLAN Electric P8 (.zw1, .edz, .xml) und normgerechter Schaltungsplanung nach DIN EN 81346 / IEC 60617.'
+              message: 'Elektroplan CAE Suite 2.0 (Windows Edition)',
+              detail: 'Professionelle Elektroplan-Software mit Projektarchiv-Unterstützung (.zw1, .edz, .xml) und normgerechter Schaltungsplanung nach DIN EN 81346 / IEC 60617.'
             });
           }
         }
@@ -162,9 +162,9 @@ function createMenu() {
 // IPC Handlers for native Windows file operations
 ipcMain.handle('dialog:openFile', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-    title: 'EPLAN Datei auswählen',
+    title: 'Projekt-Datei auswählen',
     filters: [
-      { name: 'EPLAN & Elektroplan Dateien', extensions: ['zw1', 'edz', 'xml', 'json', 'elk'] },
+      { name: 'Elektroplan- & Projektdateien', extensions: ['zw1', 'edz', 'xml', 'json', 'elk'] },
       { name: 'Alle Dateien', extensions: ['*'] }
     ],
     properties: ['openFile']

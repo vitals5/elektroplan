@@ -1,9 +1,9 @@
-// src/export/EplanPdfExporter.ts
-// Replicates EPLAN Electric P8 Smart PDF Export:
+// src/export/PdfExporter.ts
+// Smart Vector PDF Export:
 // - Multi-page vector PDF (DIN A3 / DIN A4 Landscape)
 // - Interactive cross-reference hyperlinks (jump between coil and contacts)
 // - PDF document outline / bookmarks based on DIN EN 81346 (=Anlage+Ort/Blatt)
-// - EPLAN DIN EN ISO 7200 plot frame and title block
+// - DIN EN ISO 7200 plot frame and title block
 // - Appended report pages: Klemmenplan and Stückliste (BOM)
 
 import { jsPDF } from 'jspdf';
@@ -24,7 +24,7 @@ export interface PdfExportOptions {
   plotFrame: boolean;
 }
 
-export class EplanPdfExporter {
+export class PdfExporter {
   public static async exportToPdf(project: Project, options: PdfExportOptions): Promise<Blob> {
     const isA3 = options.paperFormat === 'a3';
     const pageWidthMm = isA3 ? 420 : 297;
@@ -37,13 +37,13 @@ export class EplanPdfExporter {
       compress: true
     });
 
-    // Set Document Properties (EPLAN Metadata)
+    // Set Document Properties
     doc.setProperties({
       title: `${project.name} - Stromlaufplan`,
       subject: `Kommission: ${project.pages[0]?.plotFrame.titleBlock.commission || 'KOM-2026'}`,
-      author: project.author || 'EPLAN Engineer',
-      creator: 'Elektroplan CAE Suite (EPLAN Electric P8 Edition)',
-      keywords: 'EPLAN, Electric P8, DIN EN 81346, IEC 60617, Schaltplan, CAD'
+      author: project.author || 'Elektroplan Engineer',
+      creator: 'Elektroplan CAE Suite',
+      keywords: 'Elektroplan, DIN EN 81346, IEC 60617, Schaltplan, CAD, ECAD'
     });
 
     // Filter pages to export
@@ -135,7 +135,7 @@ export class EplanPdfExporter {
   }
 
   /**
-   * Renders the EPLAN DIN A3 / A4 Normblatt (Plot Frame) with column paths 0..9 and title block
+   * Renders the DIN A3 / A4 Normblatt (Plot Frame) with column paths 0..9 and title block
    */
   private static renderPlotFrame(
     doc: jsPDF,
@@ -351,7 +351,7 @@ export class EplanPdfExporter {
               // Register internal jump link in PDF
               doc.link(linkX, linkY, linkW, linkH, { pageNumber: targetPdfPage });
 
-              // Draw subtle dotted link frame (EPLAN blue hint in color mode)
+              // Draw subtle dotted link frame (blue hint in color mode)
               if (options.colorMode === 'color') {
                 doc.setDrawColor(66, 153, 225);
                 doc.setLineWidth(0.15);
@@ -574,7 +574,7 @@ export class EplanPdfExporter {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
     doc.setTextColor(0, 0, 0);
-    doc.text('KLEMMENPLAN (DIN EN 81346 / EPLAN Electric P8)', 20, curY);
+    doc.text('KLEMMENPLAN (DIN EN 81346 / IEC 60617)', 20, curY);
     curY += 10;
 
     for (const [stripName, entries] of strips.entries()) {

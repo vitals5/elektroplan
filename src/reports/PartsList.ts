@@ -1,5 +1,5 @@
 // src/reports/PartsList.ts
-// Generates Bill of Materials (Stückliste / Artikelliste) according to EPLAN P8 standards
+// Generates Bill of Materials (Stückliste / Artikelliste) according to DIN EN 81346 standards
 
 import { Project } from '../model/types';
 import { getSymbolById } from '../model/symbols';

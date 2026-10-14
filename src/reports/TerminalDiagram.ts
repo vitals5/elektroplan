@@ -1,5 +1,5 @@
 // src/reports/TerminalDiagram.ts
-// Generates terminal diagrams (Klemmenplan) according to DIN EN 81346 / EPLAN P8 standards
+// Generates terminal diagrams (Klemmenplan) according to DIN EN 81346 standards
 
 import { Project, PlacedComponent, Wire } from '../model/types';
 import { getSymbolById } from '../model/symbols';

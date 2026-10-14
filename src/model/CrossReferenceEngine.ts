@@ -1,5 +1,5 @@
 // src/model/CrossReferenceEngine.ts
-// Calculates automatic cross-references (Kontaktspiegel & Querverweise) according to EPLAN Electric P8 logic
+// Calculates automatic cross-references (Kontaktspiegel & Querverweise) according to DIN EN 81346 logic
 
 import { Project, PlacedComponent, Page } from './types';
 import { getSymbolById } from './symbols';
