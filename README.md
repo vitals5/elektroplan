@@ -79,6 +79,24 @@ npm run dev
 # Im Browser öffnen: http://localhost:5173
 ```
 
+## 📱 Smartphone & Tablet Unterstützung
+
+Elektroplan unterstützt mobile Endgeräte (iOS Safari, Android Chrome) mit nativer Touch-Bedienung und responsivem Drawer-Layout:
+
+* **Touch-Gesten**:
+  * **2-Finger Pinch-to-Zoom**: Stufenloses Vergrößern und Verkleinern des Schaltplans.
+  * **1-Finger Pan**: Intuitives Verschieben des DIN A3 Normblatts durch Wischen.
+  * **Touch-Platzierung**: Symbol im Menü auswählen und mit Fingertipp auf dem Plan positionieren.
+  * **Verschieben von Bauteilen**: Bauteile antippen und an die gewünschte Rasterposition ziehen.
+* **Mobiles UI-Design**:
+  * Einklappbare Off-Canvas Drawers (Menü `☰` für Seiten, Symbole & Artikelkatalog; Info `⚙️` für Eigenschaften & EPLAN Inspektor).
+  * **Floating Quick Bar**: Schnellzugriff auf Zoom-Fit (`🔍 Fit`), Verdrahten (`🔌`), Drehen (`🔄`), Löschen (`🗑️`) und PDF-Export.
+* **Progressive Web App (PWA)**:
+  * Im mobilen Browser kann Elektroplan über *"Zum Home-Bildschirm hinzufügen"* als eigenständige Vollbild-App ohne Browser-Leiste installiert werden.
+* **Live Smartphone-Testmöglichkeiten**:
+  1. **Über GitHub Pages (Weltweit über Internet)**: [https://vitals5.github.io/elektroplan/](https://vitals5.github.io/elektroplan/)
+  2. **Im lokalen WLAN**: Mit `npm run dev` starten und am Smartphone `http://<PC-IP>:5173` aufrufen (oder den QR-Code über den Button `📱 Mobil testen` in der App scannen).
+
 ---
 
 ## 📄 Lizenz

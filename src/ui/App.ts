@@ -10,6 +10,7 @@ import { TerminalDiagramGenerator } from '../reports/TerminalDiagram';
 import { PartsListGenerator } from '../reports/PartsList';
 import { PdfExportDialog } from './PdfExportDialog';
 import { PartCatalogue, MANUFACTURER_PARTS, ManufacturerPart } from '../model/PartCatalogue';
+import { MobileConnectDialog } from './MobileConnectDialog';
 
 export class App {
   private project!: Project;
@@ -21,6 +22,8 @@ export class App {
   private symbolCategoryFilter: string = 'all';
   private manufacturerFilter: string = 'all';
   private manufacturerSearchQuery: string = '';
+  private leftDrawerOpen: boolean = false;
+  private rightDrawerOpen: boolean = false;
 
   constructor() {
     this.initDefaultProject();
@@ -45,49 +48,60 @@ export class App {
       <!-- Header Toolbar -->
       <header class="app-header">
         <div class="brand-section">
+          <button class="btn btn-drawer-toggle" id="btnToggleLeftSidebar" title="Menü (Seiten, Symbole, Artikel)">☰ <span class="hide-mobile">Menü</span></button>
           <div class="brand-logo">
             ⚡ Elektroplan <span class="badge-eplan">EPLAN P8</span>
           </div>
-          <span style="font-size: 11px; color: var(--text-muted); border-left: 1px solid var(--border-color); padding-left: 10px;" id="headerProjectName">
+          <span style="font-size: 11px; color: var(--text-muted); border-left: 1px solid var(--border-color); padding-left: 10px;" class="hide-mobile" id="headerProjectName">
             ${this.project.name}
           </span>
         </div>
 
         <div class="toolbar">
-          <button class="btn" id="btnNewProject" title="Neues Projekt anlegen">📄 Neu</button>
+          <button class="btn btn-mobile-highlight" id="btnMobileConnect" title="Auf dem Smartphone testen">📱 <span class="hide-mobile">Mobil testen</span></button>
+          
+          <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
+
+          <button class="btn" id="btnNewProject" title="Neues Projekt anlegen">📄 <span class="hide-mobile">Neu</span></button>
           <label class="btn" title="EPLAN .zw1, .edz, .xml oder .json öffnen" style="margin: 0;">
-            📂 Öffnen
+            📂 <span class="hide-mobile">Öffnen</span>
             <input type="file" id="fileInput" accept=".zw1,.edz,.xml,.json,.elk" style="display: none;">
           </label>
-          <button class="btn" id="btnSaveJson" title="Projekt speichern">💾 Speichern</button>
+          <button class="btn" id="btnSaveJson" title="Projekt speichern">💾 <span class="hide-mobile">Speichern</span></button>
           
-          <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 4px;"></div>
+          <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
 
-          <button class="btn btn-primary" id="btnExportPdf" title="Intelligenter EPLAN P8 PDF-Export mit interaktiven Querverweisen">📑 PDF Export</button>
-          <button class="btn" id="btnExportZw1" title="Als EPLAN .zw1 Backup exportieren">📦 EPLAN .zw1</button>
-          <button class="btn" id="btnExportXml" title="Als EPLAN XML exportieren">📋 EPLAN XML</button>
-          <button class="btn" id="btnPrintSvg" title="Drucken / Als SVG speichern">🖨️ Drucken / SVG</button>
+          <button class="btn btn-primary" id="btnExportPdf" title="Intelligenter EPLAN P8 PDF-Export mit interaktiven Querverweisen">📑 PDF</button>
+          <button class="btn hide-mobile" id="btnExportZw1" title="Als EPLAN .zw1 Backup exportieren">📦 EPLAN .zw1</button>
+          <button class="btn hide-mobile" id="btnExportXml" title="Als EPLAN XML exportieren">📋 EPLAN XML</button>
+          <button class="btn hide-mobile" id="btnPrintSvg" title="Drucken / Als SVG speichern">🖨️ Drucken</button>
 
-          <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 4px;"></div>
+          <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
 
-          <button class="btn active" id="btnToolSelect" title="Auswahlwerkzeug">👆 Auswählen</button>
-          <button class="btn" id="btnToolWire" title="Verbindungslinie zeichnen">🔌 Verdrahten</button>
-          <button class="btn" id="btnToolRotate" title="Ausgewähltes Bauteil um 90° drehen (R)">🔄 Drehen</button>
-          <button class="btn" id="btnToolDelete" title="Ausgewähltes Element löschen (Entf)">🗑️ Löschen</button>
+          <button class="btn active" id="btnToolSelect" title="Auswahlwerkzeug">👆 <span class="hide-mobile">Auswählen</span></button>
+          <button class="btn" id="btnToolWire" title="Verbindungslinie zeichnen">🔌 <span class="hide-mobile">Verdrahten</span></button>
+          <button class="btn" id="btnToolRotate" title="Ausgewähltes Bauteil um 90° drehen (R)">🔄 <span class="hide-mobile">Drehen</span></button>
+          <button class="btn" id="btnToolDelete" title="Ausgewähltes Element löschen (Entf)">🗑️ <span class="hide-mobile">Löschen</span></button>
 
-          <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 4px;"></div>
+          <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
 
           <button class="btn" id="btnZoomIn" title="Vergrößern">➕</button>
           <button class="btn" id="btnZoomOut" title="Verkleinern">➖</button>
+          <button class="btn" id="btnZoomFit" title="Blatt anpassen">🔍 Fit</button>
           <button class="btn" id="btnZoomReset" title="100% Zoom">1:1</button>
-          <button class="btn active" id="btnGridSnap" title="Rasterfang ein/aus">📐 Rasterfang</button>
+          <button class="btn hide-mobile active" id="btnGridSnap" title="Rasterfang ein/aus">📐 Raster</button>
+
+          <button class="btn btn-drawer-toggle" id="btnToggleRightSidebar" title="Eigenschaften & Inspektor">⚙️ <span class="hide-mobile">Info</span></button>
         </div>
       </header>
 
+      <!-- Backdrop for mobile drawers -->
+      <div class="drawer-backdrop" id="drawerBackdrop"></div>
+
       <!-- Main Workspace -->
       <div class="main-container">
-        <!-- Left Sidebar -->
-        <aside class="sidebar">
+        <!-- Left Sidebar (Drawer on mobile) -->
+        <aside class="sidebar" id="leftSidebar">
           <div class="tab-nav">
             <button class="tab-btn active" data-tab="pages">Seiten</button>
             <button class="tab-btn" data-tab="symbols">Symbole</button>
@@ -99,13 +113,28 @@ export class App {
         </aside>
 
         <!-- Center CAD Canvas -->
-        <main class="canvas-wrapper" id="canvasContainer"></main>
+        <main class="canvas-wrapper" id="canvasContainer">
+          <!-- Floating Symbol Placement Banner -->
+          <div class="place-hint-banner" id="placeHintBanner" style="display: none;">
+            <span id="placeHintText">📍 Bauteil gewählt: Tippe auf den Plan</span>
+            <button class="btn-banner-close" id="btnCancelPlace" title="Platzieren abbrechen">✕</button>
+          </div>
 
-        <!-- Right Sidebar -->
-        <aside class="sidebar right">
+          <!-- Mobile Floating Action Bar -->
+          <div class="mobile-floating-bar" id="mobileFloatingBar">
+            <button class="btn-fab" id="fabFit" title="Blatt anpassen">🔍 Fit</button>
+            <button class="btn-fab" id="fabWire" title="Verdrahten">🔌 Draht</button>
+            <button class="btn-fab" id="fabRotate" title="Drehen">🔄 Drehen</button>
+            <button class="btn-fab" id="fabDelete" title="Löschen">🗑️ Löschen</button>
+            <button class="btn-fab btn-fab-primary" id="fabPdf" title="PDF Export">📑 PDF</button>
+          </div>
+        </main>
+
+        <!-- Right Sidebar (Drawer on mobile) -->
+        <aside class="sidebar right" id="rightSidebar">
           <div class="tab-nav">
             <button class="tab-btn active" data-right-tab="properties">Eigenschaften</button>
-            <button class="tab-btn" data-right-tab="eplan">EPLAN / REA Inspektor</button>
+            <button class="tab-btn" data-right-tab="eplan">EPLAN / REA</button>
           </div>
           <div class="tab-content" id="rightTabContent"></div>
         </aside>
@@ -113,8 +142,8 @@ export class App {
 
       <!-- Bottom Status Bar -->
       <footer class="status-bar">
-        <div id="statusLeft">Bereit | DIN EN 81346-2 / IEC 60617</div>
-        <div id="statusRight">Seite 1 / 3 | Raster: 10px (4mm) | Koordinaten: X: 0, Y: 0</div>
+        <div id="statusLeft">Bereit | DIN EN 81346 / IEC 60617</div>
+        <div id="statusRight">Seite 1 / 3 | Raster: 10px | Touch & Maus aktiv</div>
       </footer>
     `;
 
@@ -137,6 +166,8 @@ export class App {
         this.renderRightTab();
       },
       onProjectModified: () => {
+        const banner = document.getElementById('placeHintBanner');
+        if (banner) banner.style.display = 'none';
         this.updateUI();
       }
     });
@@ -145,7 +176,105 @@ export class App {
     this.canvas.setPage(this.project.activePageId || this.project.pages[0].id);
   }
 
+  public toggleLeftDrawer(open?: boolean): void {
+    const sidebar = document.getElementById('leftSidebar');
+    const backdrop = document.getElementById('drawerBackdrop');
+    this.leftDrawerOpen = open !== undefined ? open : !this.leftDrawerOpen;
+    if (this.leftDrawerOpen) {
+      this.toggleRightDrawer(false);
+      sidebar?.classList.add('open');
+      backdrop?.classList.add('active');
+    } else {
+      sidebar?.classList.remove('open');
+      if (!this.rightDrawerOpen) backdrop?.classList.remove('active');
+    }
+  }
+
+  public toggleRightDrawer(open?: boolean): void {
+    const sidebar = document.getElementById('rightSidebar');
+    const backdrop = document.getElementById('drawerBackdrop');
+    this.rightDrawerOpen = open !== undefined ? open : !this.rightDrawerOpen;
+    if (this.rightDrawerOpen) {
+      this.toggleLeftDrawer(false);
+      sidebar?.classList.add('open');
+      backdrop?.classList.add('active');
+    } else {
+      sidebar?.classList.remove('open');
+      if (!this.leftDrawerOpen) backdrop?.classList.remove('active');
+    }
+  }
+
+  public closeAllDrawers(): void {
+    this.toggleLeftDrawer(false);
+    this.toggleRightDrawer(false);
+  }
+
+  public onSymbolSelectedToPlace(symId: string, customName?: string): void {
+    this.canvas.setSymbolToPlace(symId);
+    if (window.innerWidth <= 860) {
+      this.closeAllDrawers();
+      const banner = document.getElementById('placeHintBanner');
+      const bannerText = document.getElementById('placeHintText');
+      if (banner && bannerText) {
+        bannerText.textContent = `📍 ${customName || 'Bauteil'} gewählt: Tippe auf den Plan`;
+        banner.style.display = 'flex';
+      }
+    }
+  }
+
   private bindHeaderEvents(): void {
+    // Mobile Drawer Toggles & Backdrop
+    document.getElementById('btnToggleLeftSidebar')?.addEventListener('click', () => {
+      this.toggleLeftDrawer();
+    });
+
+    document.getElementById('btnToggleRightSidebar')?.addEventListener('click', () => {
+      this.toggleRightDrawer();
+    });
+
+    document.getElementById('drawerBackdrop')?.addEventListener('click', () => {
+      this.closeAllDrawers();
+    });
+
+    // Mobile Connect Dialog
+    document.getElementById('btnMobileConnect')?.addEventListener('click', () => {
+      MobileConnectDialog.show();
+    });
+
+    // Fit to screen
+    document.getElementById('btnZoomFit')?.addEventListener('click', () => {
+      this.canvas.fitToScreen();
+    });
+
+    // Floating action buttons (mobile bar)
+    document.getElementById('fabFit')?.addEventListener('click', () => {
+      this.canvas.fitToScreen();
+    });
+
+    document.getElementById('fabWire')?.addEventListener('click', () => {
+      this.canvas.setMode('wire');
+      this.updateToolButtons('btnToolWire');
+    });
+
+    document.getElementById('fabRotate')?.addEventListener('click', () => {
+      this.canvas.rotateSelected();
+    });
+
+    document.getElementById('fabDelete')?.addEventListener('click', () => {
+      this.canvas.deleteSelected();
+    });
+
+    document.getElementById('fabPdf')?.addEventListener('click', () => {
+      new PdfExportDialog(this.project, this.project.activePageId).show();
+    });
+
+    // Cancel placement
+    document.getElementById('btnCancelPlace')?.addEventListener('click', () => {
+      this.canvas.setMode('select');
+      const banner = document.getElementById('placeHintBanner');
+      if (banner) banner.style.display = 'none';
+    });
+
     // Left tabs
     document.querySelectorAll('[data-tab]').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -325,6 +454,9 @@ export class App {
       node.addEventListener('click', (e) => {
         const id = (e.currentTarget as HTMLElement).dataset.pageId!;
         this.canvas.setPage(id);
+        if (window.innerWidth <= 860) {
+          this.closeAllDrawers();
+        }
         this.updateUI();
       });
     });
@@ -416,7 +548,8 @@ export class App {
     container.querySelectorAll('[data-symbol-id]').forEach(card => {
       card.addEventListener('click', (e) => {
         const symId = (e.currentTarget as HTMLElement).dataset.symbolId!;
-        this.canvas.setSymbolToPlace(symId);
+        const sym = getSymbolById(symId);
+        this.onSymbolSelectedToPlace(symId, sym?.name);
         this.renderSymbolsTab(container);
       });
     });
@@ -512,7 +645,7 @@ export class App {
         const partId = (e.currentTarget as HTMLElement).dataset.partId!;
         const part = MANUFACTURER_PARTS.find(p => p.id === partId);
         if (part) {
-          this.canvas.setSymbolToPlace(part.symbolId);
+          this.onSymbolSelectedToPlace(part.symbolId, `${part.manufacturer} ${part.name}`);
           if (this.selectedComponent) {
             this.selectedComponent.manufacturer = part.manufacturer;
             this.selectedComponent.articleNumber = part.articleNumber;

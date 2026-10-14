@@ -43,6 +43,13 @@ export class CadCanvas {
   private wireStart: { componentId: string; pinId: string } | null = null;
   private currentMousePos: { x: number; y: number } = { x: 0, y: 0 };
 
+  // Touch gesture state
+  private touchMode: 'none' | 'pan' | 'pinch' | 'drag' = 'none';
+  private initialPinchDist: number = 0;
+  private initialPinchScale: number = 1.0;
+  private initialPinchCenter: { x: number; y: number } = { x: 0, y: 0 };
+  private initialPan: { x: number; y: number } = { x: 0, y: 0 };
+
   constructor(container: HTMLElement, project: Project, callbacks: CadCanvasCallbacks) {
     this.container = container;
     this.project = project;
@@ -55,6 +62,7 @@ export class CadCanvas {
     this.svg.style.height = '100%';
     this.svg.style.display = 'block';
     this.svg.style.userSelect = 'none';
+    this.svg.style.touchAction = 'none';
     this.container.appendChild(this.svg);
 
     this.bindEvents();
@@ -112,6 +120,20 @@ export class CadCanvas {
     this.render();
   }
 
+  public fitToScreen(): void {
+    const rect = this.container.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      // Normblatt DIN A3 is roughly 1188 x 840
+      const padding = 15;
+      const scaleX = (rect.width - padding * 2) / 1200;
+      const scaleY = (rect.height - padding * 2) / 850;
+      this.scale = Math.max(0.2, Math.min(1.2, Math.min(scaleX, scaleY)));
+      this.panX = Math.round((rect.width - 1200 * this.scale) / 2);
+      this.panY = Math.round((rect.height - 850 * this.scale) / 2);
+      this.render();
+    }
+  }
+
   public rotateSelected(): void {
     if (!this.selectedComponentId) return;
     const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
@@ -164,11 +186,19 @@ export class CadCanvas {
   }
 
   private bindEvents(): void {
+    // Mouse events
     this.svg.addEventListener('mousedown', (e) => this.onMouseDown(e));
     window.addEventListener('mousemove', (e) => this.onMouseMove(e));
     window.addEventListener('mouseup', () => this.onMouseUp());
     this.svg.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
 
+    // Touch events for smartphone / tablet gestures
+    this.svg.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
+    window.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
+    window.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
+    window.addEventListener('touchcancel', (e) => this.onTouchEnd(e), { passive: false });
+
+    // Keyboard shortcuts
     window.addEventListener('keydown', (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -183,6 +213,61 @@ export class CadCanvas {
     });
   }
 
+  public placeSymbolAt(worldX: number, worldY: number): PlacedComponent | null {
+    if (!this.activeSymbolToPlace) return null;
+    const sym = getSymbolById(this.activeSymbolToPlace);
+    if (!sym) return null;
+
+    const existingCount = this.activePage.components.filter(c => c.symbolId === sym.id).length;
+    const bmk = `${sym.defaultBmkPrefix}${existingCount + 1}`;
+
+    const newComp: PlacedComponent = {
+      id: 'comp_' + Math.random().toString(36).substring(2, 9),
+      symbolId: sym.id,
+      bmk,
+      higherLevelFunction: this.activePage.higherLevel,
+      mountingLocation: this.activePage.location,
+      functionText: sym.defaultFunctionText,
+      technicalCharacteristics: sym.technicalCharacteristics || '',
+      articleNumber: sym.articleNumber || '',
+      manufacturer: sym.manufacturer || '',
+      x: this.snap(worldX),
+      y: this.snap(worldY),
+      rotation: 0,
+      pins: {}
+    };
+
+    this.activePage.components.push(newComp);
+    this.selectedComponentId = newComp.id;
+    this.callbacks.onSelectComponent(newComp);
+    this.notifyModified();
+    this.render();
+    return newComp;
+  }
+
+  private handlePinClick(clickedPin: { componentId: string; pinId: string }): void {
+    if (this.mode === 'wire' || this.wireStart !== null) {
+      if (!this.wireStart) {
+        this.wireStart = clickedPin;
+        this.mode = 'wire';
+      } else if (this.wireStart.componentId !== clickedPin.componentId || this.wireStart.pinId !== clickedPin.pinId) {
+        // Complete wire
+        const wire: Wire = {
+          id: 'w_' + Math.random().toString(36).substring(2, 9),
+          from: this.wireStart,
+          to: clickedPin,
+          potential: 'L1',
+          color: 'BK',
+          crossSection: '1.5mm²'
+        };
+        this.activePage.wires.push(wire);
+        this.wireStart = null;
+        this.notifyModified();
+      }
+      this.render();
+    }
+  }
+
   private onMouseDown(e: MouseEvent): void {
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
       // Middle click or Alt+Click -> Pan
@@ -194,64 +279,17 @@ export class CadCanvas {
     if (e.button !== 0) return;
 
     const world = this.screenToWorld(e.clientX, e.clientY);
-    const snapped = { x: this.snap(world.x), y: this.snap(world.y) };
 
     if (this.mode === 'place_symbol' && this.activeSymbolToPlace) {
-      const sym = getSymbolById(this.activeSymbolToPlace);
-      if (sym) {
-        // Auto generate next BMK
-        const existingCount = this.activePage.components.filter(c => c.symbolId === sym.id).length;
-        const bmk = `${sym.defaultBmkPrefix}${existingCount + 1}`;
-
-        const newComp: PlacedComponent = {
-          id: 'comp_' + Math.random().toString(36).substring(2, 9),
-          symbolId: sym.id,
-          bmk,
-          higherLevelFunction: this.activePage.higherLevel,
-          mountingLocation: this.activePage.location,
-          functionText: sym.defaultFunctionText,
-          technicalCharacteristics: sym.technicalCharacteristics || '',
-          articleNumber: sym.articleNumber || '',
-          manufacturer: sym.manufacturer || '',
-          x: snapped.x,
-          y: snapped.y,
-          rotation: 0,
-          pins: {}
-        };
-
-        this.activePage.components.push(newComp);
-        this.selectedComponentId = newComp.id;
-        this.callbacks.onSelectComponent(newComp);
-        this.notifyModified();
-        this.render();
-      }
+      this.placeSymbolAt(world.x, world.y);
       return;
     }
 
     // Check if clicked on a pin
     const clickedPin = this.findPinAt(world.x, world.y);
     if (clickedPin) {
-      if (this.mode === 'wire' || this.wireStart !== null) {
-        if (!this.wireStart) {
-          this.wireStart = clickedPin;
-          this.mode = 'wire';
-        } else if (this.wireStart.componentId !== clickedPin.componentId || this.wireStart.pinId !== clickedPin.pinId) {
-          // Complete wire
-          const wire: Wire = {
-            id: 'w_' + Math.random().toString(36).substring(2, 9),
-            from: this.wireStart,
-            to: clickedPin,
-            potential: 'L1',
-            color: 'BK',
-            crossSection: '1.5mm²'
-          };
-          this.activePage.wires.push(wire);
-          this.wireStart = null;
-          this.notifyModified();
-        }
-        this.render();
-        return;
-      }
+      this.handlePinClick(clickedPin);
+      return;
     }
 
     // Check if clicked on a component
@@ -335,6 +373,157 @@ export class CadCanvas {
     this.panY = mouseY - (mouseY - this.panY) * (newScale / this.scale);
     this.scale = newScale;
     this.render();
+  }
+
+  private onTouchStart(e: TouchEvent): void {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      this.touchMode = 'pinch';
+      this.isDraggingComponent = false;
+      this.isPanning = false;
+
+      const t0 = e.touches[0];
+      const t1 = e.touches[1];
+      this.initialPinchDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      this.initialPinchScale = this.scale;
+      this.initialPinchCenter = {
+        x: (t0.clientX + t1.clientX) / 2,
+        y: (t0.clientY + t1.clientY) / 2
+      };
+      this.initialPan = { x: this.panX, y: this.panY };
+      return;
+    }
+
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      const world = this.screenToWorld(touch.clientX, touch.clientY);
+
+      // Symbol placing
+      if (this.mode === 'place_symbol' && this.activeSymbolToPlace) {
+        e.preventDefault();
+        this.placeSymbolAt(world.x, world.y);
+        this.mode = 'select';
+        return;
+      }
+
+      // Check pin
+      const clickedPin = this.findPinAt(world.x, world.y);
+      if (clickedPin) {
+        e.preventDefault();
+        this.handlePinClick(clickedPin);
+        return;
+      }
+
+      // Check component
+      const clickedComp = this.findComponentAt(world.x, world.y);
+      if (clickedComp) {
+        e.preventDefault();
+        this.selectedComponentId = clickedComp.id;
+        this.selectedWireId = null;
+        this.callbacks.onSelectComponent(clickedComp);
+        this.callbacks.onSelectWire(null);
+
+        this.touchMode = 'drag';
+        this.isDraggingComponent = true;
+        this.dragOffset = {
+          x: world.x - clickedComp.x,
+          y: world.y - clickedComp.y
+        };
+        this.render();
+        return;
+      }
+
+      // Check wire
+      const clickedWire = this.findWireAt(world.x, world.y);
+      if (clickedWire) {
+        e.preventDefault();
+        this.selectedWireId = clickedWire.id;
+        this.selectedComponentId = null;
+        this.callbacks.onSelectWire(clickedWire);
+        this.callbacks.onSelectComponent(null);
+        this.render();
+        return;
+      }
+
+      // 1-finger pan on empty background
+      this.touchMode = 'pan';
+      this.isPanning = true;
+      this.startPan = { x: touch.clientX - this.panX, y: touch.clientY - this.panY };
+      this.selectedComponentId = null;
+      this.selectedWireId = null;
+      this.callbacks.onSelectComponent(null);
+      this.callbacks.onSelectWire(null);
+      this.render();
+    }
+  }
+
+  private onTouchMove(e: TouchEvent): void {
+    if (e.touches.length === 2 && this.touchMode === 'pinch') {
+      e.preventDefault();
+      const t0 = e.touches[0];
+      const t1 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      if (this.initialPinchDist > 0) {
+        const pinchFactor = dist / this.initialPinchDist;
+        const targetScale = Math.max(0.2, Math.min(3.5, this.initialPinchScale * pinchFactor));
+
+        const centerScreenX = (t0.clientX + t1.clientX) / 2;
+        const centerScreenY = (t0.clientY + t1.clientY) / 2;
+        const deltaCenterX = centerScreenX - this.initialPinchCenter.x;
+        const deltaCenterY = centerScreenY - this.initialPinchCenter.y;
+
+        const rect = this.svg.getBoundingClientRect();
+        const originX = this.initialPinchCenter.x - rect.left;
+        const originY = this.initialPinchCenter.y - rect.top;
+
+        this.panX = originX - (originX - this.initialPan.x) * (targetScale / this.initialPinchScale) + deltaCenterX;
+        this.panY = originY - (originY - this.initialPan.y) * (targetScale / this.initialPinchScale) + deltaCenterY;
+        this.scale = targetScale;
+
+        this.render();
+      }
+      return;
+    }
+
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      if (this.touchMode === 'pan' && this.isPanning) {
+        e.preventDefault();
+        this.panX = touch.clientX - this.startPan.x;
+        this.panY = touch.clientY - this.startPan.y;
+        this.render();
+        return;
+      }
+
+      if (this.touchMode === 'drag' && this.isDraggingComponent && this.selectedComponentId) {
+        e.preventDefault();
+        const world = this.screenToWorld(touch.clientX, touch.clientY);
+        const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
+        if (comp) {
+          comp.x = this.snap(world.x - this.dragOffset.x);
+          comp.y = this.snap(world.y - this.dragOffset.y);
+          this.render();
+        }
+      }
+    }
+  }
+
+  private onTouchEnd(e: TouchEvent): void {
+    if (this.touchMode === 'pinch' && e.touches.length < 2) {
+      this.touchMode = 'none';
+    }
+
+    if (this.touchMode === 'pan') {
+      this.isPanning = false;
+      this.touchMode = 'none';
+    }
+
+    if (this.touchMode === 'drag') {
+      this.isDraggingComponent = false;
+      this.touchMode = 'none';
+      this.notifyModified();
+      this.render();
+    }
   }
 
   private notifyModified(): void {
