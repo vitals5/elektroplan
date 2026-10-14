@@ -97,26 +97,53 @@ export class AutoconnectEngine {
    * - Vertical: pin1.x === pin2.x, pin1 points 'bottom', pin2 points 'top', no intermediate pins
    * - Horizontal: pin1.y === pin2.y, pin1 points 'right', pin2 points 'left', no intermediate pins
    */
+  /**
+   * Clusters pins into groups where coordinate difference is within tolerance (default <= 2px).
+   * Ensures components on half-raster or with subpixel differences connect reliably.
+   */
+  private static clusterPins(
+    pins: RotatedPinInfo[],
+    getCoord: (p: RotatedPinInfo) => number,
+    tolerance: number = 2
+  ): RotatedPinInfo[][] {
+    const sorted = [...pins].sort((a, b) => getCoord(a) - getCoord(b));
+    const clusters: RotatedPinInfo[][] = [];
+
+    for (const pin of sorted) {
+      const val = getCoord(pin);
+      let added = false;
+      if (clusters.length > 0) {
+        const lastCluster = clusters[clusters.length - 1];
+        const baseCoord = getCoord(lastCluster[0]);
+        if (Math.abs(val - baseCoord) <= tolerance) {
+          lastCluster.push(pin);
+          added = true;
+        }
+      }
+      if (!added) {
+        clusters.push([pin]);
+      }
+    }
+    return clusters;
+  }
+
+  /**
+   * Finds all valid autoconnect pairs according to EPLAN Electric P8 rules:
+   * - Vertical: pin1.x === pin2.x (with tolerance <= 2px), pin1 points 'bottom', pin2 points 'top', no intermediate pins
+   * - Horizontal: pin1.y === pin2.y (with tolerance <= 2px), pin1 points 'right', pin2 points 'left', no intermediate pins
+   */
   public static findAutoconnectPairs(components: PlacedComponent[]): AutoconnectPair[] {
     const allPins = this.getAllPins(components);
     const pairs: AutoconnectPair[] = [];
 
-    // Group pins by X (for vertical connections)
-    const pinsByX = new Map<number, RotatedPinInfo[]>();
-    // Group pins by Y (for horizontal connections)
-    const pinsByY = new Map<number, RotatedPinInfo[]>();
+    // Group pins by X (for vertical connections) with tolerance <= 2px
+    const verticalClusters = this.clusterPins(allPins, p => p.worldX, 2);
+    // Group pins by Y (for horizontal connections) with tolerance <= 2px
+    const horizontalClusters = this.clusterPins(allPins, p => p.worldY, 2);
 
-    for (const pin of allPins) {
-      if (!pinsByX.has(pin.worldX)) pinsByX.set(pin.worldX, []);
-      pinsByX.get(pin.worldX)!.push(pin);
-
-      if (!pinsByY.has(pin.worldY)) pinsByY.set(pin.worldY, []);
-      pinsByY.get(pin.worldY)!.push(pin);
-    }
-
-    // 1. Vertical Autoconnect: same X coordinate
-    pinsByX.forEach((pins) => {
-      if (pins.length < 2) return;
+    // 1. Vertical Autoconnect: same column
+    for (const pins of verticalClusters) {
+      if (pins.length < 2) continue;
       // Sort vertically from top to bottom
       pins.sort((a, b) => a.worldY - b.worldY);
 
@@ -139,11 +166,11 @@ export class AutoconnectEngine {
           }
         }
       }
-    });
+    }
 
-    // 2. Horizontal Autoconnect: same Y coordinate
-    pinsByY.forEach((pins) => {
-      if (pins.length < 2) return;
+    // 2. Horizontal Autoconnect: same row
+    for (const pins of horizontalClusters) {
+      if (pins.length < 2) continue;
       // Sort horizontally from left to right
       pins.sort((a, b) => a.worldX - b.worldX);
 
@@ -166,7 +193,7 @@ export class AutoconnectEngine {
           }
         }
       }
-    });
+    }
 
     return pairs;
   }
@@ -260,8 +287,9 @@ export class AutoconnectEngine {
     for (const aPin of activePins) {
       if (aPin.direction === 'top' || aPin.direction === 'bottom') {
         // Look for matching pins on same X
+        // Look for matching pins on same X (tolerance <= 2px)
         const candidates = otherPins
-          .filter(p => p.worldX === aPin.worldX)
+          .filter(p => Math.abs(p.worldX - aPin.worldX) <= 2)
           .sort((a, b) => a.worldY - b.worldY);
 
         if (aPin.direction === 'top') {
@@ -274,7 +302,7 @@ export class AutoconnectEngine {
               previews.push({
                 x1: aPin.worldX,
                 y1: aPin.worldY,
-                x2: nearest.worldX,
+                x2: aPin.worldX,
                 y2: nearest.worldY,
                 targetX: nearest.worldX,
                 targetY: nearest.worldY,
@@ -292,7 +320,7 @@ export class AutoconnectEngine {
               previews.push({
                 x1: aPin.worldX,
                 y1: aPin.worldY,
-                x2: nearest.worldX,
+                x2: aPin.worldX,
                 y2: nearest.worldY,
                 targetX: nearest.worldX,
                 targetY: nearest.worldY,
@@ -302,9 +330,9 @@ export class AutoconnectEngine {
           }
         }
       } else if (aPin.direction === 'left' || aPin.direction === 'right') {
-        // Look for matching pins on same Y
+        // Look for matching pins on same Y (tolerance <= 2px)
         const candidates = otherPins
-          .filter(p => p.worldY === aPin.worldY)
+          .filter(p => Math.abs(p.worldY - aPin.worldY) <= 2)
           .sort((a, b) => a.worldX - b.worldX);
 
         if (aPin.direction === 'left') {
@@ -318,7 +346,7 @@ export class AutoconnectEngine {
                 x1: aPin.worldX,
                 y1: aPin.worldY,
                 x2: nearest.worldX,
-                y2: nearest.worldY,
+                y2: aPin.worldY,
                 targetX: nearest.worldX,
                 targetY: nearest.worldY,
                 orientation: 'horizontal'
@@ -336,7 +364,7 @@ export class AutoconnectEngine {
                 x1: aPin.worldX,
                 y1: aPin.worldY,
                 x2: nearest.worldX,
-                y2: nearest.worldY,
+                y2: aPin.worldY,
                 targetX: nearest.worldX,
                 targetY: nearest.worldY,
                 orientation: 'horizontal'

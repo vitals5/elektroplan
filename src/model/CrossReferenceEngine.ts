@@ -107,9 +107,21 @@ export class CrossReferenceEngine {
           : '';
       } else if (items.length > 1) {
         // Pairs / multiple components with same BMK without explicit master
-        for (let i = 0; i < items.length; i++) {
-          const others = items.filter((_, idx) => idx !== i);
-          items[i].comp.crossRef = others.map(o => `/${o.page.pageNumber}.${o.col}`).join(', ');
+        // Terminals in the same strip do not cross-reference each other
+        const isTerminalGroup = items.every(i => {
+          const sym = getSymbolById(i.comp.symbolId);
+          return sym?.category === 'terminals';
+        });
+
+        if (!isTerminalGroup) {
+          for (let i = 0; i < items.length; i++) {
+            const others = items.filter((_, idx) => idx !== i);
+            items[i].comp.crossRef = others.map(o => `/${o.page.pageNumber}.${o.col}`).join(', ');
+          }
+        } else {
+          for (const item of items) {
+            item.comp.crossRef = '';
+          }
         }
       } else {
         items[0].comp.crossRef = '';

@@ -8,6 +8,7 @@ import { AutoconnectEngine, AutoconnectPreviewSegment } from '../model/Autoconne
 import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
 
 export type EditorMode = 'select' | 'wire' | 'place_symbol' | 'pan';
+export type GridResolution = 'full' | 'half' | 'fine' | 'off';
 
 export interface CadCanvasCallbacks {
   onSelectComponent: (component: PlacedComponent | null) => void;
@@ -35,7 +36,8 @@ export class CadCanvas {
   // Editor State
   public mode: EditorMode = 'select';
   public gridSnap: boolean = true;
-  public gridSize: number = 10; // 10px per raster unit
+  public gridSize: number = 8; // 8px per base raster unit (DIN EN 60617 / EPLAN)
+  public gridResolution: GridResolution = 'full'; // 'full' (8px), 'half' (4px), 'fine' (2px), 'off' (1px)
   public autoconnectEnabled: boolean = true;
   public activeSymbolToPlace: string | null = null;
   public ghostRotation: 0 | 90 | 180 | 270 = 0;
@@ -232,9 +234,142 @@ export class CadCanvas {
     return page!;
   }
 
-  private snap(val: number): number {
-    if (!this.gridSnap) return Math.round(val);
-    return Math.round(val / this.gridSize) * this.gridSize;
+  public getEffectiveGridSize(isModifierActive: boolean = false): number {
+    if (!this.gridSnap || this.gridResolution === 'off') return 1;
+    if (isModifierActive) {
+      // Holding Shift/Alt temporarily drops to half or fine raster
+      return this.gridResolution === 'full' ? 4 : 2;
+    }
+    switch (this.gridResolution) {
+      case 'half': return 4;
+      case 'fine': return 2;
+      case 'full':
+      default:
+        return 8;
+    }
+  }
+
+  public getGridLabel(): string {
+    if (!this.gridSnap || this.gridResolution === 'off') return 'Aus';
+    switch (this.gridResolution) {
+      case 'half': return '½ (4px)';
+      case 'fine': return '¼ (2px)';
+      case 'full':
+      default:
+        return '1x (8px)';
+    }
+  }
+
+  public cycleGridResolution(): GridResolution {
+    if (!this.gridSnap || this.gridResolution === 'off') {
+      this.gridSnap = true;
+      this.gridResolution = 'full';
+    } else if (this.gridResolution === 'full') {
+      this.gridResolution = 'half';
+    } else if (this.gridResolution === 'half') {
+      this.gridResolution = 'fine';
+    } else {
+      this.gridResolution = 'off';
+      this.gridSnap = false;
+    }
+    this.render();
+    return this.gridResolution;
+  }
+
+  public setGridResolution(res: GridResolution): void {
+    this.gridResolution = res;
+    this.gridSnap = (res !== 'off');
+    this.render();
+  }
+
+  public snap(val: number, isModifierActive: boolean = false): number {
+    const step = this.getEffectiveGridSize(isModifierActive);
+    if (step <= 1) return Math.round(val);
+    return Math.round(val / step) * step;
+  }
+
+  /**
+   * EPLAN Magnetic Pin Snapping:
+   * When moving or placing a component, if its pins come within range of facing pins
+   * of other components on the page, magnetically snap candidate position so pins align with 0px delta!
+   */
+  public snapWithPinMagnet(
+    comp: PlacedComponent,
+    rawX: number,
+    rawY: number,
+    isModifierActive: boolean = false
+  ): { x: number; y: number } {
+    let snapX = this.snap(rawX, isModifierActive);
+    let snapY = this.snap(rawY, isModifierActive);
+
+    if (!this.gridSnap && this.gridResolution === 'off') {
+      return { x: snapX, y: snapY };
+    }
+
+    const sym = getSymbolById(comp.symbolId);
+    if (!sym) return { x: snapX, y: snapY };
+
+    const otherComps = this.activePage.components.filter(c => c.id !== comp.id);
+    const otherPins = AutoconnectEngine.getAllPins(otherComps);
+    if (otherPins.length === 0) return { x: snapX, y: snapY };
+
+    const MAGNET_RADIUS = 6; // px
+
+    // 1. Vertical Pin Snapping: snap X to align pins vertically
+    let bestDeltaX: number | null = null;
+    let minDistX = MAGNET_RADIUS + 1;
+
+    const testCompX: PlacedComponent = { ...comp, x: snapX, y: snapY };
+    const compPinsX = sym.pins.map(p => AutoconnectEngine.getRotatedPinInfo(testCompX, p, sym));
+
+    for (const cPin of compPinsX) {
+      for (const oPin of otherPins) {
+        const isVerticalMatch =
+          (cPin.direction === 'top' && oPin.direction === 'bottom' && oPin.worldY < cPin.worldY) ||
+          (cPin.direction === 'bottom' && oPin.direction === 'top' && oPin.worldY > cPin.worldY);
+
+        if (isVerticalMatch) {
+          const dx = oPin.worldX - cPin.worldX;
+          if (Math.abs(dx) <= MAGNET_RADIUS && Math.abs(dx) < minDistX) {
+            minDistX = Math.abs(dx);
+            bestDeltaX = dx;
+          }
+        }
+      }
+    }
+
+    if (bestDeltaX !== null) {
+      snapX += bestDeltaX;
+    }
+
+    // 2. Horizontal Pin Snapping: snap Y to align pins horizontally
+    let bestDeltaY: number | null = null;
+    let minDistY = MAGNET_RADIUS + 1;
+
+    const testCompY: PlacedComponent = { ...comp, x: snapX, y: snapY };
+    const compPinsY = sym.pins.map(p => AutoconnectEngine.getRotatedPinInfo(testCompY, p, sym));
+
+    for (const cPin of compPinsY) {
+      for (const oPin of otherPins) {
+        const isHorizontalMatch =
+          (cPin.direction === 'left' && oPin.direction === 'right' && oPin.worldX < cPin.worldX) ||
+          (cPin.direction === 'right' && oPin.direction === 'left' && oPin.worldX > cPin.worldX);
+
+        if (isHorizontalMatch) {
+          const dy = oPin.worldY - cPin.worldY;
+          if (Math.abs(dy) <= MAGNET_RADIUS && Math.abs(dy) < minDistY) {
+            minDistY = Math.abs(dy);
+            bestDeltaY = dy;
+          }
+        }
+      }
+    }
+
+    if (bestDeltaY !== null) {
+      snapY += bestDeltaY;
+    }
+
+    return { x: snapX, y: snapY };
   }
 
   private screenToWorld(clientX: number, clientY: number): { x: number; y: number } {
@@ -304,6 +439,26 @@ export class CadCanvas {
       } else if (e.ctrlKey && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault();
         this.duplicateSelected();
+      } else if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        this.setGridResolution(this.gridResolution === 'half' ? 'full' : 'half');
+        this.callbacks.onProjectModified();
+      } else if (e.altKey && e.key === '1') {
+        e.preventDefault();
+        this.setGridResolution('full');
+        this.callbacks.onProjectModified();
+      } else if (e.altKey && e.key === '2') {
+        e.preventDefault();
+        this.setGridResolution('half');
+        this.callbacks.onProjectModified();
+      } else if (e.altKey && e.key === '3') {
+        e.preventDefault();
+        this.setGridResolution('fine');
+        this.callbacks.onProjectModified();
+      } else if (e.altKey && e.key === '0') {
+        e.preventDefault();
+        this.setGridResolution('off');
+        this.callbacks.onProjectModified();
       }
     });
   }
@@ -375,7 +530,7 @@ export class CadCanvas {
         <div class="ctx-sep"></div>
         <div class="ctx-item" data-action="fit">🔍 Ansicht: Ganzes Blatt <span class="ctx-key">F</span></div>
         <div class="ctx-item" data-action="reset-zoom">📐 100% Zoom (1:1)</div>
-        <div class="ctx-item" data-action="toggle-grid">📐 Rasterfang: ${this.gridSnap ? 'Aktiv (10px)' : 'Aus'}</div>
+        <div class="ctx-item" data-action="toggle-grid">📐 Raster: ${this.getGridLabel()} <span class="ctx-key">H</span></div>
       `;
     }
 
@@ -409,8 +564,8 @@ export class CadCanvas {
         } else if (action === 'reset-zoom') {
           this.resetZoom();
         } else if (action === 'toggle-grid') {
-          this.gridSnap = !this.gridSnap;
-          this.render();
+          this.cycleGridResolution();
+          this.callbacks.onProjectModified();
         } else if (action === 'jump-crossref' && comp?.crossRef) {
           const match = comp.crossRef.match(/\/(\d+)/);
           if (match) {
@@ -434,8 +589,8 @@ export class CadCanvas {
     const prefix = sym.defaultBmkPrefix || '';
     const bmk = prefix ? `${prefix}${existingCount + 1}` : '';
 
-    const newComp: PlacedComponent = {
-      id: 'comp_' + Math.random().toString(36).substring(2, 9),
+    const tempComp: PlacedComponent = {
+      id: '__new__',
       symbolId: sym.id,
       bmk,
       higherLevelFunction: this.activePage.higherLevel,
@@ -448,6 +603,14 @@ export class CadCanvas {
       y: this.snap(worldY),
       rotation: this.ghostRotation || 0,
       pins: {}
+    };
+    const snapped = this.snapWithPinMagnet(tempComp, worldX, worldY);
+
+    const newComp: PlacedComponent = {
+      ...tempComp,
+      id: 'comp_' + Math.random().toString(36).substring(2, 9),
+      x: snapped.x,
+      y: snapped.y
     };
 
     this.activePage.components.push(newComp);
@@ -561,8 +724,12 @@ export class CadCanvas {
       const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
       if (comp) {
         const sym = getSymbolById(comp.symbolId);
-        comp.x = this.snap(world.x - this.dragOffset.x);
-        comp.y = this.snap(world.y - this.dragOffset.y);
+        const rawX = world.x - this.dragOffset.x;
+        const rawY = world.y - this.dragOffset.y;
+        const isModifier = e.shiftKey || e.altKey;
+        const snapped = this.snapWithPinMagnet(comp, rawX, rawY, isModifier);
+        comp.x = snapped.x;
+        comp.y = snapped.y;
         const el = this.svg.getElementById(comp.id);
         if (el && sym) {
           el.setAttribute('transform', `translate(${comp.x}, ${comp.y}) rotate(${comp.rotation || 0}, ${sym.width / 2}, ${sym.height / 2})`);
@@ -755,8 +922,11 @@ export class CadCanvas {
         const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
         if (comp) {
           const sym = getSymbolById(comp.symbolId);
-          comp.x = this.snap(world.x - this.dragOffset.x);
-          comp.y = this.snap(world.y - this.dragOffset.y);
+          const rawX = world.x - this.dragOffset.x;
+          const rawY = world.y - this.dragOffset.y;
+          const snapped = this.snapWithPinMagnet(comp, rawX, rawY, false);
+          comp.x = snapped.x;
+          comp.y = snapped.y;
           // Fast DOM update for smooth 60fps drag without replacing innerHTML:
           const el = this.svg.getElementById(comp.id);
           if (el && sym) {
@@ -814,10 +984,17 @@ export class CadCanvas {
         const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
         if (p1 && p2) {
           const wireEl = this.svg.getElementById(wire.id);
-          const pathEl = wireEl?.querySelector('path');
-          if (pathEl) {
-            const midY = (p1.y + p2.y) / 2;
-            pathEl.setAttribute('d', `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`);
+          if (wireEl) {
+            let pathData = '';
+            if (Math.abs(p1.x - p2.x) <= 2) {
+              pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y}`;
+            } else if (Math.abs(p1.y - p2.y) <= 2) {
+              pathData = `M ${p1.x} ${p1.y} L ${p2.x} ${p1.y}`;
+            } else {
+              const midY = (p1.y + p2.y) / 2;
+              pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
+            }
+            wireEl.querySelectorAll('path').forEach(p => p.setAttribute('d', pathData));
           }
         }
       }
@@ -920,10 +1097,15 @@ export class CadCanvas {
     const pageWidth = this.activePage.plotFrame.width;
     const pageHeight = this.activePage.plotFrame.height;
 
+    const effGrid = this.getEffectiveGridSize();
+    const patternSize = effGrid <= 4 ? 4 : 8;
+    const dotRadius = patternSize <= 4 ? 0.6 : 0.75;
+    const dotFill = this.gridSnap && this.gridResolution !== 'off' ? '#4a5568' : '#2d3748';
+
     this.svg.innerHTML = `
       <defs>
-        <pattern id="cadGrid" width="${this.gridSize}" height="${this.gridSize}" patternUnits="userSpaceOnUse">
-          <circle cx="1" cy="1" r="0.75" fill="#4a5568"/>
+        <pattern id="cadGrid" width="${patternSize}" height="${patternSize}" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="${dotRadius}" fill="${dotFill}"/>
         </pattern>
       </defs>
       <g id="viewportTransform" transform="translate(${this.panX}, ${this.panY}) scale(${this.scale})">
@@ -1143,8 +1325,10 @@ export class CadCanvas {
       const wireColor = this.getWireColor(wire.potential, wire.color);
 
       let pathData = '';
-      if (p1.x === p2.x || p1.y === p2.y) {
-        pathData = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+      if (Math.abs(p1.x - p2.x) <= 2) {
+        pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y}`;
+      } else if (Math.abs(p1.y - p2.y) <= 2) {
+        pathData = `M ${p1.x} ${p1.y} L ${p2.x} ${p1.y}`;
       } else {
         const midY = (p1.y + p2.y) / 2;
         pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
@@ -1167,18 +1351,19 @@ export class CadCanvas {
     let previews: AutoconnectPreviewSegment[] = [];
 
     if (this.mode === 'place_symbol' && this.activeSymbolToPlace) {
-      const gx = this.snap(this.currentMousePos.x);
-      const gy = this.snap(this.currentMousePos.y);
       const tempComp: PlacedComponent = {
         id: '__ghost__',
         symbolId: this.activeSymbolToPlace,
         bmk: '',
         functionText: '',
-        x: gx,
-        y: gy,
+        x: this.snap(this.currentMousePos.x),
+        y: this.snap(this.currentMousePos.y),
         rotation: this.ghostRotation || 0,
         pins: {}
       };
+      const snapped = this.snapWithPinMagnet(tempComp, this.currentMousePos.x, this.currentMousePos.y);
+      tempComp.x = snapped.x;
+      tempComp.y = snapped.y;
       previews = AutoconnectEngine.getAutoconnectPreview(this.activePage.components, tempComp);
     } else if (this.isDraggingComponent && this.selectedComponentId) {
       const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
@@ -1253,8 +1438,19 @@ export class CadCanvas {
     const sym = getSymbolById(this.activeSymbolToPlace);
     if (!sym) return '';
 
-    const gx = this.snap(this.currentMousePos.x);
-    const gy = this.snap(this.currentMousePos.y);
+    const tempComp: PlacedComponent = {
+      id: '__ghost__',
+      symbolId: sym.id,
+      bmk: '',
+      functionText: '',
+      x: this.snap(this.currentMousePos.x),
+      y: this.snap(this.currentMousePos.y),
+      rotation: this.ghostRotation || 0,
+      pins: {}
+    };
+    const snapped = this.snapWithPinMagnet(tempComp, this.currentMousePos.x, this.currentMousePos.y);
+    const gx = snapped.x;
+    const gy = snapped.y;
 
     const existingCount = this.activePage.components.filter(c => c.symbolId === sym.id).length;
     const prefix = sym.defaultBmkPrefix || '';

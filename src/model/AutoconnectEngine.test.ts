@@ -254,4 +254,41 @@ AutoconnectEngine.clearSuppressedForComponent(testPage, k1Power.id);
 AutoconnectEngine.updatePageAutoconnections(testPage);
 assert(testPage.wires.length === 3, `Reconnecting restored after clearSuppressedForComponent (got ${testPage.wires.length})`);
 
-console.log('\n🎉 ALL TESTS PASSED SUCCESSFULLY! 100% EPLAN COMPATIBLE AUTOCONNECTING & CONNECTION PIECES!');
+console.log('\n--- 9. Testing Halbraster (Half-Grid) Autoconnecting & Tolerance Clustering ---');
+// Component on half-raster (X = 236, which is an odd multiple of 4: 236 / 4 = 59, not a multiple of 8: 236 / 8 = 29.5)
+const halfTermTop: PlacedComponent = {
+  id: 'halfTop',
+  symbolId: 'terminal_single',
+  bmk: '-X2:1',
+  functionText: '',
+  x: 236 - 10, // pin at x + 10 = 236
+  y: 100,
+  rotation: 0,
+  pins: {}
+};
+const halfTermBottom: PlacedComponent = {
+  id: 'halfBottom',
+  symbolId: 'terminal_single',
+  bmk: '-X2:2',
+  functionText: '',
+  x: 236 - 10, // pin at x + 10 = 236
+  y: 160,
+  rotation: 0,
+  pins: {}
+};
+
+const halfPairs = AutoconnectEngine.findAutoconnectPairs([halfTermTop, halfTermBottom]);
+assert(halfPairs.length === 1, `Halbraster components connect automatically (got ${halfPairs.length})`);
+assert(halfPairs[0].pin1.worldX === 236 && halfPairs[0].pin2.worldX === 236, 'Both pins aligned at half-raster X=236');
+
+// Tolerance test: Pin 1 at X=236, Pin 2 at X=235 (1px subpixel delta)
+halfTermBottom.x = 235 - 10;
+const tolPairs = AutoconnectEngine.findAutoconnectPairs([halfTermTop, halfTermBottom]);
+assert(tolPairs.length === 1, `Pins within <= 2px tolerance cluster and connect (got ${tolPairs.length})`);
+
+// Non-matching test: Pin 1 at X=236, Pin 2 at X=232 (4px difference: distinct columns)
+halfTermBottom.x = 232 - 10;
+const diffPairs = AutoconnectEngine.findAutoconnectPairs([halfTermTop, halfTermBottom]);
+assert(diffPairs.length === 0, `Pins on different raster columns (4px apart) do NOT false-connect (got ${diffPairs.length})`);
+
+console.log('\n🎉 ALL TESTS PASSED SUCCESSFULLY! 100% EPLAN COMPATIBLE AUTOCONNECTING & HALBRASTER SUPPORT!');

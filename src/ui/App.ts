@@ -99,12 +99,16 @@ export class App {
         <div class="menu-item">
           Ansicht
           <div class="menu-dropdown">
-            <div class="menu-opt" id="menuFit">🔍 Ganzes Blatt (Fit) <span class="opt-key">F / Alt+3</span></div>
+            <div class="menu-opt" id="menuFit">🔍 Ganzes Blatt (Fit) <span class="opt-key">F</span></div>
             <div class="menu-opt" id="menuZoom100">📐 Originalgröße (100%)</div>
             <div class="menu-opt" id="menuZoomIn">➕ Ausschnitt vergrößern</div>
             <div class="menu-opt" id="menuZoomOut">➖ Ausschnitt verkleinern</div>
             <div class="menu-sep"></div>
-            <div class="menu-opt" id="menuToggleGrid">📐 Rasterfang umschalten</div>
+            <div class="menu-opt" id="menuGridFull">📐 Vollraster (8px / 4mm) <span class="opt-key">Alt+1</span></div>
+            <div class="menu-opt" id="menuGridHalf">📐 Halbraster (4px / 2mm) <span class="opt-key">H / Alt+2</span></div>
+            <div class="menu-opt" id="menuGridFine">📐 Feinraster (2px / 1mm) <span class="opt-key">Alt+3</span></div>
+            <div class="menu-opt" id="menuGridOff">📐 Rasterfang Aus <span class="opt-key">Alt+0</span></div>
+            <div class="menu-sep"></div>
             <div class="menu-opt" id="menuToggleAutoconnect">⚡ Autoconnecting umschalten</div>
           </div>
         </div>
@@ -184,7 +188,7 @@ export class App {
           <button class="btn" id="btnZoomIn" title="Vergrößern">➕</button>
           <button class="btn" id="btnZoomOut" title="Verkleinern">➖</button>
           <button class="btn" id="btnZoomFit" title="Blatt formatfüllend anpassen (F)">🔍 Fit</button>
-          <button class="btn hide-mobile active" id="btnGridSnap" title="Rasterfang ein/aus (4mm / 10px)">📐 Raster</button>
+          <button class="btn hide-mobile active" id="btnGridSnap" title="Raster umschalten (Vollraster 8px / Halbraster 4px / Feinraster 2px / Aus - Tastenkürzel: H)">📐 Raster: 1x</button>
           <button class="btn hide-mobile active" id="btnAutoconnect" title="EPLAN Autoconnecting ein/aus">⚡ Autoconnect</button>
 
           <button class="btn btn-drawer-toggle" id="btnToggleRightSidebar" title="Eigenschaften & Inspektor">⚙️ <span class="hide-mobile">Eigenschaften</span></button>
@@ -703,8 +707,8 @@ export class App {
     // Grid snap
     const btnGrid = document.getElementById('btnGridSnap');
     btnGrid?.addEventListener('click', () => {
-      this.canvas.gridSnap = !this.canvas.gridSnap;
-      btnGrid.classList.toggle('active', this.canvas.gridSnap);
+      this.canvas.cycleGridResolution();
+      this.updateGridButtonState();
     });
 
     // Autoconnect toggle
@@ -850,9 +854,21 @@ export class App {
     bindMenuOpt('menuZoom100', () => this.canvas.resetZoom());
     bindMenuOpt('menuZoomIn', () => this.canvas.zoomIn());
     bindMenuOpt('menuZoomOut', () => this.canvas.zoomOut());
-    bindMenuOpt('menuToggleGrid', () => {
-      this.canvas.gridSnap = !this.canvas.gridSnap;
-      document.getElementById('btnGridSnap')?.classList.toggle('active', this.canvas.gridSnap);
+    bindMenuOpt('menuGridFull', () => {
+      this.canvas.setGridResolution('full');
+      this.updateGridButtonState();
+    });
+    bindMenuOpt('menuGridHalf', () => {
+      this.canvas.setGridResolution('half');
+      this.updateGridButtonState();
+    });
+    bindMenuOpt('menuGridFine', () => {
+      this.canvas.setGridResolution('fine');
+      this.updateGridButtonState();
+    });
+    bindMenuOpt('menuGridOff', () => {
+      this.canvas.setGridResolution('off');
+      this.updateGridButtonState();
     });
     bindMenuOpt('menuToggleAutoconnect', () => {
       this.canvas.autoconnectEnabled = !this.canvas.autoconnectEnabled;
@@ -914,7 +930,10 @@ export class App {
         '• Strg+D: Ausgewähltes Bauteil duplizieren\n' +
         '• R: Ausgewähltes Bauteil um 90° drehen\n' +
         '• Entf / Backspace: Ausgewähltes Element löschen\n' +
-        '• F / Alt+3: Ganzes Blatt anzeigen (Fit)\n' +
+        '• F: Ganzes Blatt anzeigen (Fit)\n' +
+        '• H: Halbraster umschalten (4px / 2mm)\n' +
+        '• Alt+1 / Alt+2 / Alt+3 / Alt+0: Voll-, Halb-, Feinraster, Aus\n' +
+        '• Shift / Alt beim Verschieben: Halbraster-Fang\n' +
         '• Strg+P: Intelligenter PDF-Export (DIN A3)\n' +
         '• Strg+S: Projekt speichern\n' +
         '• Esc: Modus / Platzierung abbrechen'
@@ -943,16 +962,34 @@ export class App {
     });
   }
 
+  public updateGridButtonState(): void {
+    const btnGrid = document.getElementById('btnGridSnap');
+    if (btnGrid && this.canvas) {
+      const res = this.canvas.gridResolution;
+      const isSnap = this.canvas.gridSnap && res !== 'off';
+      btnGrid.classList.toggle('active', isSnap);
+      let text = '📐 Raster: 1x';
+      if (!isSnap) text = '📐 Raster: Aus';
+      else if (res === 'half') text = '📐 Raster: ½';
+      else if (res === 'fine') text = '📐 Raster: ¼';
+      btnGrid.innerHTML = text;
+    }
+    this.updateStatusBar();
+  }
+
+  private updateStatusBar(): void {
+    const statusRight = document.getElementById('statusRight');
+    const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
+    if (statusRight && activePage && this.canvas) {
+      statusRight.textContent = `Seite ${activePage.pageNumber} (${activePage.title}) | Raster: ${this.canvas.getGridLabel()} | Bauteile: ${activePage.components.length} | Leitungen: ${activePage.wires.length}`;
+    }
+  }
+
   private updateUI(): void {
     const projNameEl = document.getElementById('headerProjectName');
     if (projNameEl) projNameEl.textContent = this.project.name;
 
-    const statusRight = document.getElementById('statusRight');
-    const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
-    if (statusRight && activePage) {
-      statusRight.textContent = `Seite ${activePage.pageNumber} (${activePage.title}) | Bauteile: ${activePage.components.length} | Leitungen: ${activePage.wires.length}`;
-    }
-
+    this.updateGridButtonState();
     this.renderLeftTab();
     this.renderRightTab();
   }
