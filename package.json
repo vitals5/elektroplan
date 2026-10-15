@@ -1,6 +1,6 @@
 {
   "name": "elektroplan",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "main": "electron/main.cjs",
   "description": "Elektroplan CAE Suite - Professional CAD software for electrical schematics (Windows Desktop & Web)",
