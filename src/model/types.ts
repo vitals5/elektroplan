@@ -100,6 +100,17 @@ export interface TitleBlock {
   totalSheets: string;
 }
 
+export interface PageText {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  fontSize?: number;
+  fontColor?: string;
+  fontWeight?: 'normal' | 'bold';
+  rotation?: 0 | 90 | 180 | 270;
+}
+
 export interface Page {
   id: string;
   pageNumber: string;           // e.g. "1", "2", "3"
@@ -109,6 +120,7 @@ export interface Page {
   location: string;             // +Ort (z.B. "+S1")
   components: PlacedComponent[];
   wires: Wire[];
+  texts?: PageText[];
   suppressedAutoconnections?: string[];
   plotFrame: {
     type: 'DIN_A3_LANDSCAPE';

@@ -94,6 +94,9 @@ export class PdfExporter {
 
       // Render Components & Interactive Cross-Reference Links
       this.renderComponents(doc, page, project, pageWidthMm, pageHeightMm, options, pageNumberToPdfPageIndex);
+
+      // Render Free Texts & Annotations
+      this.renderTexts(doc, page, pageWidthMm, pageHeightMm, options.colorMode);
     }
 
     // Render Optional Klemmenplan Page
@@ -220,6 +223,41 @@ export class PdfExporter {
     doc.text(page.title, tbX + 2, tbY + 23);
 
     doc.text(`Blatt: ${page.pageNumber} / ${totalSheets}`, tbX + 92, tbY + 23);
+  }
+
+  /**
+   * Renders free texts, cable definitions, and section titles
+   */
+  private static renderTexts(
+    doc: jsPDF,
+    page: Page,
+    wMm: number,
+    hMm: number,
+    colorMode: 'color' | 'monochrome'
+  ): void {
+    if (!page.texts || page.texts.length === 0) return;
+    const scaleX = wMm / page.plotFrame.width;
+    const scaleY = hMm / page.plotFrame.height;
+
+    for (const t of page.texts) {
+      const xMm = t.x * scaleX;
+      const yMm = t.y * scaleY;
+      const isHeader = Boolean(t.fontSize && t.fontSize >= 11);
+      const isMonochrome = colorMode === 'monochrome';
+
+      doc.setFont('helvetica', (t.fontWeight === 'bold' || isHeader) ? 'bold' : 'normal');
+      doc.setFontSize(Math.max(6, (t.fontSize || 9) * 0.75));
+
+      if (isMonochrome) {
+        doc.setTextColor(0, 0, 0);
+      } else if (isHeader) {
+        doc.setTextColor(43, 108, 176);
+      } else {
+        doc.setTextColor(74, 85, 104);
+      }
+
+      doc.text(t.text, xMm, yMm);
+    }
   }
 
   /**

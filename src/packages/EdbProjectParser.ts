@@ -3,8 +3,8 @@
 // Extracts pages, symbols, functions, coordinates, and potential connections following IEC 81346.
 
 import JSZip from 'jszip';
-import { Project, Page, PlacedComponent, PageType } from '../model/types';
-import { SYMBOL_DEFINITIONS } from '../model/symbols';
+import { Project, Page, PlacedComponent, PageType, Wire, PageText } from '../model/types';
+import { SYMBOL_DEFINITIONS, getSymbolById } from '../model/symbols';
 import { AutoconnectEngine } from '../model/AutoconnectEngine';
 
 export interface ExtractedPageMeta {
@@ -15,15 +15,29 @@ export interface ExtractedPageMeta {
   title: string;
 }
 
-export interface ExtractedFunction {
+export interface RawFunction {
+  x: number;
+  y: number;
   bmk: string;
-  funcText: string;
+  strings: string[];
+  pins: string[];
 }
 
-export interface ExtractedInstance {
+export interface RawIPoint {
+  x: number;
+  y: number;
+  name: string;
+}
+
+export interface RawText {
   x: number;
   y: number;
   text: string;
+}
+
+export interface RawConnection {
+  from: string;
+  to: string;
 }
 
 export class EdbProjectParser {
@@ -102,36 +116,55 @@ export class EdbProjectParser {
     const pageBuf = await pageZipEntry.async('uint8array');
     messages.push(`Seitendatenbank eingelesen: ${pageZipEntry.name} (${pageBuf.length} Bytes)`);
 
-    // 3. Extract all page records from Page.eod
+    // 3. Extract and sort all page records from Page.eod
     const rawPages = this.extractPages(pageBuf);
     messages.push(`${rawPages.length} Projektseiten in der Datenbank identifiziert.`);
 
-    // 4. Locate and parse Function.eod & Instance.eod
+    // 4. Locate and parse Function.eod, IPoint.eod, Instance.eod, Connection.eod
     const funcZipEntry = zip.file(/Function\.eod$/i)[0];
+    const ipointZipEntry = zip.file(/IPoint\.eod$/i)[0];
     const instZipEntry = zip.file(/Instance\.eod$/i)[0];
+    const connZipEntry = zip.file(/Connection\.eod$/i)[0];
 
-    const funcsByPage = new Map<number, ExtractedFunction[]>();
+    const funcsByPage = new Map<number, RawFunction[]>();
     if (funcZipEntry) {
       const funcBuf = await funcZipEntry.async('uint8array');
       this.extractFunctions(funcBuf, funcsByPage);
       messages.push(`Funktionen und Betriebsmittel extrahiert (${funcsByPage.size} referenzierte Seiten).`);
     }
 
-    const instancesByPage = new Map<number, ExtractedInstance[]>();
-    if (instZipEntry) {
-      const instBuf = await instZipEntry.async('uint8array');
-      this.extractInstances(instBuf, instancesByPage);
-      messages.push(`Platzierungen und Koordinaten extrahiert (${instancesByPage.size} referenzierte Seiten).`);
+    const ipointsByPage = new Map<number, RawIPoint[]>();
+    if (ipointZipEntry) {
+      const ipointBuf = await ipointZipEntry.async('uint8array');
+      this.extractIPoints(ipointBuf, ipointsByPage);
+      messages.push(`Abbruchstellen / Potentialverweise extrahiert (${ipointsByPage.size} referenzierte Seiten).`);
     }
 
-    // 5. Construct Page models with PlacedComponents & Autoconnections
+    const textsByPage = new Map<number, RawText[]>();
+    if (instZipEntry) {
+      const instBuf = await instZipEntry.async('uint8array');
+      this.extractTexts(instBuf, textsByPage);
+      messages.push(`Freie Texte und Kabelbeschriftungen extrahiert (${textsByPage.size} referenzierte Seiten).`);
+    }
+
+    const connsByPage = new Map<number, RawConnection[]>();
+    if (connZipEntry) {
+      const connBuf = await connZipEntry.async('uint8array');
+      this.extractConnections(connBuf, connsByPage);
+      messages.push(`Verbindungsdefinitionen extrahiert (${connsByPage.size} referenzierte Seiten).`);
+    }
+
+    // 5. Construct Page models with PlacedComponents, Wires & Free Texts
     const pages: Page[] = [];
+    const totalSheetsCount = rawPages.length;
 
     for (let i = 0; i < rawPages.length; i++) {
       const rp = rawPages[i];
       const pageId = rp.pageId;
       const fList = funcsByPage.get(pageId) || [];
-      const iList = instancesByPage.get(pageId) || [];
+      const ipList = ipointsByPage.get(pageId) || [];
+      const tList = textsByPage.get(pageId) || [];
+      const cList = connsByPage.get(pageId) || [];
 
       // Determine PageType
       let pageType: PageType = 'schematic';
@@ -144,7 +177,10 @@ export class EdbProjectParser {
       const higherLevel = rp.higherLevel ? (rp.higherLevel.startsWith('=') ? rp.higherLevel : '=' + rp.higherLevel) : '=A1';
       const location = rp.location ? (rp.location.startsWith('+') ? rp.location : '+' + rp.location) : '+S1';
 
-      // Build components for this page
+      // Sheet number display: e.g. "1 / 45"
+      const sheetNumDisplay = `${i + 1} / ${totalSheetsCount}`;
+
+      // Build components for this page (functions + interruption points)
       const components: PlacedComponent[] = this.buildPageComponents(
         pageId,
         rp.pageNumber,
@@ -152,8 +188,14 @@ export class EdbProjectParser {
         location,
         pageType,
         fList,
-        iList
+        ipList
       );
+
+      // Build free texts for this page
+      const texts: PageText[] = this.buildPageTexts(pageId, tList);
+
+      // Build wires for this page
+      const wires: Wire[] = this.buildPageWires(components, cList);
 
       const page: Page = {
         id: `page_${pageId}_${rp.pageNumber.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
@@ -163,7 +205,8 @@ export class EdbProjectParser {
         higherLevel,
         location,
         components,
-        wires: [],
+        wires,
+        texts,
         plotFrame: {
           type: 'DIN_A3_LANDSCAPE',
           width: 1000,
@@ -172,13 +215,13 @@ export class EdbProjectParser {
           rows: ['A', 'B', 'C', 'D', 'E', 'F'],
           titleBlock: {
             projectTitle: description ? `${projectName} - ${description}` : projectName,
-            commission: 'KOM-2024-01',
+            commission: 'KOM-2026',
             company,
             author,
             date: modified || created,
             revision: '1.0',
-            sheetNumber: rp.pageNumber,
-            totalSheets: String(rawPages.length)
+            sheetNumber: sheetNumDisplay,
+            totalSheets: String(totalSheetsCount)
           }
         }
       };
@@ -200,14 +243,15 @@ export class EdbProjectParser {
 
     const totalCompCount = pages.reduce((acc, p) => acc + p.components.length, 0);
     const totalWireCount = pages.reduce((acc, p) => acc + p.wires.length, 0);
-    messages.push(`Erfolgreich rekonstruiert: ${pages.length} Seiten, ${totalCompCount} Komponenten, ${totalWireCount} automatische Verbindungen.`);
+    const totalTextCount = pages.reduce((acc, p) => acc + (p.texts?.length || 0), 0);
+    messages.push(`Erfolgreich rekonstruiert: ${pages.length} Seiten, ${totalCompCount} Komponenten, ${totalTextCount} Texte, ${totalWireCount} Verbindungen.`);
 
     const project: Project = {
       id: 'proj_' + Math.random().toString(36).substring(2, 9),
       name: projectName,
       description,
       standard: 'DIN EN 81346-2 / IEC 60617',
-      version: '2024.0',
+      version: '2026.0',
       created,
       modified,
       author,
@@ -220,7 +264,7 @@ export class EdbProjectParser {
   }
 
   /**
-   * Extracts page records from Page.eod
+   * Extracts page records from Page.eod and sorts them in document sequence.
    */
   private static extractPages(buf: Uint8Array): ExtractedPageMeta[] {
     const pages: ExtractedPageMeta[] = [];
@@ -249,7 +293,7 @@ export class EdbProjectParser {
         while (hlStart > 0 && buf[hlStart] >= 0x20 && buf[hlStart] <= 0x7e) hlStart--;
         const higherLevel = this.decodeUtf8(buf.subarray(hlStart + 1, hlEnd + 1));
 
-        // Title: search backwards for ??_??@ or de_DE@
+        // Title: search backwards for de_DE@ or ??_??@
         const searchChunk = buf.subarray(Math.max(0, idx - 1200), idx);
         let title = '';
         const deTag = [0x64, 0x65, 0x5f, 0x44, 0x45, 0x40]; // de_DE@
@@ -259,7 +303,7 @@ export class EdbProjectParser {
         const qqIdx = this.lastIndexOf(searchChunk, qqTag, searchChunk.length);
 
         if (deIdx > qqIdx && deIdx !== -1) {
-          const s = this.indexOf(searchChunk, [0x3b], deIdx); // semicolon
+          const s = this.indexOf(searchChunk, [0x3b], deIdx);
           if (s !== -1) title = this.decodeUtf8(searchChunk.subarray(deIdx + 6, s));
         } else if (qqIdx !== -1) {
           const s = this.indexOf(searchChunk, [0x3b], qqIdx);
@@ -280,102 +324,249 @@ export class EdbProjectParser {
       idx += 4;
     }
 
+    // Sort pages in natural CAD document sequence:
+    // 1. Cover (+EAA)
+    // 2. Schematic (+ET1 / +S1 / =A1) ordered by sheet number (1, 1-1, 1-2, 2, 3, 4, ...)
+    // 3. Terminal / connector diagrams (+PLG_ST)
+    pages.sort((a, b) => {
+      if (a.location === 'EAA' && b.location !== 'EAA') return -1;
+      if (b.location === 'EAA' && a.location !== 'EAA') return 1;
+      if (a.location === 'PLG_ST' && b.location !== 'PLG_ST') return 1;
+      if (b.location === 'PLG_ST' && a.location !== 'PLG_ST') return -1;
+
+      const partsA = a.pageNumber.split('-').map(Number);
+      const partsB = b.pageNumber.split('-').map(Number);
+      const scoreA = partsA[0] * 100 + (partsA[1] || 0);
+      const scoreB = partsB[0] * 100 + (partsB[1] || 0);
+      return scoreA - scoreB;
+    });
+
     return pages;
   }
 
   /**
-   * Extracts function and BMK definitions from Function.eod
+   * Extracts function and BMK definitions with CAD mm coordinates from Function.eod
    */
-  private static extractFunctions(buf: Uint8Array, map: Map<number, ExtractedFunction[]>): void {
-    const bmkTag = [0x19, 0xeb];
-    const pageIdTag = [0xf1, 0xeb, 0x04, 0x00];
+  private static extractFunctions(buf: Uint8Array, map: Map<number, RawFunction[]>): void {
+    const pageMarker = [0xf1, 0xeb, 0x04, 0x00];
+    const coordMarker = [0x5a, 0xed];
     let offset = 0;
 
-    while ((offset = this.indexOf(buf, bmkTag, offset)) !== -1) {
-      const bStart = offset + 2;
-      let bEnd = bStart;
-      while (bEnd < buf.length && buf[bEnd] >= 0x20 && buf[bEnd] <= 0x7e) bEnd++;
-
-      if (bEnd > bStart && buf[bEnd] === 0x00) {
-        const bmk = this.decodeUtf8(buf.subarray(bStart, bEnd));
-
-        let funcText = '';
-        if (buf[bEnd + 1] === 0x1a && buf[bEnd + 2] === 0xeb) {
-          const fStart = bEnd + 3;
-          let fEnd = fStart;
-          while (fEnd < buf.length && buf[fEnd] >= 0x20 && buf[fEnd] <= 0x7e) fEnd++;
-          if (fEnd > fStart && buf[fEnd] === 0x00) {
-            funcText = this.decodeUtf8(buf.subarray(fStart, fEnd));
-          }
-        }
-
-        const searchSlice = buf.subarray(bEnd, Math.min(buf.length, bEnd + 100));
-        const pIdx = this.indexOf(searchSlice, pageIdTag, 0);
-        if (pIdx !== -1 && pIdx + 8 <= searchSlice.length) {
-          const pageId = this.readUint32LE(searchSlice, pIdx + 4);
-          if (!map.has(pageId)) map.set(pageId, []);
-          map.get(pageId)!.push({ bmk, funcText });
-        }
-      }
-
-      offset += 2;
-    }
-  }
-
-  /**
-   * Extracts placement coordinates and text instances from Instance.eod
-   */
-  private static extractInstances(buf: Uint8Array, map: Map<number, ExtractedInstance[]>): void {
-    const pageIdTag = [0xf1, 0xeb, 0x04, 0x00];
-    const symCoordTag = [0x5a, 0xed];
-    const txtCoordTag = [0x55, 0xec];
-    const deTag = [0x64, 0x65, 0x5f, 0x44, 0x45, 0x40];
-    const qqTag = [0x3f, 0x3f, 0x5f, 0x3f, 0x3f, 0x40];
-
-    let offset = 0;
-    while ((offset = this.indexOf(buf, pageIdTag, offset)) !== -1) {
+    while ((offset = this.indexOf(buf, pageMarker, offset)) !== -1) {
       if (offset + 8 <= buf.length) {
         const pageId = this.readUint32LE(buf, offset + 4);
-        const chunk = buf.subarray(offset, Math.min(buf.length, offset + 250));
+        const slice = buf.subarray(Math.max(0, offset - 100), Math.min(buf.length, offset + 400));
 
         let x = 0;
         let y = 0;
-        let text = '';
-
-        const symIdx = this.indexOf(chunk, symCoordTag, 0);
-        if (symIdx !== -1 && symIdx + 18 <= chunk.length) {
-          x = this.readDoubleLE(chunk, symIdx + 2);
-          y = this.readDoubleLE(chunk, symIdx + 10);
+        const cIdx = this.indexOf(slice, coordMarker, 0);
+        if (cIdx !== -1 && cIdx + 18 <= slice.length) {
+          x = this.readDoubleLE(slice, cIdx + 2);
+          y = this.readDoubleLE(slice, cIdx + 10);
         }
 
-        const txtIdx = this.indexOf(chunk, txtCoordTag, 0);
-        if (txtIdx !== -1 && txtIdx + 18 <= chunk.length) {
-          x = this.readDoubleLE(chunk, txtIdx + 2);
-          y = this.readDoubleLE(chunk, txtIdx + 10);
+        // BMK: 0x2cee (prefix) + 0x2dee (counter) or 0xf0ea
+        let bmk = '';
+        const pfxIdx = this.indexOf(slice, [0x2c, 0xee], 0);
+        const cntIdx = this.indexOf(slice, [0x2d, 0xee], 0);
+        if (pfxIdx !== -1) {
+          const pfx = this.decodeUtf8(slice.subarray(pfxIdx + 2, pfxIdx + 10)).split('\0')[0].replace(/[^\x20-\x7e]/g, '');
+          let cnt = '';
+          if (cntIdx !== -1) {
+            cnt = this.decodeUtf8(slice.subarray(cntIdx + 2, cntIdx + 10)).split('\0')[0].replace(/[^\x20-\x7e]/g, '');
+          }
+          bmk = '-' + pfx + cnt;
+        } else {
+          const bmkIdx = this.indexOf(slice, [0xf0, 0xea], 0);
+          if (bmkIdx !== -1) {
+            bmk = this.decodeUtf8(slice.subarray(bmkIdx + 2, Math.min(slice.length, bmkIdx + 40))).replace(/[^\x20-\x7e]/g, ' ').trim();
+          }
         }
 
-        const deIdx = this.indexOf(chunk, deTag, 0);
-        const qqIdx = this.indexOf(chunk, qqTag, 0);
-        if (deIdx !== -1) {
-          const s = this.indexOf(chunk, [0x3b], deIdx);
-          if (s !== -1) text = this.decodeUtf8(chunk.subarray(deIdx + 6, s));
-        } else if (qqIdx !== -1) {
-          const s = this.indexOf(chunk, [0x3b], qqIdx);
-          if (s !== -1) text = this.decodeUtf8(chunk.subarray(qqIdx + 6, s));
+        // Multilingual strings (function text, technical characteristics, device descriptions)
+        const strings: string[] = [];
+        for (let i = 0; i < slice.length - 6; i++) {
+          if (slice[i] === 0x3f && slice[i + 1] === 0x3f && slice[i + 2] === 0x5f) { // ??_??@
+            let s = i + 6;
+            let str = '';
+            while (s < slice.length && slice[s] !== 0x3b && slice[s] !== 0x00) {
+              str += String.fromCharCode(slice[s++]);
+            }
+            if (str.trim().length > 0 && !strings.includes(str.trim())) {
+              strings.push(str.trim());
+            }
+          }
         }
 
-        if (x > 0 || y > 0 || text.length > 0) {
+        // Direct function text (0x1aeb)
+        let ftIdx = 0;
+        while ((ftIdx = this.indexOf(slice, [0x1a, 0xeb], ftIdx)) !== -1) {
+          let s = ftIdx + 2;
+          let str = '';
+          while (s < slice.length && slice[s] >= 0x20 && slice[s] <= 0xfe && slice[s] !== 0x00) {
+            str += String.fromCharCode(slice[s++]);
+          }
+          const clean = str.trim();
+          if (clean.length > 0 && !strings.includes(clean)) {
+            strings.push(clean);
+          }
+          ftIdx += 2;
+        }
+
+        // Pins (0x19eb)
+        const pins: string[] = [];
+        let pinOffset = 0;
+        while ((pinOffset = this.indexOf(slice, [0x19, 0xeb], pinOffset)) !== -1) {
+          const pinStr = this.decodeUtf8(slice.subarray(pinOffset + 2, pinOffset + 10)).split('\0')[0].replace(/[^\x20-\x7e]/g, '');
+          if (pinStr.length > 0 && !pins.includes(pinStr)) {
+            pins.push(pinStr);
+          }
+          pinOffset += 2;
+        }
+
+        if (x > 0 || y > 0 || bmk.length > 0) {
           if (!map.has(pageId)) map.set(pageId, []);
-          map.get(pageId)!.push({ x, y, text });
+          map.get(pageId)!.push({ x, y, bmk, strings, pins });
         }
       }
-
       offset += 4;
     }
   }
 
   /**
-   * Constructs PlacedComponents for a page with mapped IEC symbols and coordinates
+   * Extracts interruption points (Abbruchstellen / Potentialverweise) from IPoint.eod
+   */
+  private static extractIPoints(buf: Uint8Array, map: Map<number, RawIPoint[]>): void {
+    const pageMarker = [0xf1, 0xeb, 0x04, 0x00];
+    const coordMarker = [0x5a, 0xed];
+    let offset = 0;
+
+    while ((offset = this.indexOf(buf, pageMarker, offset)) !== -1) {
+      if (offset + 8 <= buf.length) {
+        const pageId = this.readUint32LE(buf, offset + 4);
+        const slice = buf.subarray(offset, Math.min(buf.length, offset + 350));
+
+        let x = 0;
+        let y = 0;
+        const cIdx = this.indexOf(slice, coordMarker, 0);
+        if (cIdx !== -1 && cIdx + 18 <= slice.length) {
+          x = this.readDoubleLE(slice, cIdx + 2);
+          y = this.readDoubleLE(slice, cIdx + 10);
+        }
+
+        let pfx = '';
+        let cnt = '';
+        const pIdx = this.indexOf(slice, [0x2c, 0xee], 0);
+        if (pIdx !== -1) {
+          pfx = this.decodeUtf8(slice.subarray(pIdx + 2, pIdx + 10)).split('\0')[0].replace(/[^\x20-\x7e]/g, '');
+        }
+        const cntIdx = this.indexOf(slice, [0x2d, 0xee], 0);
+        if (cntIdx !== -1) {
+          cnt = this.decodeUtf8(slice.subarray(cntIdx + 2, cntIdx + 50)).split('\0')[0].replace(/[^\x20-\x7e]/g, '');
+        }
+
+        const name = (pfx + cnt).trim();
+        if (name && (x > 0 || y > 0)) {
+          if (!map.has(pageId)) map.set(pageId, []);
+          map.get(pageId)!.push({ x, y, name });
+        }
+      }
+      offset += 4;
+    }
+  }
+
+  /**
+   * Extracts free texts, section titles, and cable labels from Instance.eod
+   */
+  private static extractTexts(buf: Uint8Array, map: Map<number, RawText[]>): void {
+    const pageMarker = [0xf1, 0xeb, 0x04, 0x00];
+    const coordMarker = [0x55, 0xec];
+    let offset = 0;
+
+    while ((offset = this.indexOf(buf, pageMarker, offset)) !== -1) {
+      if (offset + 8 <= buf.length) {
+        const pageId = this.readUint32LE(buf, offset + 4);
+        const slice = buf.subarray(offset, Math.min(buf.length, offset + 250));
+
+        let x = 0;
+        let y = 0;
+        const cIdx = this.indexOf(slice, coordMarker, 0);
+        if (cIdx !== -1 && cIdx + 18 <= slice.length) {
+          x = this.readDoubleLE(slice, cIdx + 2);
+          y = this.readDoubleLE(slice, cIdx + 10);
+        }
+
+        let text = '';
+        const deIdx = this.indexOf(slice, [0x64, 0x65, 0x5f, 0x44, 0x45, 0x40], 0);
+        const qqIdx = this.indexOf(slice, [0x3f, 0x3f, 0x5f, 0x3f, 0x3f, 0x40], 0);
+        if (deIdx !== -1) {
+          const s = deIdx + 6;
+          let e = s;
+          while (e < slice.length && slice[e] !== 0x3b && slice[e] !== 0x00) e++;
+          text = this.decodeUtf8(slice.subarray(s, e)).trim();
+        } else if (qqIdx !== -1) {
+          const s = qqIdx + 6;
+          let e = s;
+          while (e < slice.length && slice[e] !== 0x3b && slice[e] !== 0x00) e++;
+          text = this.decodeUtf8(slice.subarray(s, e)).trim();
+        }
+
+        if (text && (x > 0 || y > 0)) {
+          if (!map.has(pageId)) map.set(pageId, []);
+          map.get(pageId)!.push({ x, y, text });
+        }
+      }
+      tOffset: offset += 4;
+    }
+  }
+
+  /**
+   * Extracts explicit source and target connections from Connection.eod
+   */
+  private static extractConnections(buf: Uint8Array, map: Map<number, RawConnection[]>): void {
+    const pageMarker = [0xf2, 0xeb, 0x04, 0x00];
+    let offset = 0;
+
+    while ((offset = this.indexOf(buf, pageMarker, offset)) !== -1) {
+      if (offset + 8 <= buf.length) {
+        const pageId = this.readUint32LE(buf, offset + 4);
+        const slice = buf.subarray(offset, Math.min(buf.length, offset + 350));
+
+        let from = '';
+        let to = '';
+        const fIdx = this.indexOf(slice, [0x03, 0xfa], 0);
+        if (fIdx !== -1) {
+          from = this.decodeUtf8(slice.subarray(fIdx + 2, fIdx + 100)).split('\0')[0].trim();
+        }
+        const tIdx = this.indexOf(slice, [0x04, 0xfa], 0);
+        if (tIdx !== -1) {
+          to = this.decodeUtf8(slice.subarray(tIdx + 2, tIdx + 100)).split('\0')[0].trim();
+        }
+
+        if (from || to) {
+          if (!map.has(pageId)) map.set(pageId, []);
+          map.get(pageId)!.push({ from, to });
+        }
+      }
+      offset += 4;
+    }
+  }
+
+  /**
+   * Transforms CAD millimeter coordinates (420 x 297 mm, bottom-left origin)
+   * into CadCanvas pixels (1000 x 700 px, top-left origin).
+   */
+  private static toCanvas(cadX: number, cadY: number): { x: number; y: number } {
+    const x = Math.round((cadX / 420) * 1000);
+    const y = Math.round(((297 - cadY) / 297) * 700);
+    return {
+      x: Math.max(35, Math.min(960, x)),
+      y: Math.max(35, Math.min(640, y))
+    };
+  }
+
+  /**
+   * Constructs PlacedComponents for a page with mapped IEC symbols, real coordinates, and interruption points.
    */
   private static buildPageComponents(
     pageId: number,
@@ -383,242 +574,419 @@ export class EdbProjectParser {
     higherLevel: string,
     location: string,
     pageType: PageType,
-    funcs: ExtractedFunction[],
-    instances: ExtractedInstance[]
+    rawFuncs: RawFunction[],
+    rawIPoints: RawIPoint[]
   ): PlacedComponent[] {
     const components: PlacedComponent[] = [];
-
-    // Filter meaningful instances with coordinates or text
-    const validInstances = instances.filter(i => (i.x > 0 && i.y > 0) || i.text.trim().length > 0);
-
-    // Track used BMKs to group multi-pole functions or terminals
-    const processedBmks = new Set<string>();
-    let colIndex = 0;
+    const placedBmks = new Set<string>();
 
     // 1. Process Functions
-    for (let fIdx = 0; fIdx < funcs.length; fIdx++) {
-      const fn = funcs[fIdx];
-      const rawBmk = fn.bmk.trim();
-      if (!rawBmk) continue;
+    for (let fIdx = 0; fIdx < rawFuncs.length; fIdx++) {
+      const fn = rawFuncs[fIdx];
+      let bmk = fn.bmk.trim();
+      if (!bmk || bmk.startsWith('.N') || bmk.includes('Elektroverteilung')) continue;
 
-      // Group identical auxiliary pins under master BMK
-      const bmkKey = `${rawBmk}_${fn.funcText}`;
-      if (processedBmks.has(bmkKey) && !rawBmk.match(/^[0-9]+$/)) {
+      if (!bmk.startsWith('-') && !bmk.startsWith('/') && !bmk.startsWith('+')) {
+        if (/^[A-Za-z]/.test(bmk)) bmk = '-' + bmk;
+      }
+
+      // Avoid placing duplicate poles for the same multi-pole device
+      const existing = components.find(c => c.bmk === bmk && Math.abs(c.x - this.toCanvas(fn.x, fn.y).x) < 45);
+      if (existing) {
+        for (const s of fn.strings) {
+          if (!s.match(/^[A-Z0-9\/-]+$/) && !s.includes('Elektroverteilung') && !existing.functionText.includes(s)) {
+            existing.functionText = existing.functionText
+              ? `${existing.functionText} / ${s}`
+              : s;
+          }
+        }
         continue;
       }
-      processedBmks.add(bmkKey);
 
-      // Determine symbol and position
-      const matchingInst = validInstances[fIdx % Math.max(1, validInstances.length)];
+      const canvasCoord = this.toCanvas(fn.x, fn.y);
 
-      let x = 120 + (colIndex % 9) * 85;
-      let y = 180 + Math.floor(colIndex / 9) * 120;
+      // Determine function text and technical characteristics
+      const meaningfulStrings = fn.strings.filter(s => !s.match(/^[A-Z0-9\/-]+$/) && !s.includes('Elektroverteilung'));
+      const funcText = meaningfulStrings.join(' / ');
+      const techData = fn.strings.find(s => s.match(/(?:NH|\d+\s*A|\d+\s*W|S751|Goodwe|GMK|WWC|Finder|ESR|EUD|S2U|C10|C16|B16|B10|B6)/i)) || '';
 
-      if (matchingInst && matchingInst.x > 0 && matchingInst.y > 0) {
-        // Map mm coordinates (420 x 297 mm) to canvas pixels (1000 x 700 px)
-        x = Math.round(matchingInst.x * 2.38);
-        y = Math.round(matchingInst.y * 2.38);
-      }
+      const symInfo = this.resolveSymbol(bmk, funcText, techData, pageType);
 
-      // Clamp within DIN A3 drawing bounds
-      x = Math.max(90, Math.min(920, x));
-      y = Math.max(120, Math.min(620, y));
-
-      const symbolInfo = this.resolveSymbolForBmk(rawBmk, fn.funcText, pageType);
-
-      // Normalize BMK display string
-      let displayBmk = rawBmk;
-      if (!displayBmk.startsWith('-') && !displayBmk.startsWith('/') && !displayBmk.startsWith('+')) {
-        if (/^[A-Za-z]/.test(displayBmk)) {
-          displayBmk = '-' + displayBmk;
-        }
-      }
-
-      const compId = `comp_${pageId}_${colIndex}_${rawBmk.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+      const compId = `comp_${pageId}_${fIdx}_${bmk.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
       // Initialize pins
       const pinsObj: PlacedComponent['pins'] = {};
-      symbolInfo.pins.forEach(p => {
+      symInfo.defaultPins.forEach(p => {
         pinsObj[p.id] = { wireIds: [] };
       });
 
       components.push({
         id: compId,
-        symbolId: symbolInfo.symbolId,
-        bmk: displayBmk,
+        symbolId: symInfo.symbolId,
+        bmk,
         higherLevelFunction: higherLevel,
         mountingLocation: location,
-        functionText: fn.funcText || matchingInst?.text || symbolInfo.defaultText,
-        x,
-        y,
+        functionText: funcText || symInfo.defaultText,
+        technicalCharacteristics: techData,
+        x: canvasCoord.x,
+        y: canvasCoord.y,
         rotation: 0,
         pins: pinsObj
       });
 
-      colIndex++;
+      placedBmks.add(bmk);
     }
 
-    // 2. If page is schematic and has few or no components, add standard supply rails
-    if (pageType === 'schematic') {
-      const hasL1 = components.some(c => c.bmk.includes('L1') || c.functionText.includes('L1'));
-      if (!hasL1) {
-        components.unshift(
-          {
-            id: `comp_pf_${pageId}_l1`,
-            symbolId: 'potential_arrow_down',
-            bmk: `/${pageNumber}.1`,
-            functionText: 'L1',
-            x: 120,
-            y: 80,
-            rotation: 0,
-            pins: { '1': { wireIds: [] } }
-          },
-          {
-            id: `comp_pf_${pageId}_n`,
-            symbolId: 'potential_arrow_down',
-            bmk: `/${pageNumber}.2`,
-            functionText: 'N',
-            x: 205,
-            y: 80,
-            rotation: 0,
-            pins: { '1': { wireIds: [] } }
-          },
-          {
-            id: `comp_pf_${pageId}_pe`,
-            symbolId: 'potential_arrow_down',
-            bmk: `/${pageNumber}.3`,
-            functionText: 'PE',
-            x: 290,
-            y: 80,
-            rotation: 0,
-            pins: { '1': { wireIds: [] } }
-          }
-        );
-      }
+    // 2. Process Interruption Points (IPoint)
+    for (let ipIdx = 0; ipIdx < rawIPoints.length; ipIdx++) {
+      const ip = rawIPoints[ipIdx];
+      const canvasCoord = this.toCanvas(ip.x, ip.y);
+
+      // Point right if on right half, point left if on left half
+      const isRight = canvasCoord.x > 500;
+      const symbolId = isRight ? 'potential_arrow_right' : 'potential_arrow_left';
+
+      const ipCompId = `comp_ip_${pageId}_${ipIdx}`;
+
+      components.push({
+        id: ipCompId,
+        symbolId,
+        bmk: `/${pageNumber}.${ipIdx + 1}`,
+        higherLevelFunction: higherLevel,
+        mountingLocation: location,
+        functionText: ip.name,
+        x: canvasCoord.x,
+        y: canvasCoord.y,
+        rotation: 0,
+        pins: { '1': { wireIds: [] } }
+      });
     }
 
     return components;
   }
 
   /**
-   * Resolves appropriate IEC symbol from library based on BMK prefix, function text, or circuit type
+   * Constructs PageText entries from extracted text instances
    */
-  private static resolveSymbolForBmk(
+  private static buildPageTexts(pageId: number, rawTexts: RawText[]): PageText[] {
+    const texts: PageText[] = [];
+
+    for (let i = 0; i < rawTexts.length; i++) {
+      const rt = rawTexts[i];
+      const canvasCoord = this.toCanvas(rt.x, rt.y);
+      const isHeader = rt.text.length > 3 && !rt.text.includes('mm²') && !rt.text.match(/^(?:br|sw|gr|bl|BK|BU|GNYE)$/);
+
+      texts.push({
+        id: `txt_${pageId}_${i}`,
+        text: rt.text,
+        x: canvasCoord.x,
+        y: canvasCoord.y,
+        fontSize: isHeader ? 11 : 9,
+        fontWeight: isHeader ? 'bold' : 'normal',
+        fontColor: isHeader ? '#63b3ed' : '#cbd5e0'
+      });
+    }
+
+    return texts;
+  }
+
+  /**
+   * Constructs Wire connections from Connection.eod definitions
+   */
+  private static buildPageWires(components: PlacedComponent[], rawConns: RawConnection[]): Wire[] {
+    const wires: Wire[] = [];
+
+    for (let i = 0; i < rawConns.length; i++) {
+      const rc = rawConns[i];
+      const fromMatch = this.findMatchingPin(components, rc.from);
+      const toMatch = this.findMatchingPin(components, rc.to);
+
+      if (fromMatch && toMatch && fromMatch.componentId !== toMatch.componentId) {
+        wires.push({
+          id: `w_eod_${i}`,
+          from: fromMatch,
+          to: toMatch,
+          potential: 'L1',
+          color: 'BK',
+          crossSection: '1.5mm²'
+        });
+      }
+    }
+
+    return wires;
+  }
+
+  private static findMatchingPin(components: PlacedComponent[], targetStr: string): { componentId: string; pinId: string } | null {
+    if (!targetStr) return null;
+    // Extract BMK and Pin from target string like "=Elektroverteilung+ET1-Q12:1" or "-F0:3"
+    const m = targetStr.match(/(-[A-Za-z0-9_.]+)(?::([A-Za-z0-9_.]+))?/);
+    if (!m) return null;
+
+    const bmk = m[1];
+    const pin = m[2] || '1';
+
+    const comp = components.find(c => c.bmk === bmk);
+    if (!comp) return null;
+
+    const sym = getSymbolById(comp.symbolId);
+    if (!sym) return null;
+
+    const matchingPin = sym.pins.find(p => p.id === pin || p.name === pin) || sym.pins[0];
+    if (!matchingPin) return null;
+
+    return { componentId: comp.id, pinId: matchingPin.id };
+  }
+
+  /**
+   * Resolves the exact DIN EN 60617 symbol based on BMK prefix, function text, and technical data.
+   */
+  private static resolveSymbol(
     bmk: string,
     funcText: string,
+    techData: string,
     _pageType: PageType
-  ): { symbolId: string; defaultText: string; pins: { id: string }[] } {
-    const upperBmk = bmk.toUpperCase();
-    const upperText = funcText.toUpperCase();
+  ): { symbolId: string; defaultText: string; defaultPins: { id: string }[] } {
+    const uBmk = bmk.toUpperCase();
+    const uText = funcText.toUpperCase();
+    const uTech = techData.toUpperCase();
 
-    // Potentials
-    if (upperBmk.startsWith('L1') || upperBmk === 'L' || upperBmk.includes('+24V') || upperBmk.includes('24 V')) {
-      return { symbolId: 'potential_arrow_down', defaultText: bmk, pins: [{ id: '1' }] };
-    }
-    if (upperBmk.startsWith('L2') || upperBmk.startsWith('L3')) {
-      return { symbolId: 'potential_arrow_down', defaultText: bmk, pins: [{ id: '1' }] };
-    }
-    if (upperBmk === 'N' || upperBmk === 'PE' || upperBmk === 'PEN' || upperBmk.includes('0V') || upperBmk.includes('N(-)')) {
-      return { symbolId: 'potential_arrow_down', defaultText: bmk, pins: [{ id: '1' }] };
-    }
-
-    // Fuses / Protection
-    if (upperBmk.startsWith('F') || upperText.includes('SICHERUNG') || upperText.includes('FI')) {
+    // 1. RCDs (FI-Schutzschalter)
+    if (
+      uBmk === '-Q0' || uBmk === '-Q1' || uBmk === '-Q2' || uBmk === '-Q3' || uBmk === '-Q4' || uBmk === '-Q5' ||
+      uText.includes('FI-SCHALTER') || uText.includes('40 A') || uTech.includes('30 MA')
+    ) {
+      const sym = getSymbolById('rcd_4p');
       return {
-        symbolId: 'fuse_1p',
-        defaultText: 'Sicherung',
-        pins: [{ id: '1' }, { id: '2' }]
+        symbolId: 'rcd_4p',
+        defaultText: 'FI-Schutzschalter 40A / 30mA',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: '1' }, { id: '2' }]
       };
     }
 
-    // Circuit breakers / Power contacts
-    if (upperBmk.startsWith('Q')) {
+    // 2. Changeover switches (Netz-Notstrom)
+    if (uBmk === '-Q12' || uText.includes('NOTSTROM') || uText.includes('UMSCHALT')) {
+      const sym = getSymbolById('changeover_switch_4p');
       return {
-        symbolId: 'motor_protective_switch',
-        defaultText: 'Motorschutzschalter',
-        pins: [{ id: '1' }, { id: '2' }, { id: '3' }, { id: '4' }, { id: '5' }, { id: '6' }]
+        symbolId: 'changeover_switch_4p',
+        defaultText: 'Netz Notstrom Umschaltung',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: '1' }, { id: '2' }]
       };
     }
 
-    // Contactor / Relay coil or contacts
-    if (upperBmk.startsWith('K') || upperBmk.startsWith('E') || upperBmk.startsWith('G') || upperBmk.startsWith('H')) {
-      if (upperText.includes('RELAIS') || upperText.includes('SCHÜTZ') || upperText.includes('SPULE') || upperBmk.startsWith('K')) {
-        return {
-          symbolId: 'contactor_coil',
-          defaultText: 'Relaisspule',
-          pins: [{ id: 'A1' }, { id: 'A2' }]
-        };
-      }
+    // 3. Main switches / Isolators
+    if (uBmk.startsWith('-Q') && (uText.includes('HAUPTSCHALTER') || uBmk === '-Q10' || uBmk === '-Q11')) {
+      const sym = getSymbolById('main_switch_4p');
       return {
-        symbolId: 'contact_no',
-        defaultText: 'Schließer',
-        pins: [{ id: '13' }, { id: '14' }]
+        symbolId: 'main_switch_4p',
+        defaultText: funcText || 'Hauptschalter 4P',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: '1' }, { id: '2' }]
       };
     }
 
-    // Pushbutton / Switch
-    if (upperBmk.startsWith('S') || upperText.includes('TASTER') || upperText.includes('SCHALTER')) {
-      if (upperText.includes('AUS') || upperText.includes('STOP') || upperText.includes('NOT')) {
-        return {
-          symbolId: 'contact_nc',
-          defaultText: 'Taster Öffner',
-          pins: [{ id: '21' }, { id: '22' }]
-        };
-      }
+    // 4. NH Fuses
+    if (uBmk === '-F0' || uTech.includes('NH') || uText.includes('HAUSANSCHLUSS')) {
+      const sym = getSymbolById('fuse_switch_3p');
       return {
-        symbolId: 'pushbutton_no',
-        defaultText: 'Taster Schließer',
-        pins: [{ id: '13' }, { id: '14' }]
+        symbolId: 'fuse_switch_3p',
+        defaultText: 'NH-Sicherungslasttrennschalter',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: '1' }, { id: '2' }]
       };
     }
 
-    // Terminals / Terminal Strips
-    if (upperBmk.startsWith('X') || upperBmk.startsWith('XS') || /^[0-9]+$/.test(upperBmk)) {
+    // 5. 3-Pole Circuit Breakers
+    if (
+      ['-F01', '-F02', '-F2', '-F10', '-F11', '-F22', '-F28', '-F32', '-F40', '-F46', '-F48', '-F61', '-F62'].includes(uBmk) ||
+      uTech.includes('S751/3') || uTech.includes('C20') || uTech.includes('C32A')
+    ) {
+      const sym = getSymbolById('circuit_breaker_3p');
       return {
-        symbolId: 'terminal_single',
-        defaultText: 'Reihenklemme',
-        pins: [{ id: '1' }, { id: '2' }]
+        symbolId: 'circuit_breaker_3p',
+        defaultText: funcText || (uTech ? `LS-Schalter ${uTech}` : 'LS-Schalter 3P'),
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: '1' }, { id: '2' }]
       };
     }
 
-    // Motor
-    if (upperBmk.startsWith('M') || upperText.includes('MOTOR') || upperText.includes('ROLLADEN')) {
+    // 6. 1-Pole Circuit Breakers
+    if (uBmk.startsWith('-F')) {
+      const sym = getSymbolById('circuit_breaker_1p');
       return {
-        symbolId: 'motor_3phase',
-        defaultText: 'Motor',
-        pins: [{ id: 'U' }, { id: 'V' }, { id: 'W' }, { id: 'PE' }]
+        symbolId: 'circuit_breaker_1p',
+        defaultText: funcText || (uTech ? `LS-Schalter ${uTech}` : 'LS-Schalter 1P'),
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: '1' }, { id: '2' }]
       };
     }
 
-    // Indicator / Pilot Lamp
-    if (upperBmk.startsWith('P') || upperText.includes('LEUCHTE') || upperText.includes('LAMPE') || upperText.includes('LICHT')) {
+    // 7. Energy Meters
+    if (uBmk === '-Z1' || uBmk === '-Z2' || uBmk === '-Z3') {
+      const sym = getSymbolById('energy_meter_3p');
       return {
-        symbolId: 'pilot_lamp',
-        defaultText: 'Meldeleuchte',
-        pins: [{ id: 'X1' }, { id: 'X2' }]
+        symbolId: 'energy_meter_3p',
+        defaultText: funcText || 'Drehstromzähler',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: 'L1' }, { id: 'N' }]
       };
     }
 
-    // PLC / Controller Module
-    if (upperBmk.startsWith('A')) {
+    if (uBmk === '-P3' || uText.includes('SMARTMETER') || uTech.includes('GMK330')) {
+      const sym = getSymbolById('energy_meter_3p');
+      return {
+        symbolId: 'energy_meter_3p',
+        defaultText: 'Smartmeter GMK330',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: 'L1' }, { id: 'N' }]
+      };
+    }
+
+    if (uBmk === '-P102' || uText.includes('TARIF')) {
+      const sym = getSymbolById('energy_meter_3p');
+      return {
+        symbolId: 'energy_meter_3p',
+        defaultText: 'Tarifsteuergerät',
+        defaultPins: [{ id: '1' }, { id: '2' }, { id: '3' }, { id: '4' }]
+      };
+    }
+
+    // 8. Solar Inverters & Storage
+    if (uBmk === '-TB1' || uTech.includes('GOODWE') || uText.includes('WECHSELRICHTER')) {
+      const sym = getSymbolById('inverter_solar');
+      return {
+        symbolId: 'inverter_solar',
+        defaultText: 'Hybridwechselrichter Goodwe ESA 15kW',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: 'L1' }, { id: 'N' }]
+      };
+    }
+
+    // 9. Relays & Actuators
+    if (['-K20', '-K21', '-K22', '-K23', '-K24', '-K25'].includes(uBmk) || uTech.includes('ESR12Z')) {
+      const sym = getSymbolById('electronic_relay_4ch');
+      return {
+        symbolId: 'electronic_relay_4ch',
+        defaultText: funcText || 'ESR12Z-4DX-UC 4-Kanal (Zentral Ein / Aus)',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: 'A1' }, { id: 'A2' }]
+      };
+    }
+
+    if (['-K26', '-K27'].includes(uBmk) || uTech.includes('EUD12D')) {
+      const sym = getSymbolById('contactor_coil');
       return {
         symbolId: 'contactor_coil',
-        defaultText: 'Steuerungsmodul',
-        pins: [{ id: 'A1' }, { id: 'A2' }]
+        defaultText: 'EUD12D-UC Dimmer',
+        defaultPins: [{ id: 'A1' }, { id: 'A2' }]
       };
     }
 
-    // Default fallback
-    const fallbackSym = SYMBOL_DEFINITIONS.find(s => s.id === 'terminal_single') || SYMBOL_DEFINITIONS[0];
+    if (['-K28', '-K30'].includes(uBmk) || uTech.includes('FINDER') || uTech.includes('S2U')) {
+      const sym = getSymbolById('timer_relay_multifunction');
+      return {
+        symbolId: 'timer_relay_multifunction',
+        defaultText: funcText || 'Zeitrelais',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: 'A1' }, { id: 'A2' }]
+      };
+    }
+
+    if (['-K100', '-K101', '-K102', '-K103', '-K104'].includes(uBmk) || uText.includes('WIFI')) {
+      const sym = getSymbolById('contactor_coil');
+      return {
+        symbolId: 'contactor_coil',
+        defaultText: 'ESP8266 Wifi Relais Board',
+        defaultPins: [{ id: 'A1' }, { id: 'A2' }]
+      };
+    }
+
+    if (uBmk.startsWith('-K')) {
+      const sym = getSymbolById('contactor_coil');
+      return {
+        symbolId: 'contactor_coil',
+        defaultText: funcText || 'Schütz / Relais',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: 'A1' }, { id: 'A2' }]
+      };
+    }
+
+    // 10. Thermostats & Valves
+    if (uBmk.startsWith('-S20') || uText.includes('RAUMTHERMOSTAT')) {
+      const sym = getSymbolById('thermostat_box');
+      return {
+        symbolId: 'thermostat_box',
+        defaultText: funcText || 'Raumthermostat',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: '1' }, { id: '2' }]
+      };
+    }
+
+    if (uBmk.startsWith('-Y20') || uText.includes('STELLANTRIEB')) {
+      const sym = getSymbolById('valve_actuator');
+      return {
+        symbolId: 'valve_actuator',
+        defaultText: funcText || 'Stellantrieb',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: 'X1' }, { id: 'X2' }]
+      };
+    }
+
+    // 11. Motors
+    if (uBmk === '-M101' || uText.includes('BRUNNENPUMPE 3~')) {
+      const sym = getSymbolById('motor_3phase');
+      return {
+        symbolId: 'motor_3phase',
+        defaultText: 'Brunnenpumpe (M 3~)',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: 'U1' }, { id: 'V1' }, { id: 'W1' }]
+      };
+    }
+
+    if (uBmk.startsWith('-M') && (uText.includes('ROLLADEN') || uText.includes('PUMPE') || uText.includes('ABSAUGUNG') || uText.includes('TORANTRIEB') || uBmk.match(/^-M\d+$/))) {
+      const sym = getSymbolById('motor_1phase');
+      return {
+        symbolId: 'motor_1phase',
+        defaultText: funcText || 'Motor 1~',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: 'L' }, { id: 'N' }, { id: 'PE' }]
+      };
+    }
+
+    // 12. Sockets & Switches
+    if (uBmk.startsWith('-XB') || uText.includes('SCHALTERSTECKDOSE')) {
+      const sym = getSymbolById('socket_switch');
+      return {
+        symbolId: 'socket_switch',
+        defaultText: funcText || 'Schaltersteckdose',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: '1' }, { id: '2' }]
+      };
+    }
+
+    if (uBmk.startsWith('-M1') && !uBmk.startsWith('-M10') && !uBmk.startsWith('-M14')) {
+      const sym = getSymbolById('socket_schuko');
+      return {
+        symbolId: 'socket_schuko',
+        defaultText: funcText || 'Steckdose',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: '1' }, { id: 'N' }]
+      };
+    }
+
+    // 13. Lamps & Lights
+    if (uText.includes('LEUCHTE') || uText.includes('LAMPE') || uText.includes('LICHT') || uBmk.startsWith('-E')) {
+      const sym = getSymbolById('light_bulb');
+      return {
+        symbolId: 'light_bulb',
+        defaultText: funcText || 'Leuchte',
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: 'x1' }, { id: 'x2' }]
+      };
+    }
+
+    // 14. Network
+    if (uBmk.startsWith('ETH') || uText.includes('NETZWERKDOSE')) {
+      const sym = getSymbolById('rj45_port');
+      return {
+        symbolId: 'rj45_port',
+        defaultText: funcText || bmk,
+        defaultPins: sym ? sym.pins.map(p => ({ id: p.id })) : [{ id: 'ETH' }]
+      };
+    }
+
+    // 15. Default fallback
+    const fallback = getSymbolById('terminal_single') || SYMBOL_DEFINITIONS[0];
     return {
-      symbolId: fallbackSym.id,
-      defaultText: fallbackSym.defaultFunctionText,
-      pins: fallbackSym.pins.map(p => ({ id: p.id }))
+      symbolId: fallback.id,
+      defaultText: fallback.defaultFunctionText,
+      defaultPins: fallback.pins.map(p => ({ id: p.id }))
     };
   }
 
-  // Helper utility methods for binary parsing
-
+  // Utility byte methods
   private static indexOf(buf: Uint8Array, needle: number[], start: number = 0): number {
     const nLen = needle.length;
     if (nLen === 0) return start;

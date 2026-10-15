@@ -1089,6 +1089,11 @@ export class CadCanvas {
           ${this.renderComponents()}
         </g>
 
+        <!-- Free Texts & Annotations -->
+        <g id="textsLayer">
+          ${this.renderTexts()}
+        </g>
+
         <!-- Live Autoconnect Previews (Cyan Dashed Guide Lines & Targets) -->
         <g id="autoconnectPreviewLayer">
           ${this.renderAutoconnectPreview()}
@@ -1251,6 +1256,18 @@ export class CadCanvas {
           ${pinsSvg}
         </g>
       `;
+    }).join('');
+  }
+
+  private renderTexts(): string {
+    if (!this.activePage.texts || this.activePage.texts.length === 0) return '';
+    return this.activePage.texts.map(t => {
+      const isHeader = t.fontSize && t.fontSize >= 11;
+      const color = t.fontColor || (isHeader ? '#63b3ed' : '#cbd5e0');
+      const weight = t.fontWeight || (isHeader ? 'bold' : 'normal');
+      const size = t.fontSize || 9;
+      const rot = t.rotation ? `transform="rotate(${t.rotation}, ${t.x}, ${t.y})"` : '';
+      return `<text x="${t.x}" y="${t.y}" font-size="${size}" font-family="sans-serif" font-weight="${weight}" fill="${color}" ${rot} pointer-events="none">${t.text}</text>`;
     }).join('');
   }
 

@@ -971,6 +971,404 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
       <polygon points="6,14 12,2 18,14" fill="currentColor"/>
     `,
     description: 'Potentialweiterleitung / Abbruchstelle nach oben'
+  },
+  {
+    id: 'circuit_breaker_3p',
+    name: 'Leitungsschutzschalter (3-polig)',
+    category: 'protection',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-F',
+    defaultFunctionText: 'LS-Schalter 3P',
+    width: 72,
+    height: 48,
+    pins: [
+      { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 12, y: 48, direction: 'bottom' },
+      { id: '3', name: '3', x: 36, y: 0, direction: 'top' },
+      { id: '4', name: '4', x: 36, y: 48, direction: 'bottom' },
+      { id: '5', name: '5', x: 60, y: 0, direction: 'top' },
+      { id: '6', name: '6', x: 60, y: 48, direction: 'bottom' }
+    ],
+    svgContent: `
+      <!-- Pol 1 -->
+      <line x1="12" y1="0" x2="12" y2="14" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="14" x2="22" y2="32" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="34" x2="12" y2="48" stroke="currentColor" stroke-width="2"/>
+      <rect x="7" y="18" width="5" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M 17 28 Q 14 30 19 32" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <!-- Pol 2 -->
+      <line x1="36" y1="0" x2="36" y2="14" stroke="currentColor" stroke-width="2"/>
+      <line x1="36" y1="14" x2="46" y2="32" stroke="currentColor" stroke-width="2"/>
+      <line x1="36" y1="34" x2="36" y2="48" stroke="currentColor" stroke-width="2"/>
+      <rect x="31" y="18" width="5" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M 41 28 Q 38 30 43 32" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <!-- Pol 3 -->
+      <line x1="60" y1="0" x2="60" y2="14" stroke="currentColor" stroke-width="2"/>
+      <line x1="60" y1="14" x2="70" y2="32" stroke="currentColor" stroke-width="2"/>
+      <line x1="60" y1="34" x2="60" y2="48" stroke="currentColor" stroke-width="2"/>
+      <rect x="55" y="18" width="5" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M 65 28 Q 62 30 67 32" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <!-- Kopplung -->
+      <line x1="17" y1="23" x2="65" y2="23" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2"/>
+    `,
+    description: '3-poliger Leitungsschutzschalter mit thermisch-magnetischer Auslösung'
+  },
+  {
+    id: 'circuit_breaker_1p',
+    name: 'Leitungsschutzschalter (1-polig)',
+    category: 'protection',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-F',
+    defaultFunctionText: 'LS-Schalter 1P',
+    width: 24,
+    height: 48,
+    pins: [
+      { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 12, y: 48, direction: 'bottom' }
+    ],
+    svgContent: `
+      <line x1="12" y1="0" x2="12" y2="14" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="14" x2="22" y2="32" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="34" x2="12" y2="48" stroke="currentColor" stroke-width="2"/>
+      <rect x="7" y="18" width="5" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M 17 28 Q 14 30 19 32" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    `,
+    description: '1-poliger Leitungsschutzschalter mit thermisch-magnetischer Auslösung'
+  },
+  {
+    id: 'fuse_switch_3p',
+    name: 'Sicherungs-Lasttrennschalter (3-polig, NH)',
+    category: 'protection',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-F',
+    defaultFunctionText: 'NH-Trenner 3P',
+    width: 72,
+    height: 48,
+    pins: [
+      { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 12, y: 48, direction: 'bottom' },
+      { id: '3', name: '3', x: 36, y: 0, direction: 'top' },
+      { id: '4', name: '4', x: 36, y: 48, direction: 'bottom' },
+      { id: '5', name: '5', x: 60, y: 0, direction: 'top' },
+      { id: '6', name: '6', x: 60, y: 48, direction: 'bottom' }
+    ],
+    svgContent: `
+      <line x1="12" y1="0" x2="12" y2="14" stroke="currentColor" stroke-width="2"/>
+      <rect x="7" y="14" width="10" height="20" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="10" x2="12" y2="38" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="12" y1="34" x2="12" y2="48" stroke="currentColor" stroke-width="2"/>
+      <line x1="36" y1="0" x2="36" y2="14" stroke="currentColor" stroke-width="2"/>
+      <rect x="31" y="14" width="10" height="20" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="36" y1="10" x2="36" y2="38" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="36" y1="34" x2="36" y2="48" stroke="currentColor" stroke-width="2"/>
+      <line x1="60" y1="0" x2="60" y2="14" stroke="currentColor" stroke-width="2"/>
+      <rect x="55" y="14" width="10" height="20" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="60" y1="10" x2="60" y2="38" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="60" y1="34" x2="60" y2="48" stroke="currentColor" stroke-width="2"/>
+    `,
+    description: '3-poliger NH-Sicherungs-Lasttrennschalter'
+  },
+  {
+    id: 'changeover_switch_4p',
+    name: 'Netz-Notstrom-Umschalter (4-polig)',
+    category: 'controls',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-Q',
+    defaultFunctionText: 'Umschalter I-0-II',
+    width: 96,
+    height: 48,
+    pins: [
+      { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 12, y: 48, direction: 'bottom' },
+      { id: '3', name: '3', x: 36, y: 0, direction: 'top' },
+      { id: '4', name: '4', x: 36, y: 48, direction: 'bottom' },
+      { id: '5', name: '5', x: 60, y: 0, direction: 'top' },
+      { id: '6', name: '6', x: 60, y: 48, direction: 'bottom' },
+      { id: '7', name: '7', x: 84, y: 0, direction: 'top' },
+      { id: '8', name: '8', x: 84, y: 48, direction: 'bottom' }
+    ],
+    svgContent: `
+      <g stroke="currentColor" stroke-width="2">
+        <line x1="12" y1="0" x2="12" y2="14"/><line x1="12" y1="14" x2="20" y2="32"/><line x1="12" y1="34" x2="12" y2="48"/>
+        <line x1="36" y1="0" x2="36" y2="14"/><line x1="36" y1="14" x2="44" y2="32"/><line x1="36" y1="34" x2="36" y2="48"/>
+        <line x1="60" y1="0" x2="60" y2="14"/><line x1="60" y1="14" x2="68" y2="32"/><line x1="60" y1="34" x2="60" y2="48"/>
+        <line x1="84" y1="0" x2="84" y2="14"/><line x1="84" y1="14" x2="92" y2="32"/><line x1="84" y1="34" x2="84" y2="48"/>
+      </g>
+      <line x1="16" y1="23" x2="88" y2="23" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2"/>
+    `,
+    description: '4-poliger Umschalter Netz/Notstrom mit Nullstellung'
+  },
+  {
+    id: 'main_switch_4p',
+    name: 'Hauptschalter / Lasttrennschalter (4-polig)',
+    category: 'controls',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-Q',
+    defaultFunctionText: 'Hauptschalter 4P',
+    width: 96,
+    height: 48,
+    pins: [
+      { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 12, y: 48, direction: 'bottom' },
+      { id: '3', name: '3', x: 36, y: 0, direction: 'top' },
+      { id: '4', name: '4', x: 36, y: 48, direction: 'bottom' },
+      { id: '5', name: '5', x: 60, y: 0, direction: 'top' },
+      { id: '6', name: '6', x: 60, y: 48, direction: 'bottom' },
+      { id: '7', name: '7', x: 84, y: 0, direction: 'top' },
+      { id: '8', name: '8', x: 84, y: 48, direction: 'bottom' }
+    ],
+    svgContent: `
+      <g stroke="currentColor" stroke-width="2">
+        <line x1="12" y1="0" x2="12" y2="14"/><line x1="12" y1="14" x2="22" y2="32"/><line x1="12" y1="34" x2="12" y2="48"/><line x1="20" y1="32" x2="24" y2="32"/>
+        <line x1="36" y1="0" x2="36" y2="14"/><line x1="36" y1="14" x2="46" y2="32"/><line x1="36" y1="34" x2="36" y2="48"/><line x1="44" y1="32" x2="48" y2="32"/>
+        <line x1="60" y1="0" x2="60" y2="14"/><line x1="60" y1="14" x2="70" y2="32"/><line x1="60" y1="34" x2="60" y2="48"/><line x1="68" y1="32" x2="72" y2="32"/>
+        <line x1="84" y1="0" x2="84" y2="14"/><line x1="84" y1="14" x2="94" y2="32"/><line x1="84" y1="34" x2="84" y2="48"/><line x1="92" y1="32" x2="96" y2="32"/>
+      </g>
+      <line x1="17" y1="23" x2="89" y2="23" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2"/>
+    `,
+    description: '4-poliger Lasttrennschalter'
+  },
+  {
+    id: 'energy_meter_3p',
+    name: 'Drehstromzähler (elektronisch)',
+    category: 'sensors',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-Z',
+    defaultFunctionText: 'Energiezähler',
+    width: 64,
+    height: 48,
+    pins: [
+      { id: 'L1', name: 'L1', x: 10, y: 0, direction: 'top' },
+      { id: 'L2', name: 'L2', x: 24, y: 0, direction: 'top' },
+      { id: 'L3', name: 'L3', x: 38, y: 0, direction: 'top' },
+      { id: 'N', name: 'N', x: 52, y: 0, direction: 'top' },
+      { id: '1', name: '1', x: 10, y: 48, direction: 'bottom' },
+      { id: '2', name: '2', x: 24, y: 48, direction: 'bottom' },
+      { id: '3', name: '3', x: 38, y: 48, direction: 'bottom' },
+      { id: '4', name: 'N', x: 52, y: 48, direction: 'bottom' }
+    ],
+    svgContent: `
+      <rect x="4" y="10" width="56" height="28" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="32" y="27" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor" text-anchor="middle">kWh</text>
+      <line x1="10" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="24" y1="0" x2="24" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="38" y1="0" x2="38" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="52" y1="0" x2="52" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="10" y1="38" x2="10" y2="48" stroke="currentColor" stroke-width="2"/>
+      <line x1="24" y1="38" x2="24" y2="48" stroke="currentColor" stroke-width="2"/>
+      <line x1="38" y1="38" x2="38" y2="48" stroke="currentColor" stroke-width="2"/>
+      <line x1="52" y1="38" x2="52" y2="48" stroke="currentColor" stroke-width="2"/>
+    `,
+    description: 'Drehstrom-Wirkleistungszähler für Hutschienenmontage'
+  },
+  {
+    id: 'motor_1phase',
+    name: 'Wechselstrommotor (1~)',
+    category: 'motors',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-M',
+    defaultFunctionText: 'Antriebsmotor 1~',
+    width: 48,
+    height: 48,
+    pins: [
+      { id: 'L', name: 'L', x: 12, y: 0, direction: 'top' },
+      { id: 'N', name: 'N', x: 24, y: 0, direction: 'top' },
+      { id: 'PE', name: 'PE', x: 36, y: 0, direction: 'top' }
+    ],
+    svgContent: `
+      <circle cx="24" cy="28" r="18" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="24" y="26" font-size="11" font-weight="bold" font-family="sans-serif" text-anchor="middle" fill="currentColor">M</text>
+      <text x="24" y="38" font-size="9" font-family="sans-serif" text-anchor="middle" fill="currentColor">1~</text>
+      <line x1="12" y1="0" x2="12" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="24" y1="0" x2="24" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="36" y1="0" x2="36" y2="10" stroke="currentColor" stroke-width="2"/>
+    `,
+    description: '1-phasiger Wechselstrommotor (Rolladen, Pumpe, Absaugung)'
+  },
+  {
+    id: 'socket_schuko',
+    name: 'Schutzkontakt-Steckdose (Schuko)',
+    category: 'terminals',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-X',
+    defaultFunctionText: 'Steckdose',
+    width: 36,
+    height: 36,
+    pins: [
+      { id: '1', name: '1', x: 10, y: 0, direction: 'top' },
+      { id: 'PE', name: 'PE', x: 18, y: 0, direction: 'top' },
+      { id: 'N', name: 'N', x: 26, y: 0, direction: 'top' }
+    ],
+    svgContent: `
+      <line x1="10" y1="0" x2="10" y2="16" stroke="currentColor" stroke-width="2"/>
+      <line x1="18" y1="0" x2="18" y2="16" stroke="currentColor" stroke-width="2"/>
+      <line x1="26" y1="0" x2="26" y2="16" stroke="currentColor" stroke-width="2"/>
+      <path d="M 6 16 A 12 12 0 0 0 30 16 Z" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="18" y1="16" x2="18" y2="28" stroke="currentColor" stroke-width="2"/>
+    `,
+    description: 'Schuko Steckdose 230V mit Schutzleiter'
+  },
+  {
+    id: 'socket_switch',
+    name: 'Schaltersteckdose',
+    category: 'controls',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-XB',
+    defaultFunctionText: 'Schaltersteckdose',
+    width: 48,
+    height: 48,
+    pins: [
+      { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
+      { id: '3', name: '3', x: 24, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 36, y: 0, direction: 'top' }
+    ],
+    svgContent: `
+      <rect x="4" y="12" width="40" height="26" fill="none" stroke="currentColor" stroke-width="2" rx="3"/>
+      <line x1="12" y1="0" x2="12" y2="12" stroke="currentColor" stroke-width="2"/>
+      <line x1="24" y1="0" x2="24" y2="12" stroke="currentColor" stroke-width="2"/>
+      <line x1="36" y1="0" x2="36" y2="12" stroke="currentColor" stroke-width="2"/>
+      <circle cx="24" cy="25" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="20" y1="21" x2="28" y2="29" stroke="currentColor" stroke-width="1.5"/>
+    `,
+    description: 'Kombinierte Schalter-Steckdoseneinheit'
+  },
+  {
+    id: 'light_bulb',
+    name: 'Leuchte / Lampe',
+    category: 'controls',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-E',
+    defaultFunctionText: 'Leuchte',
+    width: 32,
+    height: 32,
+    pins: [
+      { id: 'x1', name: 'x1', x: 16, y: 0, direction: 'top' },
+      { id: 'x2', name: 'x2', x: 16, y: 32, direction: 'bottom' },
+      { id: 'PE', name: 'PE', x: 32, y: 16, direction: 'right' }
+    ],
+    svgContent: `
+      <circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="7.5" y1="7.5" x2="24.5" y2="24.5" stroke="currentColor" stroke-width="2"/>
+      <line x1="24.5" y1="7.5" x2="7.5" y2="24.5" stroke="currentColor" stroke-width="2"/>
+      <line x1="16" y1="0" x2="16" y2="4" stroke="currentColor" stroke-width="2"/>
+      <line x1="16" y1="28" x2="16" y2="32" stroke="currentColor" stroke-width="2"/>
+    `,
+    description: 'Allgemeine Leuchte mit Schutzkontakt'
+  },
+  {
+    id: 'rj45_port',
+    name: 'RJ45 Netzwerkanschluss',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-ETH',
+    defaultFunctionText: 'Netzwerkdose',
+    width: 32,
+    height: 32,
+    pins: [
+      { id: 'ETH', name: 'ETH', x: 16, y: 0, direction: 'top' }
+    ],
+    svgContent: `
+      <rect x="4" y="8" width="24" height="20" fill="none" stroke="currentColor" stroke-width="2" rx="2"/>
+      <rect x="9" y="14" width="14" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="16" y1="0" x2="16" y2="8" stroke="currentColor" stroke-width="2"/>
+      <text x="16" y="21" font-size="6" font-family="sans-serif" font-weight="bold" fill="currentColor" text-anchor="middle">ETH</text>
+    `,
+    description: 'Ethernet-Netzwerkanschluss (RJ45)'
+  },
+  {
+    id: 'valve_actuator',
+    name: 'Thermoelektrischer Stellantrieb',
+    category: 'controls',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-Y',
+    defaultFunctionText: 'Stellantrieb',
+    width: 32,
+    height: 32,
+    pins: [
+      { id: 'X1', name: 'X1', x: 16, y: 0, direction: 'top' },
+      { id: 'X2', name: 'X2', x: 16, y: 32, direction: 'bottom' }
+    ],
+    svgContent: `
+      <polygon points="6,6 26,26 6,26 26,6" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="16" y1="0" x2="16" y2="16" stroke="currentColor" stroke-width="2"/>
+      <line x1="16" y1="16" x2="16" y2="32" stroke="currentColor" stroke-width="2"/>
+    `,
+    description: 'Thermoelektrischer Heizkreisventil-Stellantrieb'
+  },
+  {
+    id: 'thermostat_box',
+    name: 'Raumthermostat',
+    category: 'sensors',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-S',
+    defaultFunctionText: 'Raumthermostat',
+    width: 60,
+    height: 48,
+    pins: [
+      { id: 'L', name: 'L(+)', x: 10, y: 0, direction: 'top' },
+      { id: 'N', name: 'N(-)', x: 22, y: 0, direction: 'top' },
+      { id: 'PE', name: 'PE', x: 34, y: 0, direction: 'top' },
+      { id: '1', name: '1', x: 44, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 54, y: 0, direction: 'top' }
+    ],
+    svgContent: `
+      <rect x="4" y="10" width="52" height="28" fill="none" stroke="currentColor" stroke-width="2" rx="2"/>
+      <path d="M 24 16 L 36 16 L 30 28 Z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="30" y="34" font-size="7" font-family="sans-serif" fill="currentColor" text-anchor="middle">°C</text>
+    `,
+    description: 'Elektronischer Raumtemperaturregler'
+  },
+  {
+    id: 'inverter_solar',
+    name: 'PV-Hybridwechselrichter & Speicher',
+    category: 'controls',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-TB',
+    defaultFunctionText: 'Hybridwechselrichter',
+    width: 120,
+    height: 70,
+    pins: [
+      { id: 'L1', name: 'L1', x: 20, y: 70, direction: 'bottom' },
+      { id: 'L2', name: 'L2', x: 40, y: 70, direction: 'bottom' },
+      { id: 'L3', name: 'L3', x: 60, y: 70, direction: 'bottom' },
+      { id: 'N', name: 'N', x: 80, y: 70, direction: 'bottom' },
+      { id: 'PE', name: 'PE', x: 100, y: 70, direction: 'bottom' }
+    ],
+    svgContent: `
+      <rect x="4" y="10" width="112" height="50" fill="none" stroke="currentColor" stroke-width="2" rx="4"/>
+      <line x1="4" y1="10" x2="116" y2="60" stroke="currentColor" stroke-width="1.5"/>
+      <text x="30" y="45" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">DC</text>
+      <text x="80" y="28" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor">AC ~</text>
+    `,
+    description: 'Photovoltaik Hybridwechselrichter mit integriertem Speicher'
+  },
+  {
+    id: 'electronic_relay_4ch',
+    name: 'Elektronisches 4-Kanal Stromstoßrelais',
+    category: 'relays',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-K',
+    defaultFunctionText: 'ESR12Z-4DX-UC',
+    width: 140,
+    height: 70,
+    pins: [
+      { id: 'A1', name: 'A1', x: 20, y: 0, direction: 'top' },
+      { id: 'A3', name: 'A3', x: 45, y: 0, direction: 'top' },
+      { id: 'A5', name: 'A5', x: 70, y: 0, direction: 'top' },
+      { id: 'A7', name: 'A7', x: 95, y: 0, direction: 'top' },
+      { id: 'B1', name: 'B1(+)', x: 115, y: 0, direction: 'top' },
+      { id: 'N', name: 'N(-)', x: 130, y: 0, direction: 'top' },
+      { id: 'F1', name: 'F1', x: 45, y: 70, direction: 'bottom' },
+      { id: 'E1', name: 'E1', x: 70, y: 70, direction: 'bottom' },
+      { id: 'H1', name: 'H1', x: 95, y: 70, direction: 'bottom' },
+      { id: 'G1', name: 'G1', x: 115, y: 70, direction: 'bottom' }
+    ],
+    svgContent: `
+      <rect x="4" y="10" width="132" height="50" fill="none" stroke="currentColor" stroke-width="2" rx="3"/>
+      <text x="70" y="32" font-size="9" font-family="sans-serif" font-weight="bold" fill="currentColor" text-anchor="middle">ESR12Z-4DX-UC</text>
+      <text x="70" y="44" font-size="7" font-family="sans-serif" fill="currentColor" text-anchor="middle">4-Kanal Multifunktion</text>
+    `,
+    description: 'Elektronischer 4-Kanal Stromstoß-Schaltrelais-Aktor'
   }
 ];
 
