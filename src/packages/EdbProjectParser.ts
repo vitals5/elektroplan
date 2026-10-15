@@ -121,10 +121,10 @@ export class EdbProjectParser {
     messages.push(`${rawPages.length} Projektseiten in der Datenbank identifiziert.`);
 
     // 4. Locate and parse Function.eod, IPoint.eod, Instance.eod, Connection.eod
-    const funcZipEntry = zip.file(/Function\.eod$/i)[0];
-    const ipointZipEntry = zip.file(/IPoint\.eod$/i)[0];
-    const instZipEntry = zip.file(/Instance\.eod$/i)[0];
-    const connZipEntry = zip.file(/Connection\.eod$/i)[0];
+    const funcZipEntry = zip.file(/Function\.eod$/i).find(f => !f.name.includes('.sdb')) || zip.file(/Function\.eod$/i)[0];
+    const ipointZipEntry = zip.file(/IPoint\.eod$/i).find(f => !f.name.includes('.sdb')) || zip.file(/IPoint\.eod$/i)[0];
+    const instZipEntry = zip.file(/Instance\.eod$/i).find(f => !f.name.includes('.sdb')) || zip.file(/Instance\.eod$/i)[0];
+    const connZipEntry = zip.file(/Connection\.eod$/i).find(f => !f.name.includes('.sdb')) || zip.file(/Connection\.eod$/i)[0];
 
     const funcsByPage = new Map<number, RawFunction[]>();
     if (funcZipEntry) {
@@ -225,11 +225,6 @@ export class EdbProjectParser {
           }
         }
       };
-
-      // Automatically route connections where pins align
-      if (pageType === 'schematic') {
-        AutoconnectEngine.updatePageAutoconnections(page);
-      }
 
       pages.push(page);
     }
@@ -479,44 +474,55 @@ export class EdbProjectParser {
    * Extracts free texts, section titles, and cable labels from Instance.eod
    */
   private static extractTexts(buf: Uint8Array, map: Map<number, RawText[]>): void {
-    const pageMarker = [0xf1, 0xeb, 0x04, 0x00];
-    const coordMarker = [0x55, 0xec];
-    let offset = 0;
+    const deTag = [0x64, 0x65, 0x5f, 0x44, 0x45, 0x40]; // de_DE@
+    const qqTag = [0x3f, 0x3f, 0x5f, 0x3f, 0x3f, 0x40]; // ??_??@
 
-    while ((offset = this.indexOf(buf, pageMarker, offset)) !== -1) {
-      if (offset + 8 <= buf.length) {
-        const pageId = this.readUint32LE(buf, offset + 4);
-        const slice = buf.subarray(offset, Math.min(buf.length, offset + 250));
+    for (let i = 0; i < buf.length - 10; i++) {
+      let isDe = true;
+      let isQq = true;
+      for (let j = 0; j < 6; j++) {
+        if (buf[i + j] !== deTag[j]) isDe = false;
+        if (buf[i + j] !== qqTag[j]) isQq = false;
+      }
+
+      if (isDe || isQq) {
+        let s = i + 6;
+        let end = s;
+        while (end < buf.length && buf[end] !== 0x3b && buf[end] !== 0x00) end++;
+        const text = this.decodeUtf8(buf.subarray(s, end)).trim();
+        if (!text || text.includes('<?xml') || text.startsWith('SCHEMA_')) continue;
+
+        let pageId = 0;
+        for (let p = Math.max(0, i - 250); p < i; p++) {
+          if (buf[p] === 0xf1 && buf[p + 1] === 0xeb && buf[p + 2] === 0x04 && buf[p + 3] === 0x00) {
+            pageId = this.readUint32LE(buf, p + 4);
+            break;
+          }
+        }
 
         let x = 0;
         let y = 0;
-        const cIdx = this.indexOf(slice, coordMarker, 0);
-        if (cIdx !== -1 && cIdx + 18 <= slice.length) {
-          x = this.readDoubleLE(slice, cIdx + 2);
-          y = this.readDoubleLE(slice, cIdx + 10);
+        for (let c = Math.max(0, i - 150); c < i; c++) {
+          if (buf[c] === 0x55 && buf[c + 1] === 0xec) {
+            x = this.readDoubleLE(buf, c + 2);
+            y = this.readDoubleLE(buf, c + 10);
+            break;
+          }
+          if (buf[c] === 0x5a && buf[c + 1] === 0xed) {
+            x = this.readDoubleLE(buf, c + 2);
+            y = this.readDoubleLE(buf, c + 10);
+            break;
+          }
         }
 
-        let text = '';
-        const deIdx = this.indexOf(slice, [0x64, 0x65, 0x5f, 0x44, 0x45, 0x40], 0);
-        const qqIdx = this.indexOf(slice, [0x3f, 0x3f, 0x5f, 0x3f, 0x3f, 0x40], 0);
-        if (deIdx !== -1) {
-          const s = deIdx + 6;
-          let e = s;
-          while (e < slice.length && slice[e] !== 0x3b && slice[e] !== 0x00) e++;
-          text = this.decodeUtf8(slice.subarray(s, e)).trim();
-        } else if (qqIdx !== -1) {
-          const s = qqIdx + 6;
-          let e = s;
-          while (e < slice.length && slice[e] !== 0x3b && slice[e] !== 0x00) e++;
-          text = this.decodeUtf8(slice.subarray(s, e)).trim();
-        }
-
-        if (text && (x > 0 || y > 0)) {
+        if (pageId > 0 && x >= 0 && x <= 420 && y >= 0 && y <= 297) {
           if (!map.has(pageId)) map.set(pageId, []);
-          map.get(pageId)!.push({ x, y, text });
+          const existingList = map.get(pageId)!;
+          if (!existingList.some(item => item.text === text && Math.abs(item.x - x) < 2 && Math.abs(item.y - y) < 2)) {
+            existingList.push({ x, y, text });
+          }
         }
       }
-      tOffset: offset += 4;
     }
   }
 
@@ -578,32 +584,225 @@ export class EdbProjectParser {
     rawIPoints: RawIPoint[]
   ): PlacedComponent[] {
     const components: PlacedComponent[] = [];
-    const placedBmks = new Set<string>();
+    const placedRelayMaster = new Set<string>();
 
     // 1. Process Functions
     for (let fIdx = 0; fIdx < rawFuncs.length; fIdx++) {
       const fn = rawFuncs[fIdx];
-      let bmk = fn.bmk.trim();
-      if (!bmk || bmk.startsWith('.N') || bmk.includes('Elektroverteilung')) continue;
+      if (fn.x <= 0 && fn.y <= 0) continue;
 
+      let bmk = fn.bmk.trim();
+      const canvasCoord = this.toCanvas(fn.x, fn.y);
+
+      // Potential Rail Source at top-left of schematic
+      if (fn.x <= 25 && fn.y >= 250) {
+        const cleanBmk = bmk.replace(/^-/, '');
+        const potName = fn.pins.length > 0 ? `${cleanBmk || 'PE'}:${fn.pins[0]}` : (cleanBmk || 'PE');
+        components.push({
+          id: `comp_pot_${pageId}_${fIdx}`,
+          symbolId: 'potential_rail_source',
+          bmk: potName,
+          higherLevelFunction: higherLevel,
+          mountingLocation: location,
+          functionText: potName,
+          technicalCharacteristics: '',
+          x: canvasCoord.x,
+          y: canvasCoord.y,
+          rotation: 0,
+          pins: { '1': { wireIds: [] } }
+        });
+        continue;
+      }
+
+      // Multi-pole RCD Isolation
+      // RCDs (-Q0..-Q5) ONLY exist on their physical distribution sheets:
+      // Page 2 / 734: -Q0, -Q1
+      // Page 4 / 735: -Q2, -Q3, -Q4
+      // Page 35 / 780: -Q5
+      const isRcdHome = (pageId === 734 && ['-Q0', '-Q1'].includes(bmk)) ||
+                        (pageId === 735 && ['-Q2', '-Q3', '-Q4'].includes(bmk)) ||
+                        (pageId === 780 && bmk === '-Q5');
+
+      if (['-Q0', '-Q1', '-Q2', '-Q3', '-Q4', '-Q5'].includes(bmk)) {
+        if (!isRcdHome) {
+          if (fn.y >= 240) {
+            const potName = fn.pins.length > 0 ? `${bmk.replace(/^-/, '')}:${fn.pins[0]}` : bmk.replace(/^-/, '');
+            components.push({
+              id: `comp_pot_${pageId}_${fIdx}`,
+              symbolId: 'potential_rail_source',
+              bmk: potName,
+              higherLevelFunction: higherLevel,
+              mountingLocation: location,
+              functionText: potName,
+              technicalCharacteristics: '',
+              x: canvasCoord.x,
+              y: canvasCoord.y,
+              rotation: 0,
+              pins: { '1': { wireIds: [] } }
+            });
+          }
+          continue;
+        }
+      }
+
+      // Modular Relays (-K20..-K25)
+      // Sheets 8 & 9 (PageId 739 & 752) are the master actuator sheets (electronic_relay_4ch).
+      // Consumer sheets use single normally-open contacts (contact_no) with cross references.
+      if (['-K20', '-K21', '-K22', '-K23', '-K24', '-K25'].includes(bmk)) {
+        const isMasterSheet = pageId === 739 || pageId === 752;
+        if (isMasterSheet) {
+          if (placedRelayMaster.has(bmk)) continue;
+          placedRelayMaster.add(bmk);
+
+          const sym = getSymbolById('electronic_relay_4ch');
+          const pinsObj: PlacedComponent['pins'] = {};
+          sym?.pins.forEach(p => { pinsObj[p.id] = { wireIds: [] }; });
+
+          components.push({
+            id: `comp_${pageId}_${fIdx}_${bmk.replace(/^-/, '')}`,
+            symbolId: 'electronic_relay_4ch',
+            bmk,
+            higherLevelFunction: higherLevel,
+            mountingLocation: location,
+            functionText: fn.strings.find(s => s.includes('Zentral')) || 'ESR12Z-4DX-UC (Zentral Ein / Aus)',
+            technicalCharacteristics: '4-Kanal Multifunktion',
+            x: canvasCoord.x,
+            y: canvasCoord.y,
+            rotation: 0,
+            pins: pinsObj
+          });
+          continue;
+        } else {
+          // On consumer sheets: single NO contact
+          const crossRef = ['-K20', '-K21', '-K22'].includes(bmk) ? '/8.0' : '/9.0';
+          const pinContact = fn.pins.length >= 2 ? `${fn.pins[0]}-${fn.pins[1]}` : '13-14';
+          components.push({
+            id: `comp_cnt_${pageId}_${fIdx}`,
+            symbolId: 'contact_no',
+            bmk,
+            higherLevelFunction: higherLevel,
+            mountingLocation: location,
+            functionText: fn.strings[0] || 'Relaiskontakt',
+            technicalCharacteristics: pinContact,
+            crossRef: crossRef,
+            x: canvasCoord.x,
+            y: canvasCoord.y,
+            rotation: 0,
+            pins: { '1': { wireIds: [] }, '2': { wireIds: [] } }
+          });
+          continue;
+        }
+      }
+
+      // Un-prefixed components (where BMK was empty or skipped)
+      if (!bmk || bmk === '-' || bmk.startsWith('.N') || bmk.includes('Elektroverteilung')) {
+        // 1. Sockets (pins 1, N, PE or strings)
+        if (
+          (fn.pins.includes('1') && fn.pins.includes('PE')) ||
+          (fn.pins.includes('N') && fn.pins.includes('PE')) ||
+          (fn.pins.includes('1') && fn.pins.includes('N')) ||
+          fn.strings.some(s => s.toLowerCase().includes('steckdose'))
+        ) {
+          const sym = getSymbolById('socket_schuko');
+          const pinsObj: PlacedComponent['pins'] = {};
+          sym?.pins.forEach(p => { pinsObj[p.id] = { wireIds: [] }; });
+          components.push({
+            id: `comp_sock_${pageId}_${fIdx}`,
+            symbolId: 'socket_schuko',
+            bmk: '',
+            higherLevelFunction: higherLevel,
+            mountingLocation: location,
+            functionText: fn.strings.join(' / ') || 'Steckdose',
+            technicalCharacteristics: '16A 230V',
+            x: canvasCoord.x,
+            y: canvasCoord.y,
+            rotation: 0,
+            pins: pinsObj
+          });
+          continue;
+        }
+
+        // 2. Light switches (pins 13, 14 or strings)
+        if (
+          (fn.pins.includes('13') && fn.pins.includes('14')) ||
+          fn.strings.some(s => s.toLowerCase().includes('schalter') || s.toLowerCase().includes('taster'))
+        ) {
+          components.push({
+            id: `comp_sw_${pageId}_${fIdx}`,
+            symbolId: 'switch_single',
+            bmk: '',
+            higherLevelFunction: higherLevel,
+            mountingLocation: location,
+            functionText: fn.strings.join(' / ') || 'Schalter',
+            technicalCharacteristics: '10A 230V',
+            x: canvasCoord.x,
+            y: canvasCoord.y,
+            rotation: 0,
+            pins: { '13': { wireIds: [] }, '14': { wireIds: [] } }
+          });
+          continue;
+        }
+
+        // 3. Lamps & Lights (pins x1, x2 or strings)
+        if (
+          fn.pins.includes('x1') ||
+          fn.pins.includes('x2') ||
+          fn.strings.some(s => s.toLowerCase().includes('leuchte') || s.toLowerCase().includes('lampe') || s.toLowerCase().includes('licht'))
+        ) {
+          components.push({
+            id: `comp_lt_${pageId}_${fIdx}`,
+            symbolId: 'light_bulb',
+            bmk: '',
+            higherLevelFunction: higherLevel,
+            mountingLocation: location,
+            functionText: fn.strings.join(' / ') || 'Leuchte',
+            technicalCharacteristics: '230V',
+            x: canvasCoord.x,
+            y: canvasCoord.y,
+            rotation: 0,
+            pins: { 'x1': { wireIds: [] }, 'x2': { wireIds: [] } }
+          });
+          continue;
+        }
+
+        // 4. Terminals (y around 190..225 mm or terminal pins)
+        if ((fn.y >= 190 && fn.y <= 225) || fn.bmk.startsWith('-X') || fn.pins.length > 0) {
+          const termTag = fn.pins[0] || (fn.strings.find(s => s.match(/^\d+$/)) || '1');
+          components.push({
+            id: `comp_term_${pageId}_${fIdx}`,
+            symbolId: 'terminal_single',
+            bmk: '',
+            deviceTag: termTag,
+            higherLevelFunction: higherLevel,
+            mountingLocation: location,
+            functionText: '',
+            technicalCharacteristics: termTag,
+            x: canvasCoord.x,
+            y: canvasCoord.y,
+            rotation: 0,
+            pins: { '1': { wireIds: [] }, '2': { wireIds: [] } }
+          });
+          continue;
+        }
+
+        continue;
+      }
+
+      // Ensure BMK has leading '-' if letter
       if (!bmk.startsWith('-') && !bmk.startsWith('/') && !bmk.startsWith('+')) {
         if (/^[A-Za-z]/.test(bmk)) bmk = '-' + bmk;
       }
 
-      // Avoid placing duplicate poles for the same multi-pole device
-      const existing = components.find(c => c.bmk === bmk && Math.abs(c.x - this.toCanvas(fn.x, fn.y).x) < 45);
+      // Avoid placing duplicate poles for the same multi-pole device at same column
+      const existing = components.find(c => c.bmk === bmk && Math.abs(c.x - canvasCoord.x) < 35);
       if (existing) {
         for (const s of fn.strings) {
           if (!s.match(/^[A-Z0-9\/-]+$/) && !s.includes('Elektroverteilung') && !existing.functionText.includes(s)) {
-            existing.functionText = existing.functionText
-              ? `${existing.functionText} / ${s}`
-              : s;
+            existing.functionText = existing.functionText ? `${existing.functionText} / ${s}` : s;
           }
         }
         continue;
       }
-
-      const canvasCoord = this.toCanvas(fn.x, fn.y);
 
       // Determine function text and technical characteristics
       const meaningfulStrings = fn.strings.filter(s => !s.match(/^[A-Z0-9\/-]+$/) && !s.includes('Elektroverteilung'));
@@ -611,10 +810,8 @@ export class EdbProjectParser {
       const techData = fn.strings.find(s => s.match(/(?:NH|\d+\s*A|\d+\s*W|S751|Goodwe|GMK|WWC|Finder|ESR|EUD|S2U|C10|C16|B16|B10|B6)/i)) || '';
 
       const symInfo = this.resolveSymbol(bmk, funcText, techData, pageType);
-
       const compId = `comp_${pageId}_${fIdx}_${bmk.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
-      // Initialize pins
       const pinsObj: PlacedComponent['pins'] = {};
       symInfo.defaultPins.forEach(p => {
         pinsObj[p.id] = { wireIds: [] };
@@ -633,8 +830,6 @@ export class EdbProjectParser {
         rotation: 0,
         pins: pinsObj
       });
-
-      placedBmks.add(bmk);
     }
 
     // 2. Process Interruption Points (IPoint)
@@ -642,9 +837,18 @@ export class EdbProjectParser {
       const ip = rawIPoints[ipIdx];
       const canvasCoord = this.toCanvas(ip.x, ip.y);
 
-      // Point right if on right half, point left if on left half
-      const isRight = canvasCoord.x > 500;
-      const symbolId = isRight ? 'potential_arrow_right' : 'potential_arrow_left';
+      let symbolId = 'potential_arrow_right';
+      if (canvasCoord.x > 800) {
+        symbolId = 'potential_arrow_right';
+      } else if (canvasCoord.x < 200) {
+        symbolId = 'potential_arrow_left';
+      } else if (canvasCoord.y > 550) {
+        symbolId = 'potential_arrow_down';
+      } else if (canvasCoord.y < 150) {
+        symbolId = 'potential_arrow_up';
+      } else {
+        symbolId = canvasCoord.x > 500 ? 'potential_arrow_right' : 'potential_arrow_left';
+      }
 
       const ipCompId = `comp_ip_${pageId}_${ipIdx}`;
 
@@ -655,6 +859,7 @@ export class EdbProjectParser {
         higherLevelFunction: higherLevel,
         mountingLocation: location,
         functionText: ip.name,
+        technicalCharacteristics: '',
         x: canvasCoord.x,
         y: canvasCoord.y,
         rotation: 0,
@@ -696,20 +901,88 @@ export class EdbProjectParser {
   private static buildPageWires(components: PlacedComponent[], rawConns: RawConnection[]): Wire[] {
     const wires: Wire[] = [];
 
+    // 1. Process explicit connections from Connection.eod
     for (let i = 0; i < rawConns.length; i++) {
       const rc = rawConns[i];
       const fromMatch = this.findMatchingPin(components, rc.from);
       const toMatch = this.findMatchingPin(components, rc.to);
 
       if (fromMatch && toMatch && fromMatch.componentId !== toMatch.componentId) {
+        const targetStr = (rc.from + ' ' + rc.to).toUpperCase();
+        let potential: 'L1' | 'L2' | 'L3' | 'N' | 'PE' = 'L1';
+        let color: 'BK' | 'BN' | 'GY' | 'BU' | 'GNYE' = 'BK';
+
+        if (targetStr.includes(':PE') || targetStr.includes('-PE')) {
+          potential = 'PE';
+          color = 'GNYE';
+        } else if (targetStr.includes(':N') || targetStr.includes('-N')) {
+          potential = 'N';
+          color = 'BU';
+        } else if (targetStr.includes(':L2')) {
+          potential = 'L2';
+          color = 'BK';
+        } else if (targetStr.includes(':L3')) {
+          potential = 'L3';
+          color = 'GY';
+        }
+
         wires.push({
           id: `w_eod_${i}`,
           from: fromMatch,
           to: toMatch,
-          potential: 'L1',
-          color: 'BK',
-          crossSection: '1.5mm²'
+          potential,
+          color,
+          crossSection: potential === 'PE' ? '2.5mm²' : '1.5mm²'
         });
+      }
+    }
+
+    // 2. Construct top busbar connections for potential rail sources
+    const railSources = components.filter(c => c.symbolId === 'potential_rail_source');
+    if (railSources.length > 0) {
+      const breakers = components.filter(c => 
+        (c.symbolId === 'circuit_breaker_1p' || c.symbolId === 'circuit_breaker_3p') && c.y < 200
+      );
+
+      for (const b of breakers) {
+        const l1Source = railSources.find(r => r.functionText.includes('L1')) || railSources[0];
+        if (l1Source) {
+          const wireId = `w_bus_${l1Source.id}_${b.id}_1`;
+          if (!wires.some(w => w.from.componentId === l1Source.id && w.to.componentId === b.id)) {
+            wires.push({
+              id: wireId,
+              from: { componentId: l1Source.id, pinId: '1' },
+              to: { componentId: b.id, pinId: '1' },
+              potential: 'L1',
+              color: 'BK',
+              crossSection: '2.5mm²'
+            });
+          }
+        }
+        if (b.symbolId === 'circuit_breaker_3p') {
+          const l2Source = railSources.find(r => r.functionText.includes('L2'));
+          const l3Source = railSources.find(r => r.functionText.includes('L3'));
+          if (l2Source) {
+            wires.push({
+              id: `w_bus_${l2Source.id}_${b.id}_3`,
+              from: { componentId: l2Source.id, pinId: '1' },
+              to: { componentId: b.id, pinId: '3' },
+              potential: 'L2',
+              color: 'BK',
+              crossSection: '2.5mm²'
+            });
+          }
+          if (l3Source) {
+            wires.push({
+              id: `w_bus_${l3Source.id}_${b.id}_5`,
+              from: { componentId: l3Source.id, pinId: '1' },
+              to: { componentId: b.id, pinId: '5' },
+              potential: 'L3',
+              color: 'GY',
+              crossSection: '2.5mm²'
+            });
+          }
+        }
       }
     }
 
@@ -718,14 +991,27 @@ export class EdbProjectParser {
 
   private static findMatchingPin(components: PlacedComponent[], targetStr: string): { componentId: string; pinId: string } | null {
     if (!targetStr) return null;
-    // Extract BMK and Pin from target string like "=Elektroverteilung+ET1-Q12:1" or "-F0:3"
+
+    // 1. Direct check for potential rail source: e.g. "Q2:L1", "Q2:N", "PE:1"
+    const potComp = components.find(c => 
+      c.symbolId === 'potential_rail_source' && (targetStr.endsWith(c.functionText) || targetStr.includes(c.functionText))
+    );
+    if (potComp) {
+      return { componentId: potComp.id, pinId: '1' };
+    }
+
+    // 2. Extract BMK and Pin: like "=Elektroverteilung+ET1-Q12:1" or "-F0:3" or "-X31.1:1"
     const m = targetStr.match(/(-[A-Za-z0-9_.]+)(?::([A-Za-z0-9_.]+))?/);
     if (!m) return null;
 
     const bmk = m[1];
     const pin = m[2] || '1';
 
-    const comp = components.find(c => c.bmk === bmk);
+    let comp = components.find(c => c.bmk === bmk);
+    if (!comp && bmk.startsWith('-X')) {
+      comp = components.find(c => c.symbolId === 'terminal_single' && (c.deviceTag === pin || c.technicalCharacteristics === pin));
+    }
+
     if (!comp) return null;
 
     const sym = getSymbolById(comp.symbolId);

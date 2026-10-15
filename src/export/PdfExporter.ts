@@ -292,14 +292,22 @@ export class PdfExporter {
         doc.setFillColor(0, 0, 0);
       }
 
-      const midY = (y1 + y2) / 2;
-      doc.line(x1, y1, x1, midY);
-      doc.line(x1, midY, x2, midY);
-      doc.line(x2, midY, x2, y2);
+      const comp1 = page.components.find(c => c.id === wire.from.componentId);
+      const isBusbar = comp1?.symbolId === 'potential_rail_source';
 
-      // Junction dots
-      doc.circle(x1, y1, 0.6, 'F');
-      doc.circle(x2, y2, 0.6, 'F');
+      if (Math.abs(x1 - x2) < 0.5) {
+        doc.line(x1, y1, x1, y2);
+      } else if (Math.abs(y1 - y2) < 0.5) {
+        doc.line(x1, y1, x2, y1);
+      } else if (isBusbar) {
+        doc.line(x1, y1, x2, y1);
+        doc.line(x2, y1, x2, y2);
+      } else {
+        const midY = (y1 + y2) / 2;
+        doc.line(x1, y1, x1, midY);
+        doc.line(x1, midY, x2, midY);
+        doc.line(x2, midY, x2, y2);
+      }
     }
   }
 
@@ -329,45 +337,84 @@ export class PdfExporter {
       doc.setLineWidth(0.35);
       this.drawVectorSymbol(doc, sym.id, compX, compY, compW, compH);
 
-      // Draw Pins
-      for (const pin of sym.pins) {
-        const px = compX + this.scaleX(pin.x, wMm);
-        const py = compY + this.scaleY(pin.y, hMm);
-        doc.setFillColor(255, 255, 255);
-        doc.circle(px, py, 0.5, 'FD');
+      const isConnection = sym.category === 'connections' || sym.id.startsWith('potential_arrow') || sym.id === 'potential_rail_source';
+      const isTerminal = sym.id === 'terminal_single';
 
-        doc.setFont('courier', 'normal');
-        doc.setFontSize(5);
-        doc.setTextColor(70, 70, 70);
-        const ty = pin.direction === 'top' ? py - 1.2 : py + 2.2;
-        doc.text(pin.name, px, ty, { align: 'center' });
+      // Draw Pins only for standard multi-pin components (not connection arrows or terminals)
+      if (!isConnection && !isTerminal) {
+        for (const pin of sym.pins) {
+          const px = compX + this.scaleX(pin.x, wMm);
+          const py = compY + this.scaleY(pin.y, hMm);
+          doc.setFillColor(255, 255, 255);
+          doc.circle(px, py, 0.4, 'FD');
+
+          doc.setFont('courier', 'normal');
+          doc.setFontSize(4.5);
+          doc.setTextColor(80, 80, 80);
+          const ty = pin.direction === 'top' ? py - 1.0 : py + 2.0;
+          doc.text(pin.name, px, ty, { align: 'center' });
+        }
       }
 
-      // Draw BMK (Betriebsmittelkennzeichen)
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(options.colorMode === 'color' ? 180 : 0, options.colorMode === 'color' ? 120 : 0, 0);
-      doc.text(comp.bmk, compX + compW / 2, compY - 2, { align: 'center' });
-
-      // Draw Function Text
-      if (comp.functionText) {
-        doc.setFont('helvetica', 'normal');
+      // Draw Labels according to component type
+      if (isConnection) {
+        // Interruption point / Potential arrow: render target name beside arrow
+        doc.setFont('helvetica', 'bold');
         doc.setFontSize(6.5);
-        doc.setTextColor(0, 0, 0);
-        doc.text(comp.functionText, compX + compW / 2, compY + compH + 3.5, { align: 'center' });
-      }
-
-      // Draw Technical Characteristics
-      if (comp.technicalCharacteristics) {
-        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(options.colorMode === 'color' ? 180 : 0, 0, 0);
+        if (sym.id === 'potential_arrow_right') {
+          doc.text(comp.functionText || comp.bmk, compX + compW + 1.5, compY + compH * 0.5 + 1.2, { align: 'left' });
+        } else if (sym.id === 'potential_arrow_left') {
+          doc.text(comp.functionText || comp.bmk, compX - 1.5, compY + compH * 0.5 + 1.2, { align: 'right' });
+        } else if (sym.id === 'potential_arrow_down') {
+          doc.text(comp.functionText || comp.bmk, compX + compW * 0.5, compY + compH + 3.0, { align: 'center' });
+        } else if (sym.id === 'potential_arrow_up') {
+          doc.text(comp.functionText || comp.bmk, compX + compW * 0.5, compY - 1.5, { align: 'center' });
+        } else if (sym.id === 'potential_rail_source') {
+          doc.text(comp.functionText || comp.bmk, compX - 1.5, compY + compH * 0.5 + 1.2, { align: 'right' });
+        }
+      } else if (isTerminal) {
+        // Terminal: draw terminal designation beside circle and BMK above
+        const termNum = comp.deviceTag || comp.technicalCharacteristics || comp.functionText || '1';
+        doc.setFont('courier', 'bold');
         doc.setFontSize(5.5);
-        doc.setTextColor(90, 90, 90);
-        doc.text(comp.technicalCharacteristics, compX + compW / 2, compY + compH + 6.5, { align: 'center' });
+        doc.setTextColor(50, 50, 50);
+        doc.text(termNum, compX + compW + 1.2, compY + compH * 0.5 + 1.0);
+
+        if (comp.bmk && !comp.bmk.startsWith('comp_')) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(6.5);
+          doc.setTextColor(options.colorMode === 'color' ? 180 : 0, options.colorMode === 'color' ? 120 : 0, 0);
+          doc.text(comp.bmk, compX + compW * 0.5, compY - 1.5, { align: 'center' });
+        }
+      } else {
+        // Standard Electrical Component
+        // Draw BMK (Betriebsmittelkennzeichen)
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(options.colorMode === 'color' ? 180 : 0, options.colorMode === 'color' ? 120 : 0, 0);
+        doc.text(comp.bmk, compX + compW / 2, compY - 2, { align: 'center' });
+
+        // Draw Function Text
+        if (comp.functionText && comp.functionText !== comp.bmk) {
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(6);
+          doc.setTextColor(0, 0, 0);
+          doc.text(comp.functionText, compX + compW / 2, compY + compH + 3.2, { align: 'center' });
+        }
+
+        // Draw Technical Characteristics
+        if (comp.technicalCharacteristics && comp.technicalCharacteristics !== comp.functionText) {
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(5);
+          doc.setTextColor(80, 80, 80);
+          doc.text(comp.technicalCharacteristics, compX + compW / 2, compY + compH + 6.0, { align: 'center' });
+        }
       }
 
       // SMART PDF: Interactive Cross-References (Kontaktspiegel & Querverweise)
       if (comp.crossRef) {
-        const crY = compY + compH + 10;
+        const crY = compY + compH + 9;
         doc.setFont('courier', 'bold');
         doc.setFontSize(6);
         doc.setTextColor(options.colorMode === 'color' ? 200 : 50, 50, 0);
@@ -375,7 +422,6 @@ export class PdfExporter {
 
         // Add PDF Hyperlink if interactive cross-references are enabled
         if (options.interactiveCrossReferences) {
-          // Parse target page number (e.g. from "/1.4" -> page "1")
           const match = comp.crossRef.match(/\/(\d+)\./);
           if (match) {
             const targetPageStr = match[1];
@@ -385,11 +431,7 @@ export class PdfExporter {
               const linkH = 4;
               const linkX = compX + compW / 2 - linkW / 2;
               const linkY = crY - 3;
-
-              // Register internal jump link in PDF
               doc.link(linkX, linkY, linkW, linkH, { pageNumber: targetPdfPage });
-
-              // Draw subtle dotted link frame (blue hint in color mode)
               if (options.colorMode === 'color') {
                 doc.setDrawColor(66, 153, 225);
                 doc.setLineWidth(0.15);
@@ -417,14 +459,13 @@ export class PdfExporter {
         break;
       }
       case 'contact_no':
-      case 'pushbutton_no': {
+      case 'pushbutton_no':
+      case 'switch_single': {
         doc.line(x + w * 0.5, y, x + w * 0.5, y + h * 0.35);
         doc.line(x + w * 0.5, y + h * 0.35, x + w * 0.85, y + h * 0.65);
         doc.line(x + w * 0.5, y + h * 0.68, x + w * 0.5, y + h);
-        if (symId === 'pushbutton_no') {
-          doc.line(x + w * 0.7, y + h * 0.48, x + w * 0.7, y + h * 0.35);
-          doc.line(x + w * 0.55, y + h * 0.35, x + w * 0.85, y + h * 0.35);
-        }
+        doc.circle(x + w * 0.5, y + h * 0.35, 0.4, 'F');
+        doc.circle(x + w * 0.5, y + h * 0.68, 0.4, 'F');
         break;
       }
       case 'contact_nc':
@@ -433,10 +474,69 @@ export class PdfExporter {
         doc.line(x + w * 0.5, y + h * 0.35, x + w * 0.15, y + h * 0.65);
         doc.line(x + w * 0.15, y + h * 0.65, x + w * 0.5, y + h * 0.65);
         doc.line(x + w * 0.5, y + h * 0.68, x + w * 0.5, y + h);
-        if (symId === 'pushbutton_emergency_stop') {
-          // Emergency Stop Mushroom head
-          doc.line(x + w * 0.3, y + h * 0.45, x + w * 0.3, y + h * 0.25);
-          doc.line(x + w * 0.1, y + h * 0.25, x + w * 0.5, y + h * 0.25);
+        break;
+      }
+      case 'circuit_breaker_1p': {
+        doc.line(x + w * 0.5, y, x + w * 0.5, y + h * 0.28);
+        doc.line(x + w * 0.5, y + h * 0.28, x + w * 0.8, y + h * 0.58);
+        doc.line(x + w * 0.5, y + h * 0.62, x + w * 0.5, y + h);
+        // Thermal bimetal
+        doc.rect(x + w * 0.35, y + h * 0.68, w * 0.3, h * 0.18);
+        // Magnetic trip
+        doc.line(x + w * 0.65, y + h * 0.42, x + w * 0.8, y + h * 0.34);
+        doc.line(x + w * 0.8, y + h * 0.34, x + w * 0.8, y + h * 0.5);
+        break;
+      }
+      case 'circuit_breaker_3p': {
+        for (let p = 0; p < 3; p++) {
+          const px = x + w * ((p + 0.5) / 3);
+          doc.line(px, y, px, y + h * 0.28);
+          doc.line(px, y + h * 0.28, px + w * 0.1, y + h * 0.58);
+          doc.line(px, y + h * 0.62, px, y + h);
+          doc.rect(px - 1.2, y + h * 0.68, 2.4, 2.0);
+        }
+        doc.setLineDashPattern([1, 1], 0);
+        doc.line(x + w * 0.15, y + h * 0.44, x + w * 0.85, y + h * 0.44);
+        doc.setLineDashPattern([], 0);
+        break;
+      }
+      case 'fuse_switch_3p': {
+        for (let p = 0; p < 3; p++) {
+          const px = x + w * ((p + 0.5) / 3);
+          doc.line(px, y, px, y + h * 0.15);
+          doc.rect(px - 1.5, y + h * 0.15, 3.0, h * 0.3);
+          doc.line(px, y + h * 0.15, px, y + h * 0.45);
+          doc.line(px, y + h * 0.45, px + w * 0.1, y + h * 0.72);
+          doc.line(px, y + h * 0.75, px, y + h);
+        }
+        doc.setLineDashPattern([1, 1], 0);
+        doc.line(x + w * 0.15, y + h * 0.6, x + w * 0.85, y + h * 0.6);
+        doc.setLineDashPattern([], 0);
+        break;
+      }
+      case 'main_switch_4p':
+      case 'changeover_switch_4p': {
+        for (let p = 0; p < 4; p++) {
+          const px = x + w * ((p + 0.5) / 4);
+          doc.line(px, y, px, y + h * 0.3);
+          doc.line(px, y + h * 0.3, px + w * 0.08, y + h * 0.65);
+          doc.line(px, y + h * 0.68, px, y + h);
+        }
+        doc.setLineDashPattern([1, 1], 0);
+        doc.line(x + w * 0.1, y + h * 0.48, x + w * 0.9, y + h * 0.48);
+        doc.setLineDashPattern([], 0);
+        break;
+      }
+      case 'energy_meter_3p': {
+        doc.rect(x + w * 0.05, y + h * 0.15, w * 0.9, h * 0.7, 'S');
+        doc.line(x + w * 0.05, y + h * 0.45, x + w * 0.95, y + h * 0.45);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.text('kWh', x + w * 0.5, y + h * 0.35, { align: 'center' });
+        for (let p = 0; p < 4; p++) {
+          const px = x + w * ((p + 0.5) / 4);
+          doc.line(px, y, px, y + h * 0.15);
+          doc.line(px, y + h * 0.85, px, y + h);
         }
         break;
       }
@@ -451,26 +551,122 @@ export class PdfExporter {
             doc.rect(px - 1.5, y + h * 0.72, 3, 2.5);
           }
         }
-        // Coupling dashed line
         doc.setLineDashPattern([1, 1], 0);
         doc.line(x + w * 0.2, y + h * 0.45, x + w * 0.8, y + h * 0.45);
         doc.setLineDashPattern([], 0);
         break;
       }
-      case 'motor_3phase': {
+      case 'motor_3phase':
+      case 'motor_1phase': {
         const radius = Math.min(w, h) * 0.38;
         const cx = x + w * 0.5;
         const cy = y + h * 0.55;
         doc.circle(cx, cy, radius);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
+        doc.setFontSize(8.5);
         doc.text('M', cx, cy - 0.5, { align: 'center' });
-        doc.setFontSize(6.5);
-        doc.text('3 ~', cx, cy + 3.5, { align: 'center' });
-        // Phase feeder lines
-        doc.line(cx - radius * 0.5, y, cx - radius * 0.5, cy - radius);
+        doc.setFontSize(6);
+        doc.text(symId === 'motor_3phase' ? '3 ~' : '1 ~', cx, cy + 3.5, { align: 'center' });
+        if (symId === 'motor_3phase') {
+          doc.line(cx - radius * 0.5, y, cx - radius * 0.5, cy - radius);
+          doc.line(cx, y, cx, cy - radius);
+          doc.line(cx + radius * 0.5, y, cx + radius * 0.5, cy - radius);
+        } else {
+          doc.line(cx - radius * 0.4, y, cx - radius * 0.4, cy - radius);
+          doc.line(cx + radius * 0.4, y, cx + radius * 0.4, cy - radius);
+        }
+        break;
+      }
+      case 'socket_schuko': {
+        doc.line(x + w * 0.25, y, x + w * 0.25, y + h * 0.35);
+        doc.line(x + w * 0.5, y, x + w * 0.5, y + h * 0.35);
+        doc.line(x + w * 0.75, y, x + w * 0.75, y + h * 0.35);
+        doc.ellipse(x + w * 0.5, y + h * 0.35, w * 0.35, h * 0.45, 'S');
+        doc.circle(x + w * 0.4, y + h * 0.55, 0.5, 'F');
+        doc.circle(x + w * 0.6, y + h * 0.55, 0.5, 'F');
+        break;
+      }
+      case 'light_bulb': {
+        const radius = Math.min(w, h) * 0.38;
+        const cx = x + w * 0.5;
+        const cy = y + h * 0.5;
+        doc.circle(cx, cy, radius);
+        doc.line(cx - radius * 0.707, cy - radius * 0.707, cx + radius * 0.707, cy + radius * 0.707);
+        doc.line(cx + radius * 0.707, cy - radius * 0.707, cx - radius * 0.707, cy + radius * 0.707);
         doc.line(cx, y, cx, cy - radius);
-        doc.line(cx + radius * 0.5, y, cx + radius * 0.5, cy - radius);
+        doc.line(cx, cy + radius, cx, y + h);
+        break;
+      }
+      case 'rj45_port': {
+        doc.rect(x + w * 0.15, y + h * 0.25, w * 0.7, h * 0.6, 'S');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(5);
+        doc.text('ETH', x + w * 0.5, y + h * 0.6, { align: 'center' });
+        doc.line(x + w * 0.5, y, x + w * 0.5, y + h * 0.25);
+        break;
+      }
+      case 'valve_actuator': {
+        doc.triangle(x + w * 0.2, y + h * 0.2, x + w * 0.8, y + h * 0.8, x + w * 0.2, y + h * 0.8, 'S');
+        doc.triangle(x + w * 0.8, y + h * 0.2, x + w * 0.8, y + h * 0.8, x + w * 0.2, y + h * 0.2, 'S');
+        doc.line(x + w * 0.5, y, x + w * 0.5, y + h * 0.3);
+        doc.line(x + w * 0.5, y + h * 0.7, x + w * 0.5, y + h);
+        break;
+      }
+      case 'thermostat_box': {
+        doc.rect(x + w * 0.08, y + h * 0.2, w * 0.84, h * 0.6, 'S');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.text('°C', x + w * 0.5, y + h * 0.55, { align: 'center' });
+        break;
+      }
+      case 'inverter_solar': {
+        doc.setLineDashPattern([1.5, 1], 0);
+        doc.rect(x + w * 0.03, y + h * 0.1, w * 0.94, h * 0.8, 'S');
+        doc.setLineDashPattern([], 0);
+        doc.line(x + w * 0.03, y + h * 0.1, x + w * 0.97, y + h * 0.9);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.text('DC', x + w * 0.25, y + h * 0.65);
+        doc.text('AC ~', x + w * 0.7, y + h * 0.35);
+        break;
+      }
+      case 'electronic_relay_4ch': {
+        doc.rect(x + w * 0.04, y + h * 0.12, w * 0.92, h * 0.76, 'S');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.text('ESR12Z-4DX-UC', x + w * 0.5, y + h * 0.42, { align: 'center' });
+        doc.setFontSize(5.5);
+        doc.setFont('helvetica', 'normal');
+        doc.text('4-Kanal Multifunktion', x + w * 0.5, y + h * 0.62, { align: 'center' });
+        break;
+      }
+      case 'potential_arrow_right': {
+        doc.setFillColor(220, 38, 38);
+        doc.line(x, y + h * 0.5, x + w * 0.4, y + h * 0.5);
+        doc.triangle(x + w * 0.4, y + h * 0.2, x + w, y + h * 0.5, x + w * 0.4, y + h * 0.8, 'FD');
+        break;
+      }
+      case 'potential_arrow_left': {
+        doc.setFillColor(220, 38, 38);
+        doc.line(x + w, y + h * 0.5, x + w * 0.6, y + h * 0.5);
+        doc.triangle(x + w * 0.6, y + h * 0.2, x, y + h * 0.5, x + w * 0.6, y + h * 0.8, 'FD');
+        break;
+      }
+      case 'potential_arrow_down': {
+        doc.setFillColor(220, 38, 38);
+        doc.line(x + w * 0.5, y, x + w * 0.5, y + h * 0.4);
+        doc.triangle(x + w * 0.2, y + h * 0.4, x + w * 0.5, y + h, x + w * 0.8, y + h * 0.4, 'FD');
+        break;
+      }
+      case 'potential_arrow_up': {
+        doc.setFillColor(220, 38, 38);
+        doc.line(x + w * 0.5, y + h, x + w * 0.5, y + h * 0.6);
+        doc.triangle(x + w * 0.2, y + h * 0.6, x + w * 0.5, y, x + w * 0.8, y + h * 0.6, 'FD');
+        break;
+      }
+      case 'potential_rail_source': {
+        doc.circle(x + w * 0.5, y + h * 0.5, 0.9, 'S');
+        doc.line(x + w * 0.5 + 0.9, y + h * 0.5, x + w, y + h * 0.5);
         break;
       }
       case 'fuse_1p': {
@@ -490,9 +686,9 @@ export class PdfExporter {
         break;
       }
       case 'terminal_single': {
-        doc.line(x + w * 0.5, y, x + w * 0.5, y + h * 0.4);
-        doc.circle(x + w * 0.5, y + h * 0.5, 1.2);
-        doc.line(x + w * 0.5, y + h * 0.6, x + w * 0.5, y + h);
+        doc.line(x + w * 0.5, y, x + w * 0.5, y + h * 0.38);
+        doc.circle(x + w * 0.5, y + h * 0.5, 1.0, 'S');
+        doc.line(x + w * 0.5, y + h * 0.62, x + w * 0.5, y + h);
         break;
       }
       case 'rcd_4p':
@@ -502,10 +698,9 @@ export class PdfExporter {
         for (let p = 0; p < poles; p++) {
           const px = x + w * ((p + 0.5) / poles);
           doc.line(px, y, px, y + h * 0.28);
-          doc.line(px, y + h * 0.28, px + w * 0.1, y + h * 0.58);
+          doc.line(px, y + h * 0.28, px + w * 0.08, y + h * 0.58);
           doc.line(px, y + h * 0.62, px, y + h);
         }
-        // Differential current transformer loop
         doc.ellipse(x + w * 0.5, y + h * 0.8, w * 0.42, h * 0.12);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6);
@@ -514,16 +709,12 @@ export class PdfExporter {
       }
       case 'impulse_relay_1no':
       case 'impulse_relay_2no': {
-        // Coil with pulse step symbol
         doc.rect(x + w * 0.08, y + h * 0.25, w * 0.35, h * 0.48);
         doc.line(x + w * 0.25, y, x + w * 0.25, y + h * 0.25);
         doc.line(x + w * 0.25, y + h * 0.73, x + w * 0.25, y + h);
-        // Step wave
         doc.line(x + w * 0.12, y + h * 0.55, x + w * 0.2, y + h * 0.55);
         doc.line(x + w * 0.2, y + h * 0.55, x + w * 0.2, y + h * 0.4);
         doc.line(x + w * 0.2, y + h * 0.4, x + w * 0.35, y + h * 0.4);
-
-        // Contact(s)
         const contacts = symId === 'impulse_relay_2no' ? 2 : 1;
         for (let c = 0; c < contacts; c++) {
           const cx = x + w * (0.55 + c * 0.3);
@@ -538,7 +729,6 @@ export class PdfExporter {
         doc.line(x + w * 0.1, y + h * 0.25, x + w * 0.45, y + h * 0.7);
         doc.line(x + w * 0.27, y, x + w * 0.27, y + h * 0.25);
         doc.line(x + w * 0.27, y + h * 0.7, x + w * 0.27, y + h);
-        // Changeover
         doc.line(x + w * 0.75, y, x + w * 0.75, y + h * 0.3);
         doc.line(x + w * 0.75, y + h * 0.3, x + w * 0.6, y + h * 0.6);
         doc.line(x + w * 0.6, y + h * 0.65, x + w * 0.6, y + h);
@@ -553,7 +743,6 @@ export class PdfExporter {
           doc.line(sx, y, sx, y + h * 0.3);
           doc.line(sx, y + h * 0.65, sx, y + h * 0.8);
         }
-        // PE bus line
         doc.line(x + w * 0.15, y + h * 0.8, x + w * 0.81, y + h * 0.8);
         doc.line(x + w * 0.48, y + h * 0.8, x + w * 0.48, y + h);
         break;

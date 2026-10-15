@@ -1181,7 +1181,8 @@ export class CadCanvas {
       const sym = getSymbolById(comp.symbolId);
       if (!sym) return '';
 
-      const isConn = sym.category === 'connections';
+      const isConn = sym.category === 'connections' || sym.id.startsWith('potential_arrow') || sym.id === 'potential_rail_source';
+      const isTerminal = sym.id === 'terminal_single';
       const isSelected = comp.id === this.selectedComponentId;
       const strokeColor = isSelected ? '#63b3ed' : '#e2e8f0';
 
@@ -1202,17 +1203,17 @@ export class CadCanvas {
 
       // Pins render
       const pinsSvg = sym.pins.map(pin => {
-        if (isConn) {
+        if (isConn || isTerminal) {
           return `
             <g class="pin" transform="translate(${pin.x}, ${pin.y})">
-              <circle cx="0" cy="0" r="3" fill="transparent"/>
+              <circle cx="0" cy="0" r="2.5" fill="transparent"/>
             </g>
           `;
         }
         return `
           <g class="pin" transform="translate(${pin.x}, ${pin.y})">
-            <circle cx="0" cy="0" r="3.5" fill="#2d3748" stroke="#63b3ed" stroke-width="1.5"/>
-            <text x="${pin.direction === 'top' ? 0 : 6}" y="${pin.direction === 'top' ? -5 : 4}" font-size="7" font-family="monospace" fill="#a0aec0" text-anchor="${pin.direction === 'top' ? 'middle' : 'start'}">${pin.name}</text>
+            <circle cx="0" cy="0" r="3" fill="#2d3748" stroke="#63b3ed" stroke-width="1.2"/>
+            <text x="${pin.direction === 'top' ? 0 : 5}" y="${pin.direction === 'top' ? -4 : 3.5}" font-size="6.5" font-family="monospace" fill="#a0aec0" text-anchor="${pin.direction === 'top' ? 'middle' : 'start'}">${pin.name}</text>
           </g>
         `;
       }).join('');
@@ -1225,7 +1226,7 @@ export class CadCanvas {
           <!-- Selection Highlight -->
           <rect class="selection-rect" x="-8" y="-8" width="${sym.width + 16}" height="${isConn ? sym.height + 16 : sym.height + 36}" fill="rgba(99, 179, 237, 0.15)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="3,2" rx="4" style="display: ${isSelected ? 'block' : 'none'};"/>
 
-          ${!isConn ? `
+          ${!isConn && !isTerminal ? `
             <!-- BMK Label (z.B. -K1, -Q1) -->
             ${bmkPos.visible ? `
               <text x="${bmkPos.x}" y="${bmkPos.y}" font-size="${bmkPos.fontSize}" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="${bmkPos.anchor}" ${bmkPos.transform}>${comp.bmk}</text>
@@ -1243,8 +1244,17 @@ export class CadCanvas {
 
             <!-- Cross Reference -->
             ${crossRefDisplay}
-          ` : (sym.id.startsWith('potential_arrow') ? `
-            <text x="${sym.width / 2}" y="-4" font-size="9" font-weight="bold" font-family="monospace" fill="#63b3ed" text-anchor="middle">${comp.functionText || comp.bmk}</text>
+          ` : isTerminal ? `
+            <!-- Terminal designation and BMK -->
+            <text x="${sym.width + 2}" y="${sym.height / 2 + 3}" font-size="7.5" font-weight="bold" font-family="monospace" fill="#cbd5e0">${comp.deviceTag || comp.technicalCharacteristics || comp.functionText || '1'}</text>
+            ${comp.bmk && !comp.bmk.startsWith('comp_') ? `
+              <text x="${sym.width / 2}" y="-4" font-size="7.5" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${comp.bmk}</text>
+            ` : ''}
+          ` : (sym.id.startsWith('potential_arrow') || sym.id === 'potential_rail_source' ? `
+            <text x="${sym.id === 'potential_arrow_left' || sym.id === 'potential_rail_source' ? -4 : (sym.id === 'potential_arrow_right' ? sym.width + 4 : sym.width / 2)}" 
+                  y="${sym.id.includes('down') ? sym.height + 10 : (sym.id.includes('up') ? -4 : sym.height / 2 + 3)}" 
+                  font-size="8.5" font-weight="bold" font-family="monospace" fill="#f56565" 
+                  text-anchor="${sym.id === 'potential_arrow_left' || sym.id === 'potential_rail_source' ? 'end' : (sym.id === 'potential_arrow_right' ? 'start' : 'middle')}">${comp.functionText || comp.bmk}</text>
           ` : '')}
 
           <!-- Symbol Vector Graphics -->
@@ -1304,11 +1314,16 @@ export class CadCanvas {
       const isSelected = wire.id === this.selectedWireId;
       const wireColor = this.getWireColor(wire.potential, wire.color);
 
+      const comp1 = this.activePage.components.find(c => c.id === wire.from.componentId);
+      const isBusbar = comp1?.symbolId === 'potential_rail_source';
+
       let pathData = '';
       if (Math.abs(p1.x - p2.x) <= 2) {
         pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y}`;
       } else if (Math.abs(p1.y - p2.y) <= 2) {
         pathData = `M ${p1.x} ${p1.y} L ${p2.x} ${p1.y}`;
+      } else if (isBusbar) {
+        pathData = `M ${p1.x} ${p1.y} L ${p2.x} ${p1.y} L ${p2.x} ${p2.y}`;
       } else {
         const midY = (p1.y + p2.y) / 2;
         pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;

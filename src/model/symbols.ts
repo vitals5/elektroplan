@@ -1369,6 +1369,46 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
       <text x="70" y="44" font-size="7" font-family="sans-serif" fill="currentColor" text-anchor="middle">4-Kanal Multifunktion</text>
     `,
     description: 'Elektronischer 4-Kanal Stromstoß-Schaltrelais-Aktor'
+  },
+  {
+    id: 'potential_rail_source',
+    name: 'Potentialeinspeisepunkt',
+    category: 'connections',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '',
+    defaultFunctionText: 'Potential',
+    width: 24,
+    height: 16,
+    pins: [
+      { id: '1', name: '1', x: 24, y: 8, direction: 'right' }
+    ],
+    svgContent: `
+      <circle cx="8" cy="8" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="11.5" y1="8" x2="24" y2="8" stroke="currentColor" stroke-width="2"/>
+    `,
+    description: 'Potentialeinspeisung / Schienenanschluss an Sammelschiene'
+  },
+  {
+    id: 'switch_single',
+    name: 'Schalter / Taster (1-polig)',
+    category: 'controls',
+    standard: 'DIN EN 60617',
+    defaultBmkPrefix: '-S',
+    defaultFunctionText: 'Schalter',
+    width: 24,
+    height: 40,
+    pins: [
+      { id: '13', name: '13', x: 12, y: 0, direction: 'top' },
+      { id: '14', name: '14', x: 12, y: 40, direction: 'bottom' }
+    ],
+    svgContent: `
+      <line x1="12" y1="0" x2="12" y2="14" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="14" x2="20" y2="28" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="28" x2="12" y2="40" stroke="currentColor" stroke-width="2"/>
+      <circle cx="12" cy="14" r="1.5" fill="currentColor"/>
+      <circle cx="12" cy="28" r="1.5" fill="currentColor"/>
+    `,
+    description: 'Einpoliger Schalter / Taster Schließerkontakt 13-14'
   }
 ];
 
