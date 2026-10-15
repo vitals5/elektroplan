@@ -166,9 +166,9 @@ export class App {
           <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
 
           <button class="btn" id="btnNewProject" title="Neues Projekt anlegen (Strg+N)">📄 <span class="hide-mobile">Neu</span></button>
-          <label class="btn" title="Projekt (.zw1, .edz, .xml oder .json) öffnen" style="margin: 0; cursor: pointer;">
+          <label class="btn" title="Projekt (.zw1, .zip, .edz, .xml oder .json) öffnen" style="margin: 0; cursor: pointer;">
             📂 <span class="hide-mobile">Öffnen</span>
-            <input type="file" id="fileInput" accept=".zw1,.edz,.xml,.json,.elk" style="display: none;">
+            <input type="file" id="fileInput" accept=".zw1,.zip,.edz,.xml,.json,.elk,.001,.002,.003" multiple style="display: none;">
           </label>
           <button class="btn" id="btnSaveJson" title="Projekt speichern (Strg+S)">💾 <span class="hide-mobile">Speichern</span></button>
           
@@ -757,9 +757,9 @@ export class App {
     // File Open
     const fileInput = document.getElementById('fileInput') as HTMLInputElement;
     fileInput?.addEventListener('change', async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        await this.handleFileOpen(file);
+      const files = (e.target as HTMLInputElement).files;
+      if (files && files.length > 0) {
+        await this.handleFilesOpen(files);
       }
     });
 
@@ -2092,9 +2092,9 @@ export class App {
       dropzone.addEventListener('drop', async (e) => {
         e.preventDefault();
         dropzone.style.borderColor = 'var(--border-color)';
-        const file = e.dataTransfer?.files[0];
-        if (file) {
-          await this.handleFileOpen(file);
+        const files = e.dataTransfer?.files;
+        if (files && files.length > 0) {
+          await this.handleFilesOpen(files);
         }
       });
       dropzone.addEventListener('click', () => {
@@ -2104,12 +2104,19 @@ export class App {
   }
 
   private async handleFileOpen(file: File): Promise<void> {
+    await this.handleFilesOpen([file]);
+  }
+
+  private async handleFilesOpen(files: FileList | File[]): Promise<void> {
     try {
-      const result: PackageInspectionResult = await PackageHandler.inspectFile(file);
+      const result: PackageInspectionResult = await PackageHandler.inspectFiles(files);
       
       if (result.extractedProject) {
         this.project = result.extractedProject;
         this.canvas.setProject(this.project);
+        if (this.project.activePageId) {
+          this.canvas.setPage(this.project.activePageId);
+        }
         this.updateUI();
       }
 
@@ -2122,17 +2129,20 @@ export class App {
             <div style="margin-top: 10px;">
               <strong>Gefundene Archivelemente (${result.entries.length}):</strong>
               <div style="max-height: 150px; overflow-y: auto; background: var(--bg-primary); padding: 6px; border-radius: 4px; margin-top: 4px; font-family: monospace; font-size: 10px;">
-                ${result.entries.map(e => `<div>${e.type === 'elk' ? '⭐' : (e.type === 'edb' ? '📁' : '📄')} ${e.path}</div>`).join('')}
+                ${result.entries.slice(0, 50).map(e => `<div>${e.type === 'elk' ? '⭐' : (e.type === 'edb' ? '📁' : '📄')} ${e.path}</div>`).join('')}
+                ${result.entries.length > 50 ? `<div>... und ${result.entries.length - 50} weitere Einträge</div>` : ''}
               </div>
             </div>
           `;
         }
 
+        const displayName = files.length > 1 ? `${files.length} Archivteile (${result.filename})` : (files[0]?.name || result.filename);
         detailsContainer.innerHTML = `
           <div style="padding: 10px; background-color: var(--bg-secondary); border: 1px solid var(--accent); border-radius: 4px;">
-            <div style="font-weight: bold; color: var(--success); margin-bottom: 4px;">✓ ${file.name} analysiert</div>
+            <div style="font-weight: bold; color: var(--success); margin-bottom: 4px;">✓ ${displayName} erfolgreich analysiert</div>
             <div>Format: <strong>${result.format}</strong></div>
             <div>Projektname: <strong>${result.projectName}</strong></div>
+            <div>Seiten im Projekt: <strong>${result.extractedProject?.pages.length || 0}</strong></div>
             ${entriesSummary}
             <div style="margin-top: 8px; font-size: 10px; color: var(--warning);">
               ${result.messages.join('<br>')}

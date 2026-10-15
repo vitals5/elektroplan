@@ -8,6 +8,7 @@ import JSZip from 'jszip';
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
 import { SYMBOL_DEFINITIONS } from '../model/symbols';
 import { AutoconnectEngine } from '../model/AutoconnectEngine';
+import { EdbProjectParser } from './EdbProjectParser';
 
 export interface PackageEntry {
   path: string;
@@ -30,13 +31,46 @@ export interface PackageInspectionResult {
 
 export class PackageHandler {
   /**
-   * Inspects and opens any project file (.zw1, .edz, .xml, .elk, .json)
+   * Inspects and opens one or multiple project files (including multi-part archives like .zip.001, .zip.002)
+   */
+  public static async inspectFiles(fileList: File[] | FileList): Promise<PackageInspectionResult> {
+    const files = Array.from(fileList);
+    if (files.length === 0) {
+      throw new Error('Keine Dateien zum Öffnen ausgewählt.');
+    }
+    if (files.length === 1) {
+      return this.inspectFile(files[0]);
+    }
+
+    // Check for split multi-part archives (e.g. *.001, *.002 or *.zip.001, *.zip.002)
+    const isSplitArchive = files.some(f => /\.(zip\.)?\d{3}$/i.test(f.name) || /\.part\d+/i.test(f.name));
+    if (isSplitArchive) {
+      // Sort parts numerically
+      const sortedFiles = files.sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+      );
+
+      const baseName = sortedFiles[0].name.replace(/\.(zip\.)?\d{3}$/i, '.zip');
+      const mergedBlob = new Blob(sortedFiles);
+      const mergedFile = new File([mergedBlob], baseName);
+
+      const result = await this.inspectFile(mergedFile);
+      result.messages.unshift(`Mehrteiliges Archiv (${sortedFiles.length} Teile) automatisch zusammengefügt.`);
+      return result;
+    }
+
+    // Default to the first file if multiple non-split files provided
+    return this.inspectFile(files[0]);
+  }
+
+  /**
+   * Inspects and opens any project file (.zw1, .zip, .edz, .xml, .elk, .json)
    */
   public static async inspectFile(file: File): Promise<PackageInspectionResult> {
     const filename = file.name;
     const lowerName = filename.toLowerCase();
 
-    if (lowerName.endsWith('.zw1')) {
+    if (lowerName.endsWith('.zw1') || lowerName.endsWith('.zip')) {
       return this.parseZw1Backup(file);
     } else if (lowerName.endsWith('.edz')) {
       return this.parseEdzPackage(file);
@@ -68,13 +102,13 @@ export class PackageHandler {
   }
 
   /**
-   * Parses a .zw1 project backup archive
+   * Parses a project backup archive (.zw1 or .zip containing .elk and *.edb)
    */
   private static async parseZw1Backup(file: File): Promise<PackageInspectionResult> {
     const zip = await JSZip.loadAsync(file);
     const entries: PackageEntry[] = [];
     let elkContent = '';
-    let projectName = file.name.replace(/\.zw1$/i, '');
+    let projectName = file.name.replace(/\.(zw1|zip)$/i, '');
     const messages: string[] = [];
 
     // Analyze archive entries
@@ -103,16 +137,44 @@ export class PackageHandler {
     if (elkFile) {
       const zipFile = zip.file(elkFile.path);
       if (zipFile) {
-        elkContent = await zipFile.async('text');
+        const rawBytes = await zipFile.async('uint8array');
+        if (rawBytes.length >= 2 && rawBytes[0] === 0xff && rawBytes[1] === 0xfe) {
+          elkContent = new TextDecoder('utf-16le').decode(rawBytes);
+        } else {
+          elkContent = new TextDecoder('utf-8').decode(rawBytes);
+        }
         messages.push(`Projekt-Steuerdatei gefunden: ${elkFile.path}`);
-        
+
         // Extract project name from .elk file path or contents
         const matchedName = elkFile.path.split('/').pop()?.replace(/\.elk$/i, '');
         if (matchedName) projectName = matchedName;
       }
     }
 
-    // Attempt to reconstruct project or fallback to structured default with metadata
+    // Check if real EDB database exists in the archive (Page.eod)
+    const hasEdb = entries.some(
+      e => e.path.toLowerCase().includes('.edb/') || e.path.toLowerCase().endsWith('.eod')
+    );
+    if (hasEdb) {
+      try {
+        const edbResult = await EdbProjectParser.parseEdbProject(zip, projectName);
+        messages.push(...edbResult.messages);
+        return {
+          filename: file.name,
+          projectName: edbResult.project.name || projectName,
+          format: 'ZW1_PROJECT_BACKUP',
+          entryCount: entries.length,
+          entries,
+          elkContent,
+          extractedProject: edbResult.project,
+          messages
+        };
+      } catch (edbErr: any) {
+        messages.push(`Hinweis beim EDB-Import: ${edbErr.message}`);
+      }
+    }
+
+    // Fallback to structured default with metadata if no EOD database was parsed
     const project = this.createProjectFromPackageMetadata(projectName, elkContent, entries);
     messages.push(`Projekt "${projectName}" mit ${entries.length} Elementen erfolgreich strukturiert.`);
 
@@ -185,14 +247,49 @@ export class PackageHandler {
    */
   private static async parseGenericZip(zip: JSZip, filename: string): Promise<PackageInspectionResult> {
     const entries: PackageEntry[] = [];
+    let hasEdb = false;
+    let hasElk = false;
+
     zip.forEach((relativePath, zipEntry) => {
+      let type: PackageEntry['type'] = 'other';
+      if (relativePath.toLowerCase().endsWith('.elk')) {
+        type = 'elk';
+        hasElk = true;
+      } else if (relativePath.toLowerCase().includes('.edb/') || relativePath.toLowerCase().endsWith('.eod')) {
+        type = 'edb';
+        hasEdb = true;
+      } else if (relativePath.toLowerCase().endsWith('.ema') || relativePath.toLowerCase().endsWith('.ems')) {
+        type = 'macro';
+      } else if (relativePath.toLowerCase().endsWith('.xml')) {
+        type = 'xml';
+      }
+
       entries.push({
         path: relativePath,
         size: (zipEntry as any)._data?.uncompressedSize || 0,
         isDir: zipEntry.dir,
-        type: 'other'
+        type
       });
     });
+
+    // If it has EDB database or ELK, treat as project archive
+    if (hasEdb || hasElk) {
+      const projectName = filename.replace(/\.(zip|zw1)$/i, '');
+      try {
+        const edbResult = await EdbProjectParser.parseEdbProject(zip, projectName);
+        return {
+          filename,
+          projectName: edbResult.project.name || projectName,
+          format: 'ZW1_PROJECT_BACKUP',
+          entryCount: entries.length,
+          entries,
+          extractedProject: edbResult.project,
+          messages: [`ZIP-Projektarchiv erkannt.`, ...edbResult.messages]
+        };
+      } catch (err: any) {
+        // Continue to fallback
+      }
+    }
 
     return {
       filename,

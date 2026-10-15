@@ -1,5 +1,5 @@
 // src/model/MacroManager.ts
-// EPLAN-compatible Macro Manager & Library for Window Macros (.ema) and Page Macros (.ems)
+// CAE/CAD-kompatibler Makro-Manager & Bibliothek für Fenstermakros (.ema) und Seitenmakros (.ems)
 
 import JSZip from 'jszip';
 import { Project, Page, PlacedComponent, Wire } from './types';
@@ -571,7 +571,7 @@ export class MacroManager {
       }
     }
 
-    // 3. Fallback: Binary / heuristic string scanner for proprietary EPLAN P8 macro streams
+    // 3. Fallback: Binary / heuristic string scanner for binary CAD macro streams
     return this.parseBinaryHeuristicMacro(file, filename, isPageMacro);
   }
 
@@ -616,7 +616,7 @@ export class MacroManager {
   }
 
   /**
-   * Parses XML-formatted EPLAN macro content.
+   * Parses XML-formatted CAD macro content.
    */
   private static parseXmlMacro(xmlContent: string, filename: string, isPageMacro: boolean): MacroItem {
     let macroName = filename.replace(/\.(ema|ems|xml|edz)$/i, '');
@@ -801,7 +801,7 @@ export class MacroManager {
   }
 
   /**
-   * Heuristic scanner for binary proprietary EPLAN P8 macro streams.
+   * Heuristic scanner for binary CAD macro streams (.ema & .ems).
    * Extracts text, BMK strings and component signatures.
    */
   private static async parseBinaryHeuristicMacro(file: File, filename: string, isPageMacro: boolean): Promise<MacroItem> {
@@ -870,8 +870,8 @@ export class MacroManager {
         id: 'user_ems_' + Math.random().toString(36).substring(2, 9),
         name,
         type: 'ems',
-        category: 'Binäre EPLAN Seitenmakros',
-        description: `Aus binärer EPLAN-Datei ${filename} extrahierte Seite (${components.length} Bauteile)`,
+        category: 'Importierte Seitenmakros',
+        description: `Aus Datei ${filename} extrahierte Seite (${components.length} Bauteile)`,
         isBuiltIn: false,
         created: new Date().toISOString().split('T')[0],
         page: {
@@ -908,8 +908,8 @@ export class MacroManager {
       id: 'user_ema_' + Math.random().toString(36).substring(2, 9),
       name,
       type: 'ema',
-      category: 'Binäre EPLAN Fenstermakros',
-      description: `Aus binärer EPLAN-Datei ${filename} rekonstruierte Teilschaltung (${components.length} Bauteile)`,
+      category: 'Importierte Fenstermakros',
+      description: `Aus Datei ${filename} rekonstruierte Teilschaltung (${components.length} Bauteile)`,
       isBuiltIn: false,
       created: new Date().toISOString().split('T')[0],
       width: Math.max(80, components.length * 40),
@@ -1226,7 +1226,7 @@ export class MacroManager {
     const ext = macro.type === 'ema' ? 'ema' : 'ems';
     const filename = `${cleanName}.${ext}`;
 
-    // Generate XML schema for maximal EPLAN / CAD compatibility
+    // Generate XML schema for maximal CAD compatibility
     let xml = `<?xml version="1.0" encoding="utf-8"?>\n`;
     xml += `<Macro xmlns="http://www.elektroplan.de/schema/cad" type="${macro.type === 'ema' ? 'WindowMacro' : 'PageMacro'}" name="${macro.name}" version="2.0">\n`;
     xml += `  <Header>\n`;

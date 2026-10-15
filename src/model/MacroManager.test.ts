@@ -1,5 +1,5 @@
 // src/model/MacroManager.test.ts
-// Unit tests for EPLAN-compatible Macro Manager (.ema & .ems)
+// Unit tests for CAE/CAD Macro Manager (.ema & .ems)
 
 import { MacroManager, WindowMacro, PageMacro } from './MacroManager';
 import { PlacedComponent, Page, Project } from './types';

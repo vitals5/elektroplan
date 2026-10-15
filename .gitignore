@@ -5,3 +5,5 @@ release/
 npm-debug.log*
 .DS_Store
 .agents/
+scratch/
+Eplan_Haus.zip
