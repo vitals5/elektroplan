@@ -10,7 +10,7 @@ Eine moderne, professionelle **Elektroplan- & Stromlaufplan-Software für Window
 * **Projekt-Backups (`.zw1`)**: Öffnen, Entpacken, Bearbeiten und erneuter Export von kompletten Projektarchiven inklusive Steuerdatei und Projektdatenbank-Verzeichnis.
 * **Artikel- & Makropakete (`.edz`)**: Import und Inspektion von Artikel- und Makropaketen mit 2D/3D-Stammdaten und XML-Artikelspezifikationen.
 * **Projekt-XML**: Standardisiertes XML-Austauschformat für Schaltpläne, Symbole und Verbindungen.
-* **Reverse-Engineering via REA**: Integrierte Container- und Artefakt-Analyse für Binärarchive und Datenstrukturen.
+* **EPLAN-P8-Bibliotheksimport**: Mitgelieferte Symbolbibliotheken liefern Konturen, Varianten und physische Anschlüsse für alle aktiven Seiten. Platzierungen bleiben regulär editierbar; Stammdaten bleiben beim Speichern erhalten. Editor und PDF verwenden ihre jeweilige Farbgebung. Formatbefunde und Grenzen: [REA-Untersuchung](docs/reverse-engineering/einspeisung.md).
 
 ### 📐 Normgerechte Schaltungsplanung (DIN EN 81346 / IEC 60617)
 * **Kennzeichnungsstruktur**: Vollständige Unterstützung von `=Anlage` (z.B. `=A1`), `+Ort` (z.B. `+S1`) und `-BMK` (Betriebsmittelkennzeichen wie `-K1`, `-Q1`, `-M1`).
@@ -105,10 +105,11 @@ Elektroplan unterstützt mobile Endgeräte (iOS Safari, Android Chrome) mit nati
 ## 📄 Lizenz
 MIT License.
 
-## EPLAN-P8-Import: Einspeisung
+## EPLAN-P8-Import mit Projektbibliotheken
 
-Für „Eplan Haus.zip.001“ und „.002“ gibt es einen anhand des P8-PDF-Exports
-geprüften Importpfad für die Seite **Einspeisung** (PDF-Seite 2 / Blatt 1).
-Beide Archivteile gemeinsam öffnen. Befunde, REA-Herkunft, Tests und verbleibende
+„Eplan Haus.zip.001“ und „.002“ werden über einen gemeinsamen, seitenunabhängigen
+Import mit den eingebetteten Symbolbibliotheken gelesen. **Einspeisung**
+(PDF-Seite 2 / Blatt 1) dient als Referenzseite. Beide Archivteile gemeinsam öffnen.
+Befunde, REA-Herkunft, Tests und verbleibende
 Abweichungen stehen in [der Reverse-Engineering-Dokumentation](docs/reverse-engineering/einspeisung.md).
 Eine Prüf-PDF lässt sich mit `npx tsx scripts/export-einspeisung.ts` erzeugen.

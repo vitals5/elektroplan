@@ -16,6 +16,8 @@ export type DrawingPrimitive =
   | { kind: 'line'; x1: number; y1: number; x2: number; y2: number; color: string; width?: number; dash?: number[] }
   | { kind: 'rect'; x: number; y: number; width: number; height: number; color: string; lineWidth?: number; dash?: number[] }
   | { kind: 'circle'; x: number; y: number; radius: number; color: string; fill?: string }
+  | { kind: 'polygon'; points: { x: number; y: number }[]; color: string; width?: number; fill?: string }
+  | { kind: 'arc'; x: number; y: number; radius: number; startAngle: number; endAngle: number; color: string; width?: number; counterClockwise?: boolean }
   | { kind: 'text'; x: number; y: number; text: string; color: string; size: number; anchor?: 'start' | 'middle' | 'end'; rotation?: number };
 
 export interface SymbolDefinition {
@@ -28,6 +30,8 @@ export interface SymbolDefinition {
   width: number;
   height: number;
   pins: PinDefinition[];
+  /** Original symbol-library reference, retained with the project's master data. */
+  source?: { library: string; number: number; variant: number };
   importedGraphics?: DrawingPrimitive[];
   // SVG drawing paths or markup relative to (0, 0)
   svgContent: string;
@@ -53,6 +57,7 @@ export interface TextFormatConfig {
 export interface PlacedComponent {
   id: string;
   symbolId: string;
+  source?: { format: 'EPLAN_P8'; objectType: number; objectId: number };
   importedSymbol?: SymbolDefinition;
   bmk: string;                  // e.g. "-K1", "-Q1", "-F1"
   deviceTag?: string;           // Gerätebezeichnung z.B. "Hauptschütz K1", "Motorschutzschalter"
@@ -153,6 +158,8 @@ export interface Page {
   boxes?: PageBox[];
   images?: PageImage[];
   suppressedAutoconnections?: string[];
+  importDiagnostics?: string[];
+  connectionMode?: 'explicit' | 'autoconnect';
   importedDrawing?: {
     source: 'EPLAN_P8';
     graphics: DrawingPrimitive[];
@@ -179,6 +186,10 @@ export interface Project {
   author: string;
   company: string;
   pages: Page[];
+  /** Shared project master data. Placements reference these definitions by symbolId. */
+  symbolLibrary?: SymbolDefinition[];
+  /** Logical net connections without a drawable source page (may span pages). */
+  logicalConnections?: Wire[];
   activePageId: string;
 }
 

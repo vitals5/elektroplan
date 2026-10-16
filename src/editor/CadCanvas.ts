@@ -1,8 +1,8 @@
 // src/editor/CadCanvas.ts
 // Interactive SVG-based CAD drawing canvas for electrical schematics
 
-import { eplanPlotFrame } from '../model/EplanPlotFrame';
-import { drawingToSvg, rotateDrawing } from '../model/ImportedDrawing';
+import { orthogonalWirePoints, wirePinDirection } from '../model/WireRouting';
+import { drawingToSvg, escapeSvg } from '../model/ImportedDrawing';
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
 import { getSymbolById, getSymbolForComponent } from '../model/symbols';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
@@ -54,6 +54,7 @@ export class CadCanvas {
   // Dragging components
   private isDraggingComponent: boolean = false;
   private dragOffset: { x: number; y: number } = { x: 0, y: 0 };
+  private lastMousePress: { componentId: string; time: number } | null = null;
 
   // Wiring State
   private wireStart: { componentId: string; pinId: string } | null = null;
@@ -142,7 +143,7 @@ export class CadCanvas {
   public placeMacroAt(worldX: number, worldY: number, macro: WindowMacro): PlacedComponent[] {
     const snappedX = this.snap(worldX);
     const snappedY = this.snap(worldY);
-    const res = MacroManager.instantiateWindowMacro(macro, snappedX, snappedY, this.activePage.components);
+    const res = MacroManager.instantiateWindowMacro(macro, snappedX, snappedY, this.activePage.components, this.project);
 
     this.activePage.components.push(...res.components);
     if (res.wires && res.wires.length > 0) {
@@ -214,7 +215,7 @@ export class CadCanvas {
     const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
     if (!comp) return;
 
-    const sym = getSymbolForComponent(comp);
+    const sym = getSymbolForComponent(comp, this.project);
     const existingCount = this.activePage.components.filter(c => c.symbolId === comp.symbolId).length;
     const prefix = sym?.defaultBmkPrefix || '-K';
     const newBmk = prefix ? `${prefix}${existingCount + 1}` : '';
@@ -226,6 +227,8 @@ export class CadCanvas {
       x: comp.x + this.gridSize * 4,
       y: comp.y + this.gridSize * 4,
     };
+    delete newComp.source;
+    for (const pin of Object.values(newComp.pins)) pin.wireIds = [];
 
     this.activePage.components.push(newComp);
     this.selectedComponentId = newComp.id;
@@ -242,6 +245,9 @@ export class CadCanvas {
       this.activePage.components = this.activePage.components.filter(c => c.id !== this.selectedComponentId);
       // Remove attached wires
       this.activePage.wires = this.activePage.wires.filter(
+        w => w.from.componentId !== this.selectedComponentId && w.to.componentId !== this.selectedComponentId
+      );
+      this.project.logicalConnections = this.project.logicalConnections?.filter(
         w => w.from.componentId !== this.selectedComponentId && w.to.componentId !== this.selectedComponentId
       );
       this.selectedComponentId = null;
@@ -352,6 +358,7 @@ export class CadCanvas {
 
     // Keyboard shortcuts
     window.addEventListener('keydown', (e) => {
+      this.lastMousePress = null;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       
       if (e.key === 'Tab') {
@@ -464,14 +471,14 @@ export class CadCanvas {
 
     let items = '';
     if (comp) {
-      const sym = getSymbolForComponent(comp);
+      const sym = getSymbolForComponent(comp, this.project);
       items += `
-        <div class="ctx-header"><strong>${comp.bmk}</strong> (${sym?.name || 'Bauteil'})</div>
+        <div class="ctx-header"><strong>${escapeSvg(comp.bmk)}</strong> (${sym?.name || 'Bauteil'})</div>
         <div class="ctx-item" data-action="properties">⚙️ Eigenschaften... <span class="ctx-key">DblClick</span></div>
         <div class="ctx-item" data-action="rotate">🔄 Um 90° drehen <span class="ctx-key">R</span></div>
         <div class="ctx-item" data-action="duplicate">📋 Duplizieren <span class="ctx-key">Strg+D</span></div>
         <div class="ctx-item" data-action="export-macro">📦 Als .ema Fenstermakro speichern...</div>
-        ${comp.crossRef ? `<div class="ctx-item" data-action="jump-crossref">🔗 Querverweis folgen (${comp.crossRef})</div>` : ''}
+        ${comp.crossRef ? `<div class="ctx-item" data-action="jump-crossref">🔗 Querverweis folgen (${escapeSvg(comp.crossRef)})</div>` : ''}
         <div class="ctx-sep"></div>
         <div class="ctx-item ctx-danger" data-action="delete">🗑️ Löschen <span class="ctx-key">Entf</span></div>
       `;
@@ -544,7 +551,7 @@ export class CadCanvas {
 
   public placeSymbolAt(worldX: number, worldY: number): PlacedComponent | null {
     if (!this.activeSymbolToPlace) return null;
-    const sym = getSymbolById(this.activeSymbolToPlace);
+    const sym = getSymbolById(this.activeSymbolToPlace, this.project);
     if (!sym) return null;
 
     const existingCount = this.activePage.components.filter(c => c.symbolId === sym.id).length;
@@ -635,6 +642,16 @@ export class CadCanvas {
     // Check if clicked on a component
     const clickedComp = this.findComponentAt(world.x, world.y, false);
     if (clickedComp) {
+      // SVG redraw replaces DOM nodes between clicks. Recognize a double click
+      // by the stable model identity, rather than relying on the removed target.
+      const previous = this.lastMousePress;
+      this.lastMousePress = { componentId: clickedComp.id, time: e.timeStamp };
+      if (previous?.componentId === clickedComp.id && e.timeStamp - previous.time < 350) {
+        this.lastMousePress = null;
+        this.isDraggingComponent = false;
+        this.callbacks.onOpenProperties?.(clickedComp);
+        return;
+      }
       this.selectedComponentId = clickedComp.id;
       this.selectedWireId = null;
       this.callbacks.onSelectComponent(clickedComp);
@@ -661,6 +678,7 @@ export class CadCanvas {
     }
 
     // Clicked empty background
+    this.lastMousePress = null;
     this.selectedComponentId = null;
     this.selectedWireId = null;
     this.callbacks.onSelectComponent(null);
@@ -682,7 +700,7 @@ export class CadCanvas {
     if (this.isDraggingComponent && this.selectedComponentId) {
       const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
       if (comp) {
-        const sym = getSymbolForComponent(comp);
+        const sym = getSymbolForComponent(comp, this.project);
         const rawX = world.x - this.dragOffset.x;
         const rawY = world.y - this.dragOffset.y;
         const isModifier = e.shiftKey || e.altKey;
@@ -887,7 +905,7 @@ export class CadCanvas {
         const world = this.screenToWorld(touch.clientX, touch.clientY);
         const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
         if (comp) {
-          const sym = getSymbolForComponent(comp);
+          const sym = getSymbolForComponent(comp, this.project);
           const rawX = world.x - this.dragOffset.x;
           const rawY = world.y - this.dragOffset.y;
           comp.x = this.snap(rawX, false);
@@ -952,7 +970,7 @@ export class CadCanvas {
           if (wireEl) {
             let pathData = '';
             if (wire.waypoints?.length) {
-              pathData = [p1, ...wire.waypoints, p2].map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
+              pathData = orthogonalWirePoints(p1, p2, wire.waypoints, wirePinDirection(this.activePage, this.project, wire.from), wirePinDirection(this.activePage, this.project, wire.to)).map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
             } else if (Math.abs(p1.x - p2.x) <= 2) {
               pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y}`;
             } else if (Math.abs(p1.y - p2.y) <= 2) {
@@ -977,7 +995,7 @@ export class CadCanvas {
     const pad = isTouch ? 20 : 6;
     for (let i = this.activePage.components.length - 1; i >= 0; i--) {
       const comp = this.activePage.components[i];
-      const sym = getSymbolForComponent(comp);
+      const sym = getSymbolForComponent(comp, this.project);
       if (!sym) continue;
       
       const rot = comp.rotation || 0;
@@ -1000,7 +1018,7 @@ export class CadCanvas {
   private findPinAt(x: number, y: number): { componentId: string; pinId: string } | null {
     const pinRadius = 8;
     for (const comp of this.activePage.components) {
-      const sym = getSymbolForComponent(comp);
+      const sym = getSymbolForComponent(comp, this.project);
       if (!sym) continue;
       for (const pin of sym.pins) {
         const pCoord = this.getPinCoordinates(comp.id, pin.id);
@@ -1022,7 +1040,7 @@ export class CadCanvas {
       if (!p1 || !p2) continue;
 
       if (wire.waypoints?.length) {
-        const points = [p1, ...wire.waypoints, p2];
+        const points = orthogonalWirePoints(p1, p2, wire.waypoints, wirePinDirection(this.activePage, this.project, wire.from), wirePinDirection(this.activePage, this.project, wire.to));
         if (points.slice(1).some((p, i) =>
           this.distToSegment(x, y, points[i].x, points[i].y, p.x, p.y) < hitTolerance)) return wire;
       } else if (p1.x === p2.x || p1.y === p2.y) {
@@ -1052,7 +1070,7 @@ export class CadCanvas {
   public getPinCoordinates(componentId: string, pinId: string): { x: number; y: number } | null {
     const comp = this.activePage.components.find(c => c.id === componentId);
     if (!comp) return null;
-    const sym = getSymbolForComponent(comp);
+    const sym = getSymbolForComponent(comp, this.project);
     if (!sym) return null;
     const pin = sym.pins.find(p => p.id === pinId);
     if (!pin) return null;
@@ -1081,11 +1099,11 @@ export class CadCanvas {
       </defs>
       <g id="viewportTransform" transform="translate(${this.panX}, ${this.panY}) scale(${this.scale})">
         <!-- Page Paper -->
-        <rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="${this.activePage.importedDrawing ? '#ffffff' : '#1a202c'}" stroke="#2d3748" stroke-width="2"/>
-        ${this.activePage.importedDrawing ? '' : `<rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="url(#cadGrid)"/>`}
+        <rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="#1a202c" stroke="#2d3748" stroke-width="2"/>
+        <rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="url(#cadGrid)"/>
         
         <!-- DIN A3 Normblatt Plot Frame -->
-        ${this.activePage.importedDrawing ? drawingToSvg(eplanPlotFrame(this.activePage)) : this.renderPlotFrame(pageWidth, pageHeight)}
+        ${this.renderPlotFrame(pageWidth, pageHeight)}
 
         <!-- Wires -->
         <g id="wiresLayer">
@@ -1110,7 +1128,7 @@ export class CadCanvas {
         <!-- Free Texts & Annotations -->
         <g id="textsLayer">
           ${this.renderTexts()}
-          ${drawingToSvg(this.activePage.importedDrawing?.graphics ?? [])}
+          ${drawingToSvg(this.activePage.importedDrawing?.graphics ?? [], { color: '#e2e8f0' })}
         </g>
 
         <!-- Live Autoconnect Previews (Cyan Dashed Guide Lines & Targets) -->
@@ -1196,17 +1214,15 @@ export class CadCanvas {
   }
 
   private renderComponents(): string {
+    const labelText = (text: string, x: number, size: number): string => {
+      if (!text.includes('\n')) return escapeSvg(text);
+      return text.split(/\r?\n/).map((line, i) => `<tspan x="${x}" dy="${i ? size * 1.2 : 0}">${escapeSvg(line)}</tspan>`).join('');
+    };
     return this.activePage.components.map(comp => {
-      const sym = getSymbolForComponent(comp);
+      const sym = getSymbolForComponent(comp, this.project);
       if (!sym) return '';
-      if (sym.importedGraphics) {
-        return `<g id="${comp.id}" class="component" transform="translate(${comp.x},${comp.y})">
-          ${drawingToSvg(rotateDrawing(sym.importedGraphics, comp.rotation, sym.width, sym.height))}
-          ${comp.id === this.selectedComponentId ? `<circle r="8" fill="none" stroke="#63b3ed" stroke-width="2"/>` : ''}
-        </g>`;
-      }
 
-      const isConn = sym.category === 'connections' || sym.id.startsWith('potential_arrow') || sym.id === 'potential_rail_source';
+      const isConn = !sym.importedGraphics && (sym.category === 'connections' || sym.id.startsWith('potential_arrow') || sym.id === 'potential_rail_source');
       const isTerminal = sym.id === 'terminal_single';
       const isSelected = comp.id === this.selectedComponentId;
       const strokeColor = isSelected ? '#63b3ed' : '#e2e8f0';
@@ -1223,7 +1239,7 @@ export class CadCanvas {
       let crossRefDisplay = '';
       if (comp.crossRef && !isConn) {
         const crossRefY = sym.height + (hasTech ? 38 : 24);
-        crossRefDisplay = `<text x="${sym.width / 2}" y="${crossRefY}" font-size="8" font-family="monospace" fill="#f6ad55" text-anchor="middle">${comp.crossRef}</text>`;
+        crossRefDisplay = `<text x="${sym.width / 2}" y="${crossRefY}" font-size="8" font-family="monospace" fill="#f6ad55" text-anchor="middle">${escapeSvg(comp.crossRef)}</text>`;
       }
 
       // Pins render
@@ -1238,7 +1254,7 @@ export class CadCanvas {
         return `
           <g class="pin" transform="translate(${pin.x}, ${pin.y})">
             <circle cx="0" cy="0" r="3" fill="#2d3748" stroke="#63b3ed" stroke-width="1.2"/>
-            <text x="${pin.direction === 'top' ? 0 : 5}" y="${pin.direction === 'top' ? -4 : 3.5}" font-size="6.5" font-family="monospace" fill="#a0aec0" text-anchor="${pin.direction === 'top' ? 'middle' : 'start'}">${pin.name}</text>
+            <text x="${pin.direction === 'top' ? 0 : 5}" y="${pin.direction === 'top' ? -4 : 3.5}" font-size="6.5" font-family="monospace" fill="#a0aec0" text-anchor="${pin.direction === 'top' ? 'middle' : 'start'}">${escapeSvg(comp.pins[pin.id]?.customLabel ?? pin.name)}</text>
           </g>
         `;
       }).join('');
@@ -1254,17 +1270,17 @@ export class CadCanvas {
           ${!isConn && !isTerminal ? `
             <!-- BMK Label (z.B. -K1, -Q1) -->
             ${bmkPos.visible ? `
-              <text x="${bmkPos.x}" y="${bmkPos.y}" font-size="${bmkPos.fontSize}" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="${bmkPos.anchor}" ${bmkPos.transform}>${comp.bmk}</text>
+              <text x="${bmkPos.x}" y="${bmkPos.y}" font-size="${bmkPos.fontSize}" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="${bmkPos.anchor}" ${bmkPos.transform}>${labelText(comp.bmk, bmkPos.x, bmkPos.fontSize)}</text>
             ` : ''}
             
             <!-- Function text (Funktionstext) -->
             ${fnPos.visible && comp.functionText ? `
-              <text x="${fnPos.x}" y="${fnPos.y}" font-size="${fnPos.fontSize}" font-family="sans-serif" fill="#e2e8f0" text-anchor="${fnPos.anchor}" ${fnPos.transform}>${comp.functionText}</text>
+              <text x="${fnPos.x}" y="${fnPos.y}" font-size="${fnPos.fontSize}" font-family="sans-serif" fill="#e2e8f0" text-anchor="${fnPos.anchor}" ${fnPos.transform}>${labelText(comp.functionText, fnPos.x, fnPos.fontSize)}</text>
             ` : ''}
 
             <!-- Device Tag / Technical Characteristics -->
             ${techPos.visible && techText ? `
-              <text x="${techPos.x}" y="${techPos.y}" font-size="${techPos.fontSize}" font-family="sans-serif" fill="#68d391" text-anchor="${techPos.anchor}" ${techPos.transform}>${techText}</text>
+              <text x="${techPos.x}" y="${techPos.y}" font-size="${techPos.fontSize}" font-family="sans-serif" fill="#68d391" text-anchor="${techPos.anchor}" ${techPos.transform}>${labelText(techText, techPos.x, techPos.fontSize)}</text>
             ` : ''}
 
             <!-- Cross Reference -->
@@ -1273,7 +1289,7 @@ export class CadCanvas {
             <!-- Terminal designation and BMK -->
             <text x="${sym.width + 2}" y="${sym.height / 2 + 3}" font-size="7.5" font-weight="bold" font-family="monospace" fill="#cbd5e0">${comp.deviceTag || comp.technicalCharacteristics || comp.functionText || '1'}</text>
             ${comp.bmk && !comp.bmk.startsWith('comp_') ? `
-              <text x="${sym.width / 2}" y="-4" font-size="7.5" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${comp.bmk}</text>
+              <text x="${sym.width / 2}" y="-4" font-size="7.5" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${escapeSvg(comp.bmk)}</text>
             ` : ''}
           ` : (sym.id.startsWith('potential_arrow') || sym.id === 'potential_rail_source' ? `
             <text x="${sym.id === 'potential_arrow_left' || sym.id === 'potential_rail_source' ? -4 : (sym.id === 'potential_arrow_right' ? sym.width + 4 : sym.width / 2)}" 
@@ -1284,7 +1300,7 @@ export class CadCanvas {
 
           <!-- Symbol Vector Graphics -->
           <g color="${strokeColor}">
-            ${sym.svgContent}
+            ${sym.importedGraphics ? drawingToSvg(sym.importedGraphics, { color: 'currentColor' }) : sym.svgContent}
           </g>
 
           <!-- Terminal Pins -->
@@ -1366,7 +1382,7 @@ export class CadCanvas {
 
       let pathData = '';
       if (wire.waypoints?.length) {
-        pathData = [p1, ...wire.waypoints, p2].map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
+        pathData = orthogonalWirePoints(p1, p2, wire.waypoints, wirePinDirection(this.activePage, this.project, wire.from), wirePinDirection(this.activePage, this.project, wire.to)).map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
       } else if (Math.abs(p1.x - p2.x) <= 2) {
         pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y}`;
       } else if (Math.abs(p1.y - p2.y) <= 2) {
@@ -1383,12 +1399,12 @@ export class CadCanvas {
           <!-- Hit area -->
           <path d="${pathData}" fill="none" stroke="transparent" stroke-width="12"/>
           <!-- Active Wire -->
-          <path d="${pathData}" fill="none" stroke="${isSelected ? '#63b3ed' : wireColor}" stroke-width="${isSelected ? 2.5 : (this.activePage.importedDrawing ? 0.6 : 2)}"/>
+          <path d="${pathData}" fill="none" stroke="${isSelected ? '#63b3ed' : wireColor}" stroke-width="${isSelected ? 2.5 : 2}"/>
         </g>
       `;
     }).join('');
 
-    return wiresHtml + (this.activePage.importedDrawing ? '' : junctionDotsHtml.join(''));
+    return wiresHtml + junctionDotsHtml.join('');
   }
 
   private renderAutoconnectPreview(): string {
@@ -1482,12 +1498,12 @@ export class CadCanvas {
 
       let componentsGhost = '';
       for (const c of macro.components) {
-        const sym = getSymbolForComponent(c);
+        const sym = getSymbolForComponent(c, { ...this.project, symbolLibrary: [...(this.project.symbolLibrary ?? []), ...(macro.symbolLibrary ?? [])] });
         if (sym) {
           componentsGhost += `
-            <g transform="translate(${c.x}, ${c.y})">
-              <g stroke="#63b3ed" fill="none">
-                ${sym.svgContent}
+            <g transform="translate(${c.x}, ${c.y}) rotate(${c.rotation || 0}, ${sym.width / 2}, ${sym.height / 2})">
+              <g color="#63b3ed" stroke="#63b3ed" fill="none">
+                ${sym.importedGraphics ? drawingToSvg(sym.importedGraphics, { color: 'currentColor' }) : sym.svgContent}
               </g>
               <text x="0" y="-4" font-size="9" font-family="monospace" font-weight="bold" fill="#f6e05e">${c.bmk}</text>
             </g>
@@ -1505,7 +1521,7 @@ export class CadCanvas {
     }
 
     if (this.mode !== 'place_symbol' || !this.activeSymbolToPlace) return '';
-    const sym = getSymbolById(this.activeSymbolToPlace);
+    const sym = getSymbolById(this.activeSymbolToPlace, this.project);
     if (!sym) return '';
 
     const gx = this.snap(this.currentMousePos.x);
@@ -1525,7 +1541,7 @@ export class CadCanvas {
 
         <!-- Symbol Graphics -->
         <g color="#63b3ed">
-          ${sym.svgContent}
+          ${sym.importedGraphics ? drawingToSvg(sym.importedGraphics, { color: 'currentColor' }) : sym.svgContent}
         </g>
       </g>
     `;

@@ -151,6 +151,15 @@ export class PackageHandler {
       }
     }
 
+    const savedProject = await this.extractSavedProject(zip);
+    if (savedProject) {
+      return {
+        filename: file.name, projectName: savedProject.name, format: 'ZW1_PROJECT_BACKUP',
+        entryCount: entries.length, entries, elkContent, extractedProject: savedProject,
+        messages: [...messages, 'Gespeichertes Elektroplan-Projekt vollständig geladen (project_data.json).']
+      };
+    }
+
     // Check if real EDB database exists in the archive (Page.eod)
     const hasEdb = entries.some(
       e => e.path.toLowerCase().includes('.edb/') || e.path.toLowerCase().endsWith('.eod')
@@ -170,7 +179,7 @@ export class PackageHandler {
           messages
         };
       } catch (edbErr: any) {
-        messages.push(`Hinweis beim EDB-Import: ${edbErr.message}`);
+        throw new Error(`EDB-Projekt konnte nicht importiert werden: ${edbErr instanceof Error ? edbErr.message : 'Unbekannter Fehler'}`);
       }
     }
 
@@ -272,6 +281,15 @@ export class PackageHandler {
       });
     });
 
+    const savedProject = await this.extractSavedProject(zip);
+    if (savedProject) {
+      return {
+        filename, projectName: savedProject.name, format: 'ZW1_PROJECT_BACKUP',
+        entryCount: entries.length, entries, extractedProject: savedProject,
+        messages: ['Gespeichertes Elektroplan-Projekt vollständig geladen (project_data.json).']
+      };
+    }
+
     // If it has EDB database or ELK, treat as project archive
     if (hasEdb || hasElk) {
       const projectName = filename.replace(/\.(zip|zw1)$/i, '');
@@ -287,7 +305,10 @@ export class PackageHandler {
           messages: [`ZIP-Projektarchiv erkannt.`, ...edbResult.messages]
         };
       } catch (err: any) {
-        // Continue to fallback
+        if (hasEdb) {
+          throw new Error(`EDB-Projekt konnte nicht importiert werden: ${err instanceof Error ? err.message : 'Unbekannter Fehler'}`);
+        }
+        // A metadata-only archive does not claim to contain an EDB database.
       }
     }
 
@@ -305,8 +326,29 @@ export class PackageHandler {
    * Parses an XML project export file
    */
   private static parseProjectXml(xmlContent: string, filename: string): PackageInspectionResult {
+    if (xmlContent.length > 64 * 1024 * 1024) {
+      throw new Error('Elektroplan-XML überschreitet die maximal unterstützte Größe von 64 MiB.');
+    }
     const messages: string[] = [];
     let projectName = filename.replace(/\.(xml|projxml)$/i, '');
+
+    // The public XML subset remains readable by other tools. Our application data
+    // section is authoritative for an exact round trip of editable project data.
+    if (/<ElektroplanData\b/.test(xmlContent) || /<ProjectXml\b[^>]*\bapplication=["']Elektroplan["']/.test(xmlContent)) {
+      const data = /<ElektroplanData\s+format="json"\s+version="1"\s*>([\s\S]*?)<\/ElektroplanData\s*>/.exec(xmlContent);
+      if (!data || xmlContent.indexOf('<ElektroplanData', data.index + data[0].length) >= 0) {
+        throw new Error('Elektroplan-XML enthält keine eindeutigen Projektdaten im unterstützten Format.');
+      }
+      const entities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+      const json = data[1].replace(/&(amp|lt|gt|quot|apos);/g, (_, name: string) => entities[name]);
+      const project = this.readProjectJson(json, 'Elektroplan-XML');
+      return {
+        filename, projectName: project.name, format: 'PROJECT_XML', entryCount: 1,
+        entries: [{ path: filename, size: xmlContent.length, isDir: false, type: 'xml' }],
+        extractedProject: project,
+        messages: ['Elektroplan-XML vollständig geladen (Projektbibliothek, Anschlüsse und Seiteneigenschaften).']
+      };
+    }
 
     // Basic DOM parsing of XML schema
     const parser = new DOMParser();
@@ -332,6 +374,46 @@ export class PackageHandler {
       extractedProject: project,
       messages
     };
+  }
+
+  /** Shared application JSON decoder used by XML and saved project archives. */
+  private static readProjectJson(json: string, source: string): Project {
+    if (json.length > 64 * 1024 * 1024) {
+      throw new Error(`${source} überschreitet die maximal unterstützte Größe von 64 MiB.`);
+    }
+    let project: Project;
+    try {
+      project = JSON.parse(json) as Project;
+    } catch {
+      throw new Error(`${source} enthält ungültige JSON-Projektdaten.`);
+    }
+    if (!project || typeof project !== 'object' || typeof project.name !== 'string'
+      || typeof project.id !== 'string' || typeof project.activePageId !== 'string'
+      || !Array.isArray(project.pages) || project.pages.length > 10000
+      || (project.symbolLibrary !== undefined && !Array.isArray(project.symbolLibrary))
+      || project.symbolLibrary?.some(symbol => !symbol || typeof symbol.id !== 'string'
+        || typeof symbol.name !== 'string' || typeof symbol.svgContent !== 'string'
+        || !Array.isArray(symbol.pins) || !Number.isFinite(symbol.width) || !Number.isFinite(symbol.height))
+      || project.pages.some(page => !page || typeof page.id !== 'string'
+        || !Array.isArray(page.components) || !Array.isArray(page.wires)
+        || !page.plotFrame || typeof page.plotFrame !== 'object'
+        || page.components.some(component => !component || typeof component.id !== 'string'
+          || typeof component.symbolId !== 'string' || !Number.isFinite(component.x) || !Number.isFinite(component.y)))) {
+      throw new Error(`${source} enthält keine gültige Projektstruktur.`);
+    }
+    return project;
+  }
+
+  /** Prefer saved app data over any native database files bundled alongside it. */
+  private static async extractSavedProject(zip: JSZip): Promise<Project | undefined> {
+    const entries = zip.file(/(?:^|\/)project_data\.json$/i);
+    if (entries.length === 0) return undefined;
+    if (entries.length !== 1) throw new Error('Projektarchiv enthält mehrere widersprüchliche project_data.json Dateien.');
+    const entry = entries[0];
+    if (((entry as any)._data?.uncompressedSize ?? 0) > 64 * 1024 * 1024) {
+      throw new Error('Elektroplan-Projektarchiv überschreitet die maximal unterstützte Größe von 64 MiB.');
+    }
+    return this.readProjectJson(await entry.async('text'), 'Elektroplan-Projektarchiv');
   }
 
   /**
@@ -762,26 +844,27 @@ PageCount=${project.pages.length}
    */
   public static generateProjectXml(project: Project): string {
     let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-    xml += `<ProjectXml version="2024.0" name="${this.escapeXml(project.name)}">\n`;
-    xml += `  <ProjectInfo author="${this.escapeXml(project.author)}" company="${this.escapeXml(project.company)}" date="${project.modified}"/>\n`;
+    xml += `<ProjectXml version="2024.0" application="Elektroplan" name="${this.escapeXml(project.name)}">\n`;
+    xml += `  <ProjectInfo author="${this.escapeXml(project.author)}" company="${this.escapeXml(project.company)}" date="${this.escapeXml(project.modified)}"/>\n`;
     xml += `  <Pages count="${project.pages.length}">\n`;
 
     for (const page of project.pages) {
-      xml += `    <Page number="${page.pageNumber}" type="${page.pageType}" title="${this.escapeXml(page.title)}" higherLevel="${this.escapeXml(page.higherLevel)}" location="${this.escapeXml(page.location)}">\n`;
+      xml += `    <Page number="${this.escapeXml(page.pageNumber)}" type="${this.escapeXml(page.pageType)}" title="${this.escapeXml(page.title)}" higherLevel="${this.escapeXml(page.higherLevel)}" location="${this.escapeXml(page.location)}">\n`;
       xml += `      <Components count="${page.components.length}">\n`;
       for (const comp of page.components) {
-        xml += `        <Component id="${comp.id}" bmk="${this.escapeXml(comp.bmk)}" symbol="${comp.symbolId}" x="${comp.x}" y="${comp.y}" rotation="${comp.rotation}" functionText="${this.escapeXml(comp.functionText)}" article="${this.escapeXml(comp.articleNumber || '')}" manufacturer="${this.escapeXml(comp.manufacturer || '')}" crossRef="${this.escapeXml(comp.crossRef || '')}"/>\n`;
+        xml += `        <Component id="${this.escapeXml(comp.id)}" bmk="${this.escapeXml(comp.bmk)}" symbol="${this.escapeXml(comp.symbolId)}" x="${comp.x}" y="${comp.y}" rotation="${comp.rotation}" functionText="${this.escapeXml(comp.functionText)}" article="${this.escapeXml(comp.articleNumber || '')}" manufacturer="${this.escapeXml(comp.manufacturer || '')}" crossRef="${this.escapeXml(comp.crossRef || '')}"/>\n`;
       }
       xml += `      </Components>\n`;
       xml += `      <Wires count="${page.wires.length}">\n`;
       for (const wire of page.wires) {
-        xml += `        <Wire id="${wire.id}" potential="${this.escapeXml(wire.potential)}" color="${this.escapeXml(wire.color || '')}" crossSection="${this.escapeXml(wire.crossSection || '')}" fromComp="${wire.from.componentId}" fromPin="${wire.from.pinId}" toComp="${wire.to.componentId}" toPin="${wire.to.pinId}"/>\n`;
+        xml += `        <Wire id="${this.escapeXml(wire.id)}" potential="${this.escapeXml(wire.potential)}" color="${this.escapeXml(wire.color || '')}" crossSection="${this.escapeXml(wire.crossSection || '')}" fromComp="${this.escapeXml(wire.from.componentId)}" fromPin="${this.escapeXml(wire.from.pinId)}" toComp="${this.escapeXml(wire.to.componentId)}" toPin="${this.escapeXml(wire.to.pinId)}"/>\n`;
       }
       xml += `      </Wires>\n`;
       xml += `    </Page>\n`;
     }
 
     xml += `  </Pages>\n`;
+    xml += `  <ElektroplanData format="json" version="1">${this.escapeXml(JSON.stringify(project))}</ElektroplanData>\n`;
     xml += `</ProjectXml>\n`;
     return xml;
   }

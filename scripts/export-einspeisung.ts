@@ -6,7 +6,7 @@ import { PdfExporter } from '../src/export/PdfExporter';
 const archive = Buffer.concat(['Eplan Haus.zip.001', 'Eplan Haus.zip.002'].map(f => fs.readFileSync(f)));
 const { project, messages } = await EdbProjectParser.parseEdbProject(await JSZip.loadAsync(archive));
 const page = project.pages.find(p => p.title === 'Einspeisung');
-if (!page?.importedDrawing) throw new Error('Einspeisung wurde nicht mit dem nativen Import gelesen.');
+if (!page || !project.symbolLibrary?.length) throw new Error('Einspeisung wurde nicht mit Projektbibliotheken importiert.');
 const output = process.argv[2] || '/tmp/einspeisung-import.pdf';
 const pdf = await PdfExporter.exportToPdf(project, {
   paperFormat: 'a3', colorMode: 'color', pageRange: 'current', currentPageId: page.id,

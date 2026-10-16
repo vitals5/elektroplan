@@ -2,7 +2,7 @@
 // Main application controller for Elektroplan (Elektro-CAD CAE Suite)
 
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
-import { SYMBOL_DEFINITIONS, getSymbolById, getSymbolForComponent } from '../model/symbols';
+import { getSymbolDefinitions, getSymbolById, getSymbolForComponent, setProjectSymbolLibrary, mergeProjectSymbolLibrary } from '../model/symbols';
 import { CadCanvas } from '../editor/CadCanvas';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
 import { PackageHandler, PackageInspectionResult } from '../packages/PackageHandler';
@@ -65,6 +65,7 @@ export class App {
     // Generates the initial project with Cover, 400V Motor circuit, and 24V DC control circuit
     const res = (PackageHandler as any).createProjectFromPackageMetadata('Anlagensteuerung', '', []);
     this.project = res;
+    setProjectSymbolLibrary(this.project);
     for (const p of this.project.pages) {
       AutoconnectEngine.updatePageAutoconnections(p);
     }
@@ -1134,6 +1135,7 @@ export class App {
       <div style="margin-bottom: 8px;">
         <select class="form-input" id="symbolCategorySelect">
           <option value="all" ${this.symbolCategoryFilter === 'all' ? 'selected' : ''}>Alle Kategorien</option>
+          <option value="project" ${this.symbolCategoryFilter === 'project' ? 'selected' : ''}>Projektbibliothek (mitgeliefert)</option>
           <option value="relays" ${this.symbolCategoryFilter === 'relays' ? 'selected' : ''}>Schütze & Relais</option>
           <option value="protection" ${this.symbolCategoryFilter === 'protection' ? 'selected' : ''}>Schutzeinrichtungen</option>
           <option value="controls" ${this.symbolCategoryFilter === 'controls' ? 'selected' : ''}>Befehls- & Meldegeräte</option>
@@ -1147,8 +1149,9 @@ export class App {
     `;
 
     const filtered = this.symbolCategoryFilter === 'all'
-      ? SYMBOL_DEFINITIONS
-      : SYMBOL_DEFINITIONS.filter(s => s.category === this.symbolCategoryFilter);
+      ? getSymbolDefinitions()
+      : this.symbolCategoryFilter === 'project' ? this.project.symbolLibrary ?? []
+      : getSymbolDefinitions().filter(s => s.category === this.symbolCategoryFilter);
 
     for (const sym of filtered) {
       const isSelected = this.canvas.activeSymbolToPlace === sym.id && this.canvas.mode === 'place_symbol';
@@ -1161,6 +1164,7 @@ export class App {
           </div>
           <div class="symbol-title">${sym.name}</div>
           <div class="symbol-bmk">BMK: ${sym.defaultBmkPrefix}</div>
+          ${sym.source ? `<div class="symbol-bmk">${sym.source.library} / ${sym.source.number} · ${sym.source.variant}</div>` : ''}
         </div>
       `;
     }
@@ -1421,6 +1425,9 @@ export class App {
   }
 
   public startPlacingWindowMacro(macro: WindowMacro): void {
+    // Resolve portable project symbols before the canvas draws the placement preview.
+    macro = JSON.parse(JSON.stringify(macro));
+    mergeProjectSymbolLibrary(this.project, macro.symbolLibrary ?? [], macro.components);
     this.canvas.setMacroToPlace(macro);
     if (window.innerWidth <= 960) {
       this.setLeftPanelCollapsed(true);
@@ -2113,6 +2120,9 @@ export class App {
       
       if (result.extractedProject) {
         this.project = result.extractedProject;
+        setProjectSymbolLibrary(this.project);
+        this.selectedComponent = null;
+        this.selectedWire = null;
         this.canvas.setProject(this.project);
         if (this.project.activePageId) {
           this.canvas.setPage(this.project.activePageId);
@@ -2199,6 +2209,9 @@ export class App {
       activePageId: 'p_1'
     };
 
+    setProjectSymbolLibrary(this.project);
+    this.selectedComponent = null;
+    this.selectedWire = null;
     this.canvas.setProject(this.project);
     this.updateUI();
   }

@@ -2,8 +2,8 @@
 // CAE/CAD-kompatibler Makro-Manager & Bibliothek für Fenstermakros (.ema) und Seitenmakros (.ems)
 
 import JSZip from 'jszip';
-import { Project, Page, PlacedComponent, Wire } from './types';
-import { getSymbolForComponent } from './symbols';
+import { Project, Page, PlacedComponent, Wire, SymbolDefinition } from './types';
+import { getSymbolForComponent, getComponentSymbolLibrary, mergeProjectSymbolLibrary } from './symbols';
 
 export interface WindowMacro {
   id: string;
@@ -12,6 +12,7 @@ export interface WindowMacro {
   category: string;
   description: string;
   components: PlacedComponent[];
+  symbolLibrary?: SymbolDefinition[];
   wires?: Wire[];
   width: number;
   height: number;
@@ -29,6 +30,7 @@ export interface PageMacro {
   category: string;
   description: string;
   page: Page;
+  symbolLibrary?: SymbolDefinition[];
   isBuiltIn?: boolean;
   author?: string;
   version?: string;
@@ -929,6 +931,7 @@ export class MacroManager {
         type: 'ems',
         category: parsed.category || 'Importierte Seitenmakros',
         description: parsed.description || `Seitenmakro aus ${filename}`,
+        symbolLibrary: parsed.symbolLibrary,
         page: parsed.page || {
           id: 'page_' + Math.random().toString(36).substring(2, 9),
           pageNumber: '1',
@@ -949,6 +952,7 @@ export class MacroManager {
       type: 'ema',
       category: parsed.category || 'Importierte Fenstermakros',
       description: parsed.description || `Fenstermakro aus ${filename}`,
+      symbolLibrary: parsed.symbolLibrary,
       components: parsed.components || [],
       wires: parsed.wires || [],
       width: parsed.width || 120,
@@ -1081,6 +1085,7 @@ export class MacroManager {
       width: Math.max(40, maxX - minX),
       height: Math.max(40, maxY - minY),
       components: clonedComponents,
+      symbolLibrary: getComponentSymbolLibrary(components),
       wires: internalWires
     };
   }
@@ -1100,7 +1105,8 @@ export class MacroManager {
       description: `Seitenmakro erstellt aus Blatt ${page.pageNumber}`,
       isBuiltIn: false,
       created: new Date().toISOString().split('T')[0],
-      page: pageClone
+      page: pageClone,
+      symbolLibrary: getComponentSymbolLibrary(page.components)
     };
   }
 
@@ -1112,7 +1118,8 @@ export class MacroManager {
     macro: WindowMacro,
     targetX: number,
     targetY: number,
-    existingComponents: PlacedComponent[]
+    existingComponents: PlacedComponent[],
+    project?: Project
   ): { components: PlacedComponent[]; wires: Wire[] } {
     // 1. Calculate next available numbers for each BMK prefix
     const bmkMap = new Map<string, string>(); // old BMK -> new BMK
@@ -1174,6 +1181,7 @@ export class MacroManager {
       }
     }
 
+    if (project) mergeProjectSymbolLibrary(project, macro.symbolLibrary ?? [], newComponents);
     return { components: newComponents, wires: newWires };
   }
 
@@ -1182,6 +1190,7 @@ export class MacroManager {
    */
   public static instantiatePageMacro(macro: PageMacro, project: Project): Page {
     const pageClone: Page = JSON.parse(JSON.stringify(macro.page));
+    mergeProjectSymbolLibrary(project, macro.symbolLibrary ?? [], pageClone.components);
     const newPageId = 'page_' + Math.random().toString(36).substring(2, 9);
     pageClone.id = newPageId;
 
@@ -1225,6 +1234,12 @@ export class MacroManager {
     const cleanName = macro.name.replace(/[^a-zA-Z0-9_\-]/g, '_');
     const ext = macro.type === 'ema' ? 'ema' : 'ems';
     const filename = `${cleanName}.${ext}`;
+
+    // Our portable JSON macro format retains project master data, physical pins,
+    // label formatting and routes which the legacy XML subset cannot represent.
+    if (macro.symbolLibrary?.length) {
+      return { blob: new Blob([JSON.stringify(macro, null, 2)], { type: 'application/json' }), filename };
+    }
 
     // Generate XML schema for maximal CAD compatibility
     let xml = `<?xml version="1.0" encoding="utf-8"?>\n`;
@@ -1286,7 +1301,7 @@ export class MacroManager {
 
     let symbolsPreview = '';
     for (const c of components.slice(0, 8)) {
-      const sym = getSymbolForComponent(c);
+      const sym = macro.symbolLibrary?.find(symbol => symbol.id === c.symbolId) ?? getSymbolForComponent(c);
       if (sym) {
         symbolsPreview += `
           <g transform="translate(${c.x * scale + 8}, ${c.y * scale + 8}) scale(${scale})">

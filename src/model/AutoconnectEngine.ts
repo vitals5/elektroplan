@@ -71,8 +71,8 @@ export class AutoconnectEngine {
       componentId: comp.id,
       pinId: pinDef.id,
       pinName: pinDef.name,
-      worldX: comp.importedSymbol ? comp.x + rx : Math.round(comp.x + rx),
-      worldY: comp.importedSymbol ? comp.y + ry : Math.round(comp.y + ry),
+      worldX: sym.source || comp.importedSymbol ? comp.x + rx : Math.round(comp.x + rx),
+      worldY: sym.source || comp.importedSymbol ? comp.y + ry : Math.round(comp.y + ry),
       direction: dir
     };
   }
@@ -214,9 +214,12 @@ export class AutoconnectEngine {
     }
 
     const pairs = this.findAutoconnectPairs(page.components);
+    const importedIds = new Set(page.connectionMode === 'explicit' ? page.components.filter(c => c.source?.format === 'EPLAN_P8').map(c => c.id) : []);
     const newAutoWires: Wire[] = [];
 
     for (const pair of pairs) {
+      // Preserve the imported graph while allowing normal new placements to autoconnect.
+      if (importedIds.has(pair.pin1.componentId) && importedIds.has(pair.pin2.componentId)) continue;
       const key1 = `${pair.pin1.componentId}:${pair.pin1.pinId}|${pair.pin2.componentId}:${pair.pin2.pinId}`;
       const key2 = `${pair.pin2.componentId}:${pair.pin2.pinId}|${pair.pin1.componentId}:${pair.pin1.pinId}`;
 

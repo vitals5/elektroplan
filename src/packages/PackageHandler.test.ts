@@ -42,8 +42,9 @@ async function runTests() {
   assert(project.company === 'Viktor Steckler', `Company is "Viktor Steckler" (got "${project.company}")`);
   assert(project.author === 'VITAL', `Author is "VITAL" (got "${project.author}")`);
 
-  console.log('\n=== 3. Testing Complete 49-Page Project Structure ===');
-  assert(project.pages.length === 49, `Extracted exactly 49 pages (got ${project.pages.length})`);
+  console.log('\n=== 3. Testing Indexed Active Project Structure ===');
+  assert(project.pages.length === 48, `Extracted 48 indexed active pages (got ${project.pages.length})`);
+  assert(new Set(project.pages.map(p => p.id)).size === project.pages.length, 'No duplicate or deleted page records');
 
   // Verify Cover Sheet
   const coverPage = project.pages.find(p => p.pageNumber === '1' && p.location === '+EAA');
@@ -82,10 +83,10 @@ async function runTests() {
   assert(schlafzimmer !== undefined, 'Page 28 "Schlafzimmer" found');
   assert(schlafzimmer?.title === 'Schlafzimmer', `Page 28 title is "Schlafzimmer" (got "${schlafzimmer?.title}")`);
 
-  // Verify Steckerpläne (Report / Terminal diagram pages)
-  const steckerplaene = project.pages.filter(p => p.location === '+PLG_ST');
-  assert(steckerplaene.length === 4, `Found 4 Steckerpläne (+PLG_ST) (got ${steckerplaene.length})`);
-  assert(steckerplaene.every(p => p.pageType === 'terminal_diagram'), 'Steckerpläne have pageType "terminal_diagram"');
+  const terminalReports = project.pages.filter(p => p.location === '+TERM_KL');
+  assert(terminalReports.length === 2, `Found 2 active terminal reports (got ${terminalReports.length})`);
+  assert(terminalReports.every(p => p.pageType === 'terminal_diagram'), 'Terminal reports have pageType "terminal_diagram"');
+  assert(!project.pages.some(p => p.location === '+PLG_ST'), 'Deleted connector reports do not reappear');
 
   console.log('\n=== 4. Testing Autoconnection and Title Block Integration ===');
   assert(project.activePageId === einspeisungPage?.id, `Active page initialized to first schematic page (${project.activePageId})`);
@@ -93,7 +94,7 @@ async function runTests() {
   const samplePage = einspeisungPage!;
   assert(samplePage.plotFrame.titleBlock.company === 'Viktor Steckler', `Title block company is "${samplePage.plotFrame.titleBlock.company}"`);
   assert(samplePage.plotFrame.titleBlock.author === 'VITAL', `Title block author is "${samplePage.plotFrame.titleBlock.author}"`);
-  assert(samplePage.plotFrame.titleBlock.totalSheets === '49', `Total sheets in title block is 49 (got "${samplePage.plotFrame.titleBlock.totalSheets}")`);
+  assert(samplePage.plotFrame.titleBlock.totalSheets === '48', `Total sheets in title block is 48 (got "${samplePage.plotFrame.titleBlock.totalSheets}")`);
 
   console.log('\n🎉 ALL PACKAGE HANDLER & EDB IMPORT TESTS PASSED SUCCESSFULLY! 100% VERIFIED!\n');
 }

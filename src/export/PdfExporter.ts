@@ -6,8 +6,9 @@
 // - DIN EN ISO 7200 plot frame and title block
 // - Appended report pages: Klemmenplan and Stückliste (BOM)
 
-import { rotateDrawing } from '../model/ImportedDrawing';
-import { eplanPlotFrame } from '../model/EplanPlotFrame';
+import { orthogonalWirePoints, wirePinDirection } from '../model/WireRouting';
+import { arcPoints, rotateDrawing } from '../model/ImportedDrawing';
+import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
 import { jsPDF } from 'jspdf';
 import { Project, Page, PlacedComponent, Wire, DrawingPrimitive } from '../model/types';
 import { getSymbolForComponent } from '../model/symbols';
@@ -88,9 +89,7 @@ export class PdfExporter {
 
       // Render Plot Frame (Normblatt)
       if (options.plotFrame) {
-        if (page.importedDrawing) this.renderImportedGraphics(doc, eplanPlotFrame(page), pageWidthMm / page.plotFrame.width,
-          pageHeightMm / page.plotFrame.height, options.colorMode);
-        else this.renderPlotFrame(doc, page, pageWidthMm, pageHeightMm, options.colorMode, totalSheetsCount);
+        this.renderPlotFrame(doc, page, pageWidthMm, pageHeightMm, options.colorMode, totalSheetsCount);
       }
 
       // Render Embedded Images
@@ -100,7 +99,7 @@ export class PdfExporter {
       this.renderBoxes(doc, page, pageWidthMm, pageHeightMm, options.colorMode);
 
       // Render Wires
-      this.renderWires(doc, page, pageWidthMm, pageHeightMm, options.colorMode);
+      this.renderWires(doc, page, project, pageWidthMm, pageHeightMm, options.colorMode);
 
       // Render Components & Interactive Cross-Reference Links
       this.renderComponents(doc, page, project, pageWidthMm, pageHeightMm, options, pageNumberToPdfPageIndex);
@@ -347,6 +346,7 @@ export class PdfExporter {
   private static renderWires(
     doc: jsPDF,
     page: Page,
+    project: Project,
     wMm: number,
     hMm: number,
     colorMode: 'color' | 'monochrome'
@@ -354,8 +354,8 @@ export class PdfExporter {
     doc.setLineWidth(0.35);
 
     for (const wire of page.wires) {
-      const p1 = this.getPinCoords(page, wire.from.componentId, wire.from.pinId);
-      const p2 = this.getPinCoords(page, wire.to.componentId, wire.to.pinId);
+      const p1 = this.getPinCoords(page, wire.from.componentId, wire.from.pinId, project);
+      const p2 = this.getPinCoords(page, wire.to.componentId, wire.to.pinId, project);
       if (!p1 || !p2) continue;
 
       const x1 = p1.x * wMm / page.plotFrame.width;
@@ -363,7 +363,7 @@ export class PdfExporter {
       const x2 = p2.x * wMm / page.plotFrame.width;
       const y2 = p2.y * hMm / page.plotFrame.height;
 
-      doc.setLineWidth(page.importedDrawing ? 0.15 : 0.35);
+      doc.setLineWidth(0.35);
       // Color coding
       if (colorMode === 'color') {
         const rgb = this.getPotentialRgb(wire.potential, wire.color);
@@ -378,8 +378,8 @@ export class PdfExporter {
       const isBusbar = comp1?.symbolId === 'potential_rail_source';
 
       if (wire.waypoints?.length) {
-        const points = [{ x: x1, y: y1 }, ...wire.waypoints.map(p => ({ x: p.x * wMm / page.plotFrame.width,
-          y: p.y * hMm / page.plotFrame.height })), { x: x2, y: y2 }];
+        const points = orthogonalWirePoints(p1, p2, wire.waypoints, wirePinDirection(page, project, wire.from), wirePinDirection(page, project, wire.to))
+          .map(p => ({ x: p.x * wMm / page.plotFrame.width, y: p.y * hMm / page.plotFrame.height }));
         for (let i = 1; i < points.length; i++) doc.line(points[i - 1].x, points[i - 1].y, points[i].x, points[i].y);
       } else if (Math.abs(x1 - x2) < 0.5) {
         doc.line(x1, y1, x1, y2);
@@ -410,32 +410,31 @@ export class PdfExporter {
     pageMapping: Map<string, number>
   ): void {
     for (const comp of page.components) {
-      const sym = getSymbolForComponent(comp);
+      const sym = getSymbolForComponent(comp, project);
       if (!sym) continue;
 
-      const compX = this.scaleX(comp.x, wMm);
-      const compY = this.scaleY(comp.y, hMm);
-      const compW = this.scaleX(sym.width, wMm);
-      const compH = this.scaleY(sym.height, hMm);
+      const sx = wMm / page.plotFrame.width, sy = hMm / page.plotFrame.height;
+      const compX = comp.x * sx, compY = comp.y * sy;
+      const compW = sym.width * sx, compH = sym.height * sy;
 
       if (sym.importedGraphics) {
         this.renderImportedGraphics(doc, rotateDrawing(sym.importedGraphics, comp.rotation, sym.width, sym.height), wMm / page.plotFrame.width, hMm / page.plotFrame.height,
-          options.colorMode, comp.x, comp.y);
-        continue;
-      }
+          options.colorMode, comp.x, comp.y, '#000000');
+      } else {
       // Draw Symbol Vector Outline
       doc.setDrawColor(0, 0, 0);
       doc.setLineWidth(0.35);
       this.drawVectorSymbol(doc, sym.id, compX, compY, compW, compH);
+      }
 
-      const isConnection = sym.category === 'connections' || sym.id.startsWith('potential_arrow') || sym.id === 'potential_rail_source';
+      const isConnection = !sym.importedGraphics && (sym.category === 'connections' || sym.id.startsWith('potential_arrow') || sym.id === 'potential_rail_source');
       const isTerminal = sym.id === 'terminal_single';
 
       // Draw Pins only for standard multi-pin components (not connection arrows or terminals)
       if (!isConnection && !isTerminal) {
         for (const pin of sym.pins) {
-          const px = compX + this.scaleX(pin.x, wMm);
-          const py = compY + this.scaleY(pin.y, hMm);
+          const coords = this.getPinCoords(page, comp.id, pin.id, project)!;
+          const px = coords.x * sx, py = coords.y * sy;
           doc.setFillColor(255, 255, 255);
           doc.circle(px, py, 0.4, 'FD');
 
@@ -443,7 +442,7 @@ export class PdfExporter {
           doc.setFontSize(4.5);
           doc.setTextColor(80, 80, 80);
           const ty = pin.direction === 'top' ? py - 1.0 : py + 2.0;
-          doc.text(pin.name, px, ty, { align: 'center' });
+          doc.text(comp.pins[pin.id]?.customLabel ?? pin.name, px, ty, { align: 'center' });
         }
       }
 
@@ -479,28 +478,22 @@ export class PdfExporter {
           doc.text(comp.bmk, compX + compW * 0.5, compY - 1.5, { align: 'center' });
         }
       } else {
-        // Standard Electrical Component
-        // Draw BMK (Betriebsmittelkennzeichen)
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.5);
-        doc.setTextColor(options.colorMode === 'color' ? 180 : 0, options.colorMode === 'color' ? 120 : 0, 0);
-        doc.text(comp.bmk, compX + compW / 2, compY - 2, { align: 'center' });
-
-        // Draw Function Text
-        if (comp.functionText && comp.functionText !== comp.bmk) {
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(6);
-          doc.setTextColor(0, 0, 0);
-          doc.text(comp.functionText, compX + compW / 2, compY + compH + 3.2, { align: 'center' });
-        }
-
-        // Draw Technical Characteristics
-        if (comp.technicalCharacteristics && comp.technicalCharacteristics !== comp.functionText) {
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(5);
-          doc.setTextColor(80, 80, 80);
-          doc.text(comp.technicalCharacteristics, compX + compW / 2, compY + compH + 6.0, { align: 'center' });
-        }
+        const drawLabel = (text: string, pos: ReturnType<typeof computeBmkPosition>, bold: boolean, color: number[]) => {
+          if (!text || !pos.visible) return;
+          const a = comp.rotation * Math.PI / 180;
+          const dx = pos.x - sym.width / 2, dy = pos.y - sym.height / 2;
+          const px = comp.x + sym.width / 2 + dx * Math.cos(a) - dy * Math.sin(a);
+          const py = comp.y + sym.height / 2 + dx * Math.sin(a) + dy * Math.cos(a);
+          doc.setFont('helvetica', bold ? 'bold' : 'normal');
+          doc.setFontSize(pos.fontSize * sy * 72 / 25.4);
+          const rgb = options.colorMode === 'color' ? color : [0, 0, 0];
+          doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+          doc.text(text, px * sx, py * sy, { align: pos.anchor === 'middle' ? 'center' : pos.anchor === 'end' ? 'right' : 'left', angle: -(comp.rotation + pos.rotation) });
+        };
+        drawLabel(comp.bmk, computeBmkPosition(comp, sym), true, [140, 95, 0]);
+        drawLabel(comp.functionText, computeFunctionTextPosition(comp, sym), false, [0, 0, 0]);
+        const tech = comp.deviceTag ? comp.deviceTag + (comp.technicalCharacteristics ? ' · ' + comp.technicalCharacteristics : '') : comp.technicalCharacteristics || '';
+        drawLabel(tech, computeTechnicalDataPosition(comp, sym), false, [25, 100, 45]);
       }
 
       // SMART PDF: Interactive Cross-References (Kontaktspiegel & Querverweise)
@@ -1052,10 +1045,10 @@ export class PdfExporter {
     }
   }
 
-  private static getPinCoords(page: Page, compId: string, pinId: string): { x: number; y: number } | null {
+  private static getPinCoords(page: Page, compId: string, pinId: string, project: Project): { x: number; y: number } | null {
     const comp = page.components.find(c => c.id === compId);
     if (!comp) return null;
-    const sym = getSymbolForComponent(comp);
+    const sym = getSymbolForComponent(comp, project);
     if (!sym) return null;
     const pin = sym.pins.find(p => p.id === pinId);
     if (!pin) return null;
@@ -1065,18 +1058,41 @@ export class PdfExporter {
   }
 
   private static renderImportedGraphics(doc: jsPDF, graphics: DrawingPrimitive[], sx: number, sy: number,
-    mode: 'color' | 'monochrome', ox = 0, oy = 0): void {
+    mode: 'color' | 'monochrome', ox = 0, oy = 0, foreground?: string): void {
     const x = (n: number) => (n + ox) * sx, y = (n: number) => (n + oy) * sy;
+    const rgb = (value: string): number[] => {
+      const hex = value.replace('#', '');
+      if (mode === 'monochrome' || !/^(?:[a-f0-9]{3}|[a-f0-9]{6})$/i.test(hex)) return [0, 0, 0];
+      const full = hex.length === 3 ? [...hex].map(c => c + c).join('') : hex;
+      const channels = [0, 2, 4].map(i => parseInt(full.slice(i, i + 2), 16));
+      // White and light editor foregrounds must remain visible on white PDF paper.
+      return channels.every(c => c >= 200) ? [0, 0, 0] : channels;
+    };
     for (const g of graphics) {
-      const rgb = mode === 'monochrome' ? [0, 0, 0] : [1, 3, 5].map(i => parseInt(g.color.slice(i, i + 2), 16));
-      doc.setDrawColor(rgb[0], rgb[1], rgb[2]); doc.setTextColor(rgb[0], rgb[1], rgb[2]);
-      doc.setLineWidth((g.kind === 'line' ? g.width ?? 0.6 : g.kind === 'rect' ? g.lineWidth ?? 0.6 : 0.5) * sx);
+      const color = rgb(foreground ?? g.color);
+      doc.setDrawColor(color[0], color[1], color[2]); doc.setTextColor(color[0], color[1], color[2]);
+      const width = g.kind === 'rect' ? g.lineWidth ?? 0.6 : 'width' in g ? g.width ?? 0.6 : 0.5;
+      doc.setLineWidth(width * sx);
       doc.setLineDashPattern('dash' in g ? g.dash?.map(n => n * sx) ?? [] : [], 0);
       if (g.kind === 'line') doc.line(x(g.x1), y(g.y1), x(g.x2), y(g.y2));
       else if (g.kind === 'rect') doc.rect(x(g.x), y(g.y), g.width * sx, g.height * sy);
       else if (g.kind === 'circle') {
-        if (g.fill) doc.setFillColor(rgb[0], rgb[1], rgb[2]); else doc.setFillColor(255, 255, 255);
-        doc.circle(x(g.x), y(g.y), g.radius * sx, 'FD');
+        if (g.fill) {
+          const fill = rgb(foreground ?? g.fill);
+          doc.setFillColor(fill[0], fill[1], fill[2]);
+        }
+        doc.circle(x(g.x), y(g.y), g.radius * sx, g.fill ? 'FD' : 'S');
+      } else if (g.kind === 'polygon' || g.kind === 'arc') {
+        const points = g.kind === 'polygon' ? g.points : arcPoints(g);
+        if (points.length < 2) continue;
+        if (g.kind === 'polygon' && g.fill) {
+          const fill = rgb(foreground ?? g.fill);
+          doc.setFillColor(fill[0], fill[1], fill[2]);
+        }
+        const path = points.map((point, i) => ({ op: i ? 'l' : 'm', c: [x(point.x), y(point.y)] }));
+        if (g.kind === 'polygon') path.push({ op: 'h', c: [] });
+        doc.path(path);
+        if (g.kind === 'polygon' && g.fill) doc.fillStroke(); else doc.stroke();
       } else {
         doc.setFont('helvetica', 'normal'); doc.setFontSize(g.size * sy * 72 / 25.4);
         doc.text(g.text, x(g.x), y(g.y), { align: g.anchor === 'end' ? 'right' : g.anchor === 'middle' ? 'center' : 'left', angle: -(g.rotation ?? 0) });

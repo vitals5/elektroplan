@@ -76,7 +76,13 @@ export function eplanText(value: string): string {
  * This is the observed P8 index layout, not a general c-tree index implementation.
  */
 export function readEodTable(bytes: Uint8Array, index: Uint8Array, table: keyof typeof EOD_LAYOUTS): EodRecord[] {
-  const layout = EOD_LAYOUTS[table], count = bytes.length / layout.size;
+  return readIndexedEodRecords(bytes, index, EOD_LAYOUTS[table], table);
+}
+
+/** Same indexed serialization is used by project tables and embedded symbol libraries. */
+export function readIndexedEodRecords(bytes: Uint8Array, index: Uint8Array,
+  layout: { size: number; typedIndex: boolean }, table: string): EodRecord[] {
+  const count = bytes.length / layout.size;
   if (!Number.isInteger(count)) throw new Error(`Nicht unterstütztes ${table}.eod Datensatzformat.`);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const iv = new DataView(index.buffer, index.byteOffset, index.byteLength);

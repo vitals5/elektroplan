@@ -58,10 +58,11 @@ export class CrossReferenceEngine {
     for (const item of componentLocations) {
       const bmk = item.comp.bmk.trim();
       if (!bmk) continue;
-      if (!bmkGroups.has(bmk)) {
-        bmkGroups.set(bmk, []);
+      const key = `${item.comp.higherLevelFunction ?? item.page.higherLevel}${item.comp.mountingLocation ?? item.page.location}${bmk}`;
+      if (!bmkGroups.has(key)) {
+        bmkGroups.set(key, []);
       }
-      bmkGroups.get(bmk)!.push(item);
+      bmkGroups.get(key)!.push(item);
     }
 
     // Process each BMK group (e.g. all components named "-K1")
@@ -106,6 +107,9 @@ export class CrossReferenceEngine {
           ? mirrorItems.map(m => `${m.pinNames}: /${m.targetPageNumber}.${m.targetCol}`).join(' | ')
           : '';
       } else if (items.length > 1) {
+        // Multiple P8 placements can be pins/parts of one device, not contact pairs.
+        // Retain explicit source references until main/aux semantics are established.
+        if (items.every(i => i.comp.source?.format === 'EPLAN_P8')) continue;
         // Pairs / multiple components with same BMK without explicit master
         // Terminals in the same strip do not cross-reference each other
         const isTerminalGroup = items.every(i => {

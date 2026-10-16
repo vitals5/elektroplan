@@ -3,9 +3,9 @@
 // Extracts pages, symbols, functions, coordinates, and potential connections following IEC 81346.
 
 import JSZip from 'jszip';
-import { EplanNativePage } from './EplanNativePage';
+import { EplanNativeProject } from './EplanNativeProject';
 import { Project, Page, PlacedComponent, PageType, Wire, PageText, PageBox, PageImage } from '../model/types';
-import { SYMBOL_DEFINITIONS, getSymbolById, getSymbolForComponent } from '../model/symbols';
+import { SYMBOL_DEFINITIONS, getSymbolById, getSymbolForComponent, setProjectSymbolLibrary } from '../model/symbols';
 import { AutoconnectEngine } from '../model/AutoconnectEngine';
 
 export interface ExtractedPageMeta {
@@ -118,8 +118,10 @@ export class EdbProjectParser {
     messages.push(`Seitendatenbank eingelesen: ${pageZipEntry.name} (${pageBuf.length} Bytes)`);
 
     // 3. Extract and sort all page records from Page.eod
-    const rawPages = this.extractPages(pageBuf);
-    messages.push(`${rawPages.length} Projektseiten in der Datenbank identifiziert.`);
+    const native = await EplanNativeProject.create(zip, pageZipEntry.name.slice(0, -'Page.eod'.length));
+    if (!native) throw new Error('Dieses EPLAN-Datenbanklayout wird noch nicht unterstützt. Ein Bibliotheksimport ist nicht möglich.');
+    const rawPages = native?.pages ?? this.extractPages(pageBuf);
+    messages.push(`${rawPages.length} aktive Projektseiten in der Datenbank identifiziert.`);
 
     // 4. Locate and parse Function.eod, IPoint.eod, Instance.eod, Connection.eod
     const funcZipEntry = zip.file(/Function\.eod$/i).find(f => !f.name.includes('.sdb')) || zip.file(/Function\.eod$/i)[0];
@@ -128,14 +130,14 @@ export class EdbProjectParser {
     const connZipEntry = zip.file(/Connection\.eod$/i).find(f => !f.name.includes('.sdb')) || zip.file(/Connection\.eod$/i)[0];
 
     const funcsByPage = new Map<number, RawFunction[]>();
-    if (funcZipEntry) {
+    if (funcZipEntry && !native) {
       const funcBuf = await funcZipEntry.async('uint8array');
       this.extractFunctions(funcBuf, funcsByPage);
       messages.push(`Funktionen und Betriebsmittel extrahiert (${funcsByPage.size} referenzierte Seiten).`);
     }
 
     const ipointsByPage = new Map<number, RawIPoint[]>();
-    if (ipointZipEntry) {
+    if (ipointZipEntry && !native) {
       const ipointBuf = await ipointZipEntry.async('uint8array');
       this.extractIPoints(ipointBuf, ipointsByPage);
       messages.push(`Abbruchstellen / Potentialverweise extrahiert (${ipointsByPage.size} referenzierte Seiten).`);
@@ -145,8 +147,10 @@ export class EdbProjectParser {
     const imagesByPage = new Map<number, PageImage[]>();
     if (instZipEntry) {
       const instBuf = await instZipEntry.async('uint8array');
-      this.extractTexts(instBuf, textsByPage);
-      messages.push(`Freie Texte und Kabelbeschriftungen extrahiert (${textsByPage.size} referenzierte Seiten).`);
+      if (!native) {
+        this.extractTexts(instBuf, textsByPage);
+        messages.push(`Freie Texte und Kabelbeschriftungen extrahiert (${textsByPage.size} referenzierte Seiten).`);
+      }
       await this.extractImages(zip, instBuf, imagesByPage);
       if (imagesByPage.size > 0) {
         messages.push(`Eingebettete Grafiken & Diagramme extrahiert (${imagesByPage.size} Seiten).`);
@@ -154,7 +158,7 @@ export class EdbProjectParser {
     }
 
     const connsByPage = new Map<number, RawConnection[]>();
-    if (connZipEntry) {
+    if (connZipEntry && !native) {
       const connBuf = await connZipEntry.async('uint8array');
       this.extractConnections(connBuf, connsByPage);
       messages.push(`Verbindungsdefinitionen extrahiert (${connsByPage.size} referenzierte Seiten).`);
@@ -176,8 +180,10 @@ export class EdbProjectParser {
       let pageType: PageType = 'schematic';
       if (rp.title.toLowerCase().includes('titelblatt') || rp.location === 'EAA' || rp.pageNumber === '0') {
         pageType = 'cover';
-      } else if (rp.location === 'PLG_ST' || rp.title.toLowerCase().includes('steckerplan')) {
+      } else if (/^(PLG_|TERM_)/.test(rp.location) || /steckerplan|klemmenplan/i.test(rp.title)) {
         pageType = 'terminal_diagram';
+      } else if (/inhaltsverzeichnis/i.test(rp.title)) {
+        pageType = 'overview';
       }
 
       const higherLevel = rp.higherLevel ? (rp.higherLevel.startsWith('=') ? rp.higherLevel : '=' + rp.higherLevel) : '=A1';
@@ -187,7 +193,7 @@ export class EdbProjectParser {
       const sheetNumDisplay = `${i + 1} / ${totalSheetsCount}`;
 
       // Build components for this page (functions + interruption points)
-      const components: PlacedComponent[] = this.buildPageComponents(
+      const components: PlacedComponent[] = native ? [] : this.buildPageComponents(
         pageId,
         rp.pageNumber,
         higherLevel,
@@ -241,9 +247,10 @@ export class EdbProjectParser {
         }
       };
 
-      if (await EplanNativePage.import(zip, pageZipEntry.name.slice(0, -'Page.eod'.length), pageId, page, new Map(rawPages.map(p => [p.pageId, p.pageNumber])))) {
-        messages.push(`Native P8-Platzierungen für „${page.title}“: ${page.components.length} Objekte, ${page.wires.length} Verbindungen.`);
-        messages.push(...(page.importedDrawing?.diagnostics ?? []));
+      if (native) {
+        native.importPage(pageId, page, new Map(rawPages.map(p => [p.pageId, p.pageNumber])));
+        messages.push(`P8-Bibliotheksimport „${page.title}“: ${page.components.length} Objekte, ${page.wires.length} Verbindungen.`);
+        messages.push(...(page.importDiagnostics ?? []).map(d => `Seite ${page.pageNumber}: ${d}`));
       }
       pages.push(page);
     }
@@ -271,8 +278,13 @@ export class EdbProjectParser {
       author,
       company,
       pages,
+      symbolLibrary: native?.library.definitions,
       activePageId
     };
+
+    native?.finalize(project);
+    if (native) messages.push(...native.messages, `${project.symbolLibrary!.length} gemeinsame Projekt-Bibliotheksdefinitionen übernommen.`);
+    setProjectSymbolLibrary(project);
 
     return { project, messages };
   }

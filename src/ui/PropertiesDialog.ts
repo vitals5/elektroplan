@@ -2,6 +2,7 @@
 // Component properties modal ("Eigenschaften (Schaltzeichen)")
 
 import { PlacedComponent, Project, TextFormatConfig } from '../model/types';
+import { escapeSvg } from '../model/ImportedDrawing';
 import { getSymbolForComponent } from '../model/symbols';
 import { MANUFACTURER_PARTS } from '../model/PartCatalogue';
 import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
@@ -27,7 +28,7 @@ export class PropertiesDialog {
     const existing = document.getElementById('propertiesModal');
     if (existing) existing.remove();
 
-    const sym = getSymbolForComponent(this.component);
+    const sym = getSymbolForComponent(this.component, this.project);
 
     const modal = document.createElement('div');
     modal.id = 'propertiesModal';
@@ -67,7 +68,7 @@ export class PropertiesDialog {
         ">
           <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px;">
             <span style="color: #dd6b20; font-weight: bold;">⚡</span>
-            <span>Eigenschaften (Schaltzeichen): <strong>${this.component.bmk}</strong> (${sym?.name || 'Bauteil'})</span>
+            <span>Eigenschaften (Schaltzeichen): <strong>${escapeSvg(this.component.bmk)}</strong> (${escapeSvg(sym?.name || 'Bauteil')})</span>
           </div>
           <button id="btnClosePropModal" style="background: none; border: none; color: #a0aec0; font-size: 20px; cursor: pointer; line-height: 1;">&times;</button>
         </div>
@@ -114,7 +115,7 @@ export class PropertiesDialog {
   }
 
   private renderActiveTabContent(): string {
-    const sym = getSymbolForComponent(this.component);
+    const sym = getSymbolForComponent(this.component, this.project);
 
     if (this.activeTab === 'symbol') {
       return `
@@ -122,44 +123,44 @@ export class PropertiesDialog {
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div>
               <label class="form-label">Sichtbares BMK:</label>
-              <input type="text" id="propBmk" class="form-input" value="${this.component.bmk}" placeholder="-K1">
+              <input type="text" id="propBmk" class="form-input" value="${escapeSvg(this.component.bmk)}" placeholder="-K1">
             </div>
             <div>
               <label class="form-label">Vollständiges BMK (Vorschau):</label>
-              <input type="text" class="form-input" disabled value="${this.component.higherLevelFunction || '=A1'}${this.component.mountingLocation || '+S1'}${this.component.bmk}" style="background: #181b22; color: #a0aec0;">
+              <input type="text" class="form-input" disabled value="${escapeSvg(this.component.higherLevelFunction || '=A1')}${escapeSvg(this.component.mountingLocation || '+S1')}${escapeSvg(this.component.bmk)}" style="background: #181b22; color: #a0aec0;">
             </div>
           </div>
 
           <div>
             <label class="form-label">Gerätebezeichnung (Name / Typ):</label>
-            <input type="text" id="propDeviceTag" class="form-input" value="${this.component.deviceTag || ''}" placeholder="z.B. Hauptschütz K1, Netzteil 24V, Motorschutzschalter">
+            <input type="text" id="propDeviceTag" class="form-input" value="${escapeSvg(this.component.deviceTag || '')}" placeholder="z.B. Hauptschütz K1, Netzteil 24V, Motorschutzschalter">
           </div>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div>
               <label class="form-label">Funktionstext:</label>
-              <input type="text" id="propFunctionText" class="form-input" value="${this.component.functionText || ''}" placeholder="z.B. Hauptantrieb Förderband">
+              <textarea id="propFunctionText" class="form-input" rows="2" placeholder="z.B. Hauptantrieb Förderband">${escapeSvg(this.component.functionText || '')}</textarea>
             </div>
             <div>
               <label class="form-label">Zusatztext / Graviertext:</label>
-              <input type="text" id="propAdditionalText" class="form-input" value="${this.component.additionalText || ''}" placeholder="z.B. Tür links, Feld 3">
+              <textarea id="propAdditionalText" class="form-input" rows="2" placeholder="z.B. Tür links, Feld 3">${escapeSvg(this.component.additionalText || '')}</textarea>
             </div>
           </div>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div>
               <label class="form-label">Anlage (=Höhere Ebene):</label>
-              <input type="text" id="propHigherLevel" class="form-input" value="${this.component.higherLevelFunction || '=A1'}">
+              <input type="text" id="propHigherLevel" class="form-input" value="${escapeSvg(this.component.higherLevelFunction || '=A1')}">
             </div>
             <div>
               <label class="form-label">Einbauort (+Ort):</label>
-              <input type="text" id="propLocation" class="form-input" value="${this.component.mountingLocation || '+S1'}">
+              <input type="text" id="propLocation" class="form-input" value="${escapeSvg(this.component.mountingLocation || '+S1')}">
             </div>
           </div>
 
           <div>
             <label class="form-label">Technische Kenngrößen:</label>
-            <input type="text" id="propTechChar" class="form-input" value="${this.component.technicalCharacteristics || ''}" placeholder="z.B. 4kW 400V 8.5A">
+            <textarea id="propTechChar" class="form-input" rows="2" placeholder="z.B. 4kW 400V 8.5A">${escapeSvg(this.component.technicalCharacteristics || '')}</textarea>
           </div>
 
           <div>
@@ -168,7 +169,7 @@ export class PropertiesDialog {
               ${sym?.pins.map(p => `
                 <div style="display: flex; align-items: center; gap: 4px; background: #1a202c; border: 1px solid #3e4656; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
                   <span style="color: #63b3ed; font-family: monospace;">Pin ${p.id}:</span>
-                  <input type="text" class="prop-pin-label" data-pin-id="${p.id}" value="${this.component.pins[p.id]?.customLabel || p.name}" style="width: 45px; background: #2d3748; border: 1px solid #4a5568; color: white; padding: 2px 4px; border-radius: 2px; font-size: 11px; text-align: center;">
+                  <input type="text" class="prop-pin-label" data-pin-id="${p.id}" value="${escapeSvg(this.component.pins[p.id]?.customLabel ?? p.name)}" style="width: 45px; background: #2d3748; border: 1px solid #4a5568; color: white; padding: 2px 4px; border-radius: 2px; font-size: 11px; text-align: center;">
                 </div>
               `).join('') || '<span style="font-size: 11px; color: #a0aec0;">Keine Anschlüsse vorhanden</span>'}
             </div>
@@ -218,12 +219,12 @@ export class PropertiesDialog {
 
               <div>
                 <label class="form-label" style="font-size: 10px;">Versatz X:</label>
-                <input type="number" id="propBmkOffsetX" class="form-input" value="${bmkPos.offsetX || 0}" style="font-size: 11px; padding: 4px 6px;">
+                <input type="number" step="any" id="propBmkOffsetX" class="form-input" value="${bmkPos.offsetX || 0}" style="font-size: 11px; padding: 4px 6px;">
               </div>
 
               <div>
                 <label class="form-label" style="font-size: 10px;">Versatz Y:</label>
-                <input type="number" id="propBmkOffsetY" class="form-input" value="${bmkPos.offsetY || 0}" style="font-size: 11px; padding: 4px 6px;">
+                <input type="number" step="any" id="propBmkOffsetY" class="form-input" value="${bmkPos.offsetY || 0}" style="font-size: 11px; padding: 4px 6px;">
               </div>
 
               <div>
@@ -275,12 +276,12 @@ export class PropertiesDialog {
 
               <div>
                 <label class="form-label" style="font-size: 10px;">Versatz X:</label>
-                <input type="number" id="propFnOffsetX" class="form-input" value="${fnPos.offsetX || 0}" style="font-size: 11px; padding: 4px 6px;">
+                <input type="number" step="any" id="propFnOffsetX" class="form-input" value="${fnPos.offsetX || 0}" style="font-size: 11px; padding: 4px 6px;">
               </div>
 
               <div>
                 <label class="form-label" style="font-size: 10px;">Versatz Y:</label>
-                <input type="number" id="propFnOffsetY" class="form-input" value="${fnPos.offsetY || 0}" style="font-size: 11px; padding: 4px 6px;">
+                <input type="number" step="any" id="propFnOffsetY" class="form-input" value="${fnPos.offsetY || 0}" style="font-size: 11px; padding: 4px 6px;">
               </div>
 
               <div>
@@ -328,12 +329,12 @@ export class PropertiesDialog {
 
               <div>
                 <label class="form-label" style="font-size: 10px;">Versatz X:</label>
-                <input type="number" id="propTechOffsetX" class="form-input" value="${techPos.offsetX || 0}" style="font-size: 11px; padding: 4px 6px;">
+                <input type="number" step="any" id="propTechOffsetX" class="form-input" value="${techPos.offsetX || 0}" style="font-size: 11px; padding: 4px 6px;">
               </div>
 
               <div>
                 <label class="form-label" style="font-size: 10px;">Versatz Y:</label>
-                <input type="number" id="propTechOffsetY" class="form-input" value="${techPos.offsetY || 0}" style="font-size: 11px; padding: 4px 6px;">
+                <input type="number" step="any" id="propTechOffsetY" class="form-input" value="${techPos.offsetY || 0}" style="font-size: 11px; padding: 4px 6px;">
               </div>
 
               <div>
@@ -382,7 +383,7 @@ export class PropertiesDialog {
               <option value="">-- Artikelkatalog wählen --</option>
               ${MANUFACTURER_PARTS.map(p => `
                 <option value="${p.id}" ${this.component.articleNumber === p.articleNumber ? 'selected' : ''}>
-                  ${p.manufacturer}: ${p.articleNumber} (${p.name})
+                  ${p.manufacturer}: ${p.articleNumber} (${escapeSvg(p.name)})
                 </option>
               `).join('')}
             </select>
@@ -391,17 +392,17 @@ export class PropertiesDialog {
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div>
               <label class="form-label">Hersteller:</label>
-              <input type="text" id="propManufacturer" class="form-input" value="${this.component.manufacturer || ''}" placeholder="z.B. Siemens / Hager / Finder">
+              <input type="text" id="propManufacturer" class="form-input" value="${escapeSvg(this.component.manufacturer || '')}" placeholder="z.B. Siemens / Hager / Finder">
             </div>
             <div>
               <label class="form-label">Artikelnummer / Bestell-Nr.:</label>
-              <input type="text" id="propArticleNumber" class="form-input" value="${this.component.articleNumber || ''}" placeholder="z.B. 3RT2016-1BB41">
+              <input type="text" id="propArticleNumber" class="form-input" value="${escapeSvg(this.component.articleNumber || '')}" placeholder="z.B. 3RT2016-1BB41">
             </div>
           </div>
 
           <div>
             <label class="form-label">Katalog-Kurzbeschreibung:</label>
-            <input type="text" id="propPartDesc" class="form-input" value="${this.component.technicalCharacteristics || ''}" placeholder="z.B. Leistungsschütz 4kW, 24V DC, 1S">
+            <input type="text" id="propPartDesc" class="form-input" value="${escapeSvg(this.component.technicalCharacteristics || '')}" placeholder="z.B. Leistungsschütz 4kW, 24V DC, 1S">
           </div>
         </div>
       `;
@@ -439,11 +440,11 @@ export class PropertiesDialog {
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div>
               <label class="form-label">X-Position (Raster):</label>
-              <input type="number" id="propPosX" class="form-input" value="${this.component.x}">
+              <input type="number" step="any" id="propPosX" class="form-input" value="${this.component.x}">
             </div>
             <div>
               <label class="form-label">Y-Position (Raster):</label>
-              <input type="number" id="propPosY" class="form-input" value="${this.component.y}">
+              <input type="number" step="any" id="propPosY" class="form-input" value="${this.component.y}">
             </div>
           </div>
 
@@ -464,14 +465,14 @@ export class PropertiesDialog {
   }
 
   private generatePreviewSvg(): string {
-    const sym = getSymbolForComponent(this.component);
+    const sym = getSymbolForComponent(this.component, this.project);
     if (!sym) return '<span style="color:#a0aec0;">Kein Symbol gefunden</span>';
 
     const bmkPos = computeBmkPosition(this.component, sym);
     const fnPos = computeFunctionTextPosition(this.component, sym);
     const techPos = computeTechnicalDataPosition(this.component, sym);
 
-    const isConn = sym.category === 'connections';
+    const isConn = !sym.importedGraphics && sym.category === 'connections';
 
     const techText = this.component.deviceTag
       ? (this.component.deviceTag + (this.component.technicalCharacteristics ? ' · ' + this.component.technicalCharacteristics : ''))
@@ -486,15 +487,15 @@ export class PropertiesDialog {
     const vbH = sym.height + padY * 2;
 
     const bmkSvg = (!isConn && bmkPos.visible) ? `
-      <text x="${bmkPos.x}" y="${bmkPos.y}" font-size="${bmkPos.fontSize}" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="${bmkPos.anchor}" ${bmkPos.transform}>${this.component.bmk}</text>
+      <text x="${bmkPos.x}" y="${bmkPos.y}" font-size="${bmkPos.fontSize}" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="${bmkPos.anchor}" ${bmkPos.transform}>${escapeSvg(this.component.bmk)}</text>
     ` : '';
 
     const fnSvg = (!isConn && fnPos.visible) ? `
-      <text x="${fnPos.x}" y="${fnPos.y}" font-size="${fnPos.fontSize}" font-family="sans-serif" fill="#e2e8f0" text-anchor="${fnPos.anchor}" ${fnPos.transform}>${this.component.functionText || 'Funktionstext'}</text>
+      <text x="${fnPos.x}" y="${fnPos.y}" font-size="${fnPos.fontSize}" font-family="sans-serif" fill="#e2e8f0" text-anchor="${fnPos.anchor}" ${fnPos.transform}>${escapeSvg(this.component.functionText || 'Funktionstext')}</text>
     ` : '';
 
     const techSvg = (!isConn && techPos.visible && (techText || this.activeTab === 'display')) ? `
-      <text x="${techPos.x}" y="${techPos.y}" font-size="${techPos.fontSize}" font-family="sans-serif" fill="#68d391" text-anchor="${techPos.anchor}" ${techPos.transform}>${techText || 'Gerätebezeichnung'}</text>
+      <text x="${techPos.x}" y="${techPos.y}" font-size="${techPos.fontSize}" font-family="sans-serif" fill="#68d391" text-anchor="${techPos.anchor}" ${techPos.transform}>${escapeSvg(techText || 'Gerätebezeichnung')}</text>
     ` : '';
 
     const pinsSvg = sym.pins.map(pin => `
@@ -538,7 +539,7 @@ export class PropertiesDialog {
           const sym = getSymbolForComponent(c);
           related.push(`
             <li style="margin-bottom: 4px;">
-              <strong>Blatt ${p.pageNumber}:</strong> ${sym?.name || 'Bauteil'} (${c.functionText || 'Ohne Funktionstext'})
+              <strong>Blatt ${p.pageNumber}:</strong> ${escapeSvg(sym?.name || 'Bauteil')} (${c.functionText || 'Ohne Funktionstext'})
               <span style="font-family: monospace; color: #f6e05e; margin-left: 6px;">[X: ${c.x}, Y: ${c.y}]</span>
             </li>
           `);
@@ -637,7 +638,7 @@ export class PropertiesDialog {
 
     // Live update on display tab controls
     if (this.activeTab === 'display') {
-      const liveInputs = modal.querySelectorAll('input, select');
+      const liveInputs = modal.querySelectorAll('input, select, textarea');
       liveInputs.forEach(input => {
         input.addEventListener('input', () => {
           this.collectFormData(modal);
@@ -698,13 +699,13 @@ export class PropertiesDialog {
     if (rot) this.component.rotation = parseInt(rot.value, 10) as any;
 
     const posX = modal.querySelector('#propPosX') as HTMLInputElement;
-    if (posX && !isNaN(parseInt(posX.value, 10))) {
-      this.component.x = parseInt(posX.value, 10);
+    if (posX && Number.isFinite(parseFloat(posX.value))) {
+      this.component.x = parseFloat(posX.value);
     }
 
     const posY = modal.querySelector('#propPosY') as HTMLInputElement;
-    if (posY && !isNaN(parseInt(posY.value, 10))) {
-      this.component.y = parseInt(posY.value, 10);
+    if (posY && Number.isFinite(parseFloat(posY.value))) {
+      this.component.y = parseFloat(posY.value);
     }
 
     // Pin labels
@@ -727,9 +728,10 @@ export class PropertiesDialog {
       const bmkVis = modal.querySelector('#propBmkVisible') as HTMLInputElement;
 
       this.component.bmkPosition = {
+        ...this.component.bmkPosition,
         preset: bmkPreset.value as any,
-        offsetX: parseInt(bmkOffsetX?.value || '0', 10) || 0,
-        offsetY: parseInt(bmkOffsetY?.value || '0', 10) || 0,
+        offsetX: parseFloat(bmkOffsetX?.value || '0') || 0,
+        offsetY: parseFloat(bmkOffsetY?.value || '0') || 0,
         alignment: bmkAlign?.value as any || 'middle',
         rotation: parseInt(bmkRot?.value || '0', 10) as any || 0,
         visible: bmkVis ? bmkVis.checked : true,
@@ -745,9 +747,10 @@ export class PropertiesDialog {
       const fnVis = modal.querySelector('#propFnVisible') as HTMLInputElement;
 
       this.component.functionTextPosition = {
+        ...this.component.functionTextPosition,
         preset: fnPreset.value as any,
-        offsetX: parseInt(fnOffsetX?.value || '0', 10) || 0,
-        offsetY: parseInt(fnOffsetY?.value || '0', 10) || 0,
+        offsetX: parseFloat(fnOffsetX?.value || '0') || 0,
+        offsetY: parseFloat(fnOffsetY?.value || '0') || 0,
         alignment: fnAlign?.value as any || 'middle',
         rotation: parseInt(fnRot?.value || '0', 10) as any || 0,
         visible: fnVis ? fnVis.checked : true,
@@ -763,9 +766,10 @@ export class PropertiesDialog {
       const techVis = modal.querySelector('#propTechVisible') as HTMLInputElement;
 
       this.component.technicalDataPosition = {
+        ...this.component.technicalDataPosition,
         preset: techPreset.value as any,
-        offsetX: parseInt(techOffsetX?.value || '0', 10) || 0,
-        offsetY: parseInt(techOffsetY?.value || '0', 10) || 0,
+        offsetX: parseFloat(techOffsetX?.value || '0') || 0,
+        offsetY: parseFloat(techOffsetY?.value || '0') || 0,
         alignment: techAlign?.value as any || 'middle',
         rotation: parseInt(techRot?.value || '0', 10) as any || 0,
         visible: techVis ? techVis.checked : false,

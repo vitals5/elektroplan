@@ -2,7 +2,7 @@
 // Symbol Selection modal ("Symbolauswahl")
 
 import { SymbolDefinition } from '../model/types';
-import { SYMBOL_DEFINITIONS } from '../model/symbols';
+import { getSymbolDefinitions, getSymbolById } from '../model/symbols';
 
 export interface SymbolSelectionCallbacks {
   onSelect: (symbol: SymbolDefinition) => void;
@@ -12,7 +12,7 @@ export class SymbolSelectionDialog {
   private callbacks: SymbolSelectionCallbacks;
   private selectedCategory: string = 'all';
   private searchQuery: string = '';
-  private selectedSymbolId: string = SYMBOL_DEFINITIONS[0].id;
+  private selectedSymbolId: string = getSymbolDefinitions()[0].id;
 
   constructor(callbacks: SymbolSelectionCallbacks) {
     this.callbacks = callbacks;
@@ -88,7 +88,7 @@ export class SymbolSelectionDialog {
             " value="${this.searchQuery}">
           </div>
           <span style="font-size: 11px; color: #a0aec0;" id="symCountBadge">
-            ${SYMBOL_DEFINITIONS.length} Symbole verfügbar
+            ${getSymbolDefinitions().length} Symbole verfügbar
           </span>
         </div>
 
@@ -106,6 +106,9 @@ export class SymbolSelectionDialog {
             
             <div class="sym-tree-node active" data-cat="all" style="padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 6px;">
               <span>📁</span> Alle Symbole
+            </div>
+            <div class="sym-tree-node" data-cat="project" style="padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 6px;">
+              <span>📦</span> Projektbibliothek
             </div>
             <div class="sym-tree-node" data-cat="relays" style="padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 6px;">
               <span>⚡</span> Schütze & Relais
@@ -184,8 +187,9 @@ export class SymbolSelectionDialog {
   }
 
   private getFilteredSymbols(): SymbolDefinition[] {
-    return SYMBOL_DEFINITIONS.filter(s => {
-      const matchCat = this.selectedCategory === 'all' || s.category === this.selectedCategory;
+    return getSymbolDefinitions().filter(s => {
+      const matchCat = this.selectedCategory === 'all' || s.category === this.selectedCategory
+        || (this.selectedCategory === 'project' && !!s.source);
       const matchQuery = !this.searchQuery ||
         s.name.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
         s.defaultBmkPrefix.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
@@ -242,7 +246,7 @@ export class SymbolSelectionDialog {
   }
 
   private renderSymbolDetails(): string {
-    const sym = SYMBOL_DEFINITIONS.find(s => s.id === this.selectedSymbolId) || SYMBOL_DEFINITIONS[0];
+    const sym = getSymbolById(this.selectedSymbolId) || getSymbolDefinitions()[0];
 
     return `
       <div>
@@ -322,7 +326,7 @@ export class SymbolSelectionDialog {
 
     // Insert on click or enter
     const insertSelected = () => {
-      const sym = SYMBOL_DEFINITIONS.find(s => s.id === this.selectedSymbolId);
+      const sym = getSymbolById(this.selectedSymbolId);
       if (sym) {
         this.callbacks.onSelect(sym);
         closeModal();
@@ -351,7 +355,7 @@ export class SymbolSelectionDialog {
     if (grid) {
       grid.innerHTML = this.renderSymbolsGrid();
       this.bindCardClicks(modal, () => {
-        const sym = SYMBOL_DEFINITIONS.find(s => s.id === this.selectedSymbolId);
+        const sym = getSymbolById(this.selectedSymbolId);
         if (sym) {
           this.callbacks.onSelect(sym);
           modal.remove();

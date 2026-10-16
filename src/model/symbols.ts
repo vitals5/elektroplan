@@ -1,7 +1,7 @@
 // src/model/symbols.ts
 // Standard electrical symbols library according to DIN EN 60617 & IEC 60617
 
-import { SymbolDefinition } from './types';
+import { PlacedComponent, Project, SymbolDefinition } from './types';
 
 export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
   // --- 1. SCHÜTZE & RELAIS ---
@@ -1412,12 +1412,71 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
   }
 ];
 
-export function getSymbolById(id: string): SymbolDefinition | undefined {
-  return SYMBOL_DEFINITIONS.find(s => s.id === id);
+let activeProject: Project | undefined;
+
+/** The active project's master data is scoped to that project, never added to built-ins. */
+export function getSymbolDefinitions(project: Project | undefined = activeProject): SymbolDefinition[] {
+  const symbols = new Map(SYMBOL_DEFINITIONS.map(symbol => [symbol.id, symbol]));
+  for (const symbol of project?.symbolLibrary ?? []) symbols.set(symbol.id, symbol);
+  return [...symbols.values()];
 }
 
+export function getSymbolById(id: string, project: Project | undefined = activeProject): SymbolDefinition | undefined {
+  return project?.symbolLibrary?.find(symbol => symbol.id === id)
+    ?? SYMBOL_DEFINITIONS.find(symbol => symbol.id === id);
+}
 
-/** Imported placements keep their own geometry through JSON save/load. */
-export function getSymbolForComponent(comp: import('./types').PlacedComponent): SymbolDefinition | undefined {
-  return comp.importedSymbol ?? getSymbolById(comp.symbolId);
+/** Merge portable master data without changing definitions already used by a project. */
+export function mergeProjectSymbolLibrary(
+  project: Project,
+  definitions: SymbolDefinition[],
+  components: PlacedComponent[] = []
+): void {
+  const library = project.symbolLibrary ??= [];
+  const remappedIds = new Map<string, string>();
+  const reservedIds = new Set(definitions.map(symbol => symbol.id));
+  for (const definition of definitions) {
+    let id = definition.id;
+    let suffix = 1;
+    let existing = library.find(symbol => symbol.id === id)
+      ?? SYMBOL_DEFINITIONS.find(symbol => symbol.id === id);
+    const sameDefinition = (symbol: SymbolDefinition) =>
+      JSON.stringify({ ...symbol, id: definition.id }) === JSON.stringify(definition);
+    while (existing && !sameDefinition(existing)) {
+      do { id = `${definition.id}:import-${suffix++}`; } while (reservedIds.has(id));
+      existing = library.find(symbol => symbol.id === id)
+        ?? SYMBOL_DEFINITIONS.find(symbol => symbol.id === id);
+    }
+    if (!existing) library.push(JSON.parse(JSON.stringify({ ...definition, id })));
+    remappedIds.set(definition.id, id);
+  }
+  for (const component of components) {
+    component.symbolId = remappedIds.get(component.symbolId) ?? component.symbolId;
+  }
+}
+
+/** Activate on project load/switch, migrating older inline placement geometry once. */
+export function setProjectSymbolLibrary(project: Project): void {
+  project.symbolLibrary ??= [];
+  for (const page of project.pages) {
+    for (const component of page.components) {
+      if (!component.importedSymbol) continue;
+      const definition = component.importedSymbol;
+      component.symbolId = definition.id;
+      mergeProjectSymbolLibrary(project, [definition], [component]);
+      delete component.importedSymbol;
+    }
+  }
+  activeProject = project;
+}
+
+/** Include project master data when exporting a reusable macro. */
+export function getComponentSymbolLibrary(components: PlacedComponent[]): SymbolDefinition[] {
+  const ids = new Set(components.map(component => component.symbolId));
+  return JSON.parse(JSON.stringify((activeProject?.symbolLibrary ?? []).filter(symbol => ids.has(symbol.id))));
+}
+
+export function getSymbolForComponent(comp: PlacedComponent, project: Project | undefined = activeProject): SymbolDefinition | undefined {
+  // Read compatibility for callers holding a legacy placement before project migration.
+  return comp.importedSymbol ?? getSymbolById(comp.symbolId, project);
 }
