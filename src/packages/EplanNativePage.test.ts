@@ -7,6 +7,9 @@ import { AutoconnectEngine } from '../model/AutoconnectEngine';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
 import { getSymbolById, getSymbolForComponent, setProjectSymbolLibrary } from '../model/symbols';
 import { PdfExporter } from '../export/PdfExporter';
+import { connectionCutouts, supersededConnectionGraphics } from '../model/ConnectionGraphics';
+import { CadCanvas } from '../editor/CadCanvas';
+import { EPLAN_SCALE } from './EplanSymbolLibrary';
 import { Page, PlacedComponent, Project } from '../model/types';
 
 const archive = Buffer.concat(['Eplan Haus.zip.001', 'Eplan Haus.zip.002'].map(f => fs.readFileSync(f)));
@@ -17,7 +20,7 @@ assert(project.symbolLibrary?.length);
 assert.equal(page.importedDrawing, undefined, 'No special page drawing / theme path');
 assert.equal(page.wires.length, 91);
 assert.equal(page.plotFrame.titleBlock.date, '15.09.2026');
-assert(!messages.some(d => /Anschluss.*fehlt|nicht auflösbar/.test(d)), 'Every source reference must resolve');
+assert(!messages.some(d => /Bibliotheksanschluss.*fehlt|Anschluss nicht auflösbar|Bibliothekssymbol nicht auflösbar/.test(d)), 'Every source reference must resolve');
 const component = (id: number, type = 17) => page.components.find(c => c.id === `eplan_13_${type}_${id}`)!;
 const symbol = (c: PlacedComponent) => getSymbolForComponent(c, project)!;
 const pin = (c: PlacedComponent, id: number) => {
@@ -37,6 +40,27 @@ assert.equal(component(0x9a33).symbolId, component(0x9a34).symbolId);
 assert.strictEqual(symbol(component(0x9a33)), symbol(component(0x9a34)), 'Placements share one master definition');
 assert.deepEqual(symbol(component(0x9a33)).source, { library: 'IEC_symbol', number: 1526, variant: 0 });
 assert.equal(symbol(component(0x9a33)).importedGraphics!.length, 28, 'Actual QLTR4_2 source contours');
+// Two upward-facing inputs must connect above the devices through the original
+// corners, even though both endpoints have the same Y coordinate.
+const q12UpperWire = page.wires.find(w => w.id === 'eplan_wire_13_24338')!;
+assert.deepEqual(q12UpperWire.waypoints!.map(p => ({ x: Math.round(p.x / EPLAN_SCALE), y: Math.round(297 - p.y / EPLAN_SCALE) })),
+  [{ x: 92, y: 280 }, { x: 56, y: 280 }]);
+assert(page.wires.every(w => Math.abs(w.lineWidth! / EPLAN_SCALE - 0.25) < 1e-8));
+const t66 = component(153626, 42), t66Symbol = symbol(t66);
+assert(t66Symbol.connectionGraphic);
+assert.equal(t66.source!.routingUsed, true);
+assert(page.components.some(c => c.source?.objectType === 42 && c.source.routingUsed === false), 'Unused automatic routing records stay in the model as nonprinting helpers');
+assert(t66Symbol.importedGraphics!.every(g => g.kind === 'line' && Math.abs(g.width! / EPLAN_SCALE - 0.25) < 1e-8));
+assert(t66Symbol.pins.every(p => !p.labelPosition), 'Do not print physical indices on a routing node');
+const bus = symbol(component(152377, 130));
+assert.deepEqual([...new Set(bus.importedGraphics!.map(g => g.kind === 'line' ? Math.round(g.width! / EPLAN_SCALE * 100) / 100 : -1))].sort(), [0.25, 1]);
+const replaced = supersededConnectionGraphics(page, project);
+assert(replaced.has(component(38842).id), 'Explicit directed T replaces the co-located functional distributor ink');
+assert(!replaced.has(component(38837).id), 'A distributor without an explicit routing glyph retains its real dot');
+assert(connectionCutouts(page, project).length > 0);
+const nodeSvg: any = Object.assign(Object.create(CadCanvas.prototype), { activePage: page, project, mode: 'select' });
+assert.doesNotMatch(nodeSvg.renderWires(), /junction-dot/);
+assert.doesNotMatch(nodeSvg.renderComponents(), /pin-handle/);
 assert(!page.components.some(c => c.bmk === '-F02'), 'Deleted F02 must not reappear');
 for (const [id, label, x] of [[0xab, 'L1', 156], [0xac, 'L2', 164], [0xad, 'L3', 172], [0x8991, 'PEN', 188]] as const) {
   const c = component(id), p = source(pin(c, 0));

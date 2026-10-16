@@ -113,7 +113,56 @@ der jeweiligen Bibliotheksvariante.
   `IEC_symbol:1526:0`-Definition. Deren 28 Konturobjekte und acht physische Pins
   stammen aus `QLTR4_2` der mitgelieferten Bibliothek.
 
-## Grenzen
+## Anschlüsse, Kreuzungen und T-Verbindungen
+
+Der Abgleich mit den PDF-Vektoren verwendet weiterhin dieselbe REA-Artefaktidentität.
+Die gerichteten Varianten `SPECIAL 64/66/67/69/72` bestehen aus originalen
+Bibliothekslinien mit diagonalen Abzweigen; `70` enthält Eckvarianten. Im Beispiel
+wird keine automatische Routing-Platzierung mit Punktvariante 8 verwendet.
+Eine Kreuzung ohne Quell-Verbindungssymbol erhält keinen aus Koordinaten
+erfundenen Verbindungspunkt. Die elektrische Kantenliste bleibt unverändert.
+
+- `Layer.eod/eox`: indexierte Slots mit 284 Bytes; `EFF2` ist die Ebenennummer,
+  `EFF5` die Strichstärke in mm, `EE21` die nominale Textgröße. Ebene 311 enthält
+  0,25 mm, Ebene 317 1 mm. Bei `SPECIAL 77:1` bleiben deshalb die dicken
+  Sammelschienen und der dünne Abzweig verschieden. `EFFB=8` ist kein belegtes
+  Ausblendungsbit und wird nicht so verwendet.
+- Die Leitungstinte wird innerhalb der tatsächlichen, gedrehten Konturgrenzen
+  eines Verbindungssymbols ausgespart. Das Bibliothekssymbol zeichnet dort die
+  Geometrie. Die vollständige Leitung bleibt auswählbar; Modell, Anschlussindizes
+  und gespeicherte Wegpunkte werden durch diese Darstellung nicht verändert.
+  Editor, Verschiebevorschau und PDF verwenden dieselben Linienzüge.
+- Der Quell-Funktionstyp 1400 bezeichnet Verteiler. Liegt ein explizites
+  Routing-Symbol mit gleicher Anschlussrichtung und gleichem Anker über einem
+  solchen Funktionsobjekt, liefert das Routing-Symbol die sichtbare Kontur.
+  Beispiel: Funktion 38842 und Routing-Objekt 153626 auf Quellseite 13. Der
+  Verteiler bleibt im Modell. Verteiler ohne eine solche Überlagerung behalten
+  ihren echten Bibliothekspunkt, etwa Funktion 38837.
+- Einige indexierte automatische Routing-Objekte liegen auf keiner gezeichneten
+  Quellverbindung und haben kein Gegenstück im PDF. Sie bleiben mit
+  `source.routingUsed=false` als editierbare Hilfsobjekte erhalten. Ihre Kontur
+  wird bei Auswahl gezeigt, aber nicht gedruckt. Dies ist eine am Beispiel
+  geprüfte Nutzungsprüfung, keine vollständige Dekodierung der Sichtbarkeitsflags.
+- Gleiche Y-Koordinaten zweier nach oben zeigender Anschlüsse erlauben keine
+  direkte Leitung durch das Gerät. Die Quellroute berücksichtigt beide
+  Anschlussrichtungen; Q12 läuft über die originalen oberen Ecken.
+- Physische Anschlusskoordinaten sind keine zusätzlichen Kreisgrafiken. Im
+  Verdrahtungsmodus gibt es temporäre Anschlussgriffe; im PDF erscheinen nur die
+  tatsächlichen Kreise der Bibliothek. Gefüllte Quellpunkte verwenden die am PDF
+  beobachtete 0,02-mm-Kontur statt einer vergrößernden normalen Umrandung.
+- Anschlussbezeichnungen stammen aus vollständig strukturiert gelesenen
+  Property-Unterobjekten: `ED63=20028`, `ED64` = Anschlussindex plus 1,
+  `EC55` relativ zum physischen Pin, `EE19=2` horizontale Anordnung, `EC57`
+  Ausrichtung. Die nominale P8-Textgröße wird für SVG/PDF mit dem am Export
+  geprüften Faktor 1,242 zur Schriftgröße umgerechnet. Instanztexte bleiben
+  veränderbar. Routing-Symbole bekommen keine künstlichen Pin-Nummern.
+
+Regressionen prüfen die echten Varianten 64:0, 66:0/1, 69:0 und 72:0, Q12s
+obere Route, die 0,25-/1-mm-Sammelschiene sowie Auswahl, Verschieben,
+Anschlussbezeichnungen und PDF-Ausgabe. Visuelle Stichproben verwenden die
+T-Verbindungen auf PDF-Seite 2 und die Kreuzung auf PDF-Seite 24.
+
+## Verbleibende Grenzen
 
 Die Slot-/Indexinterpretation ist für das mitgelieferte P8-Layout rekonstruiert,
 kein vollständiger allgemeiner c-tree-/EPLAN-Parser für alle Versionen.
@@ -123,6 +172,11 @@ Die vollständige Semantik dynamischer Property-Gruppen, Haupt-/Nebenfunktionen,
 aller Grafiktypen und automatisch erzeugter EPLAN-Auswertungsformulare ist
 weiterhin nicht bewiesen. Ein pixelidentisches Property-Layout und ein nativer
 EPLAN-Rückexport werden nicht behauptet.
+Neun Anschluss-Textplatzierungen in verwendeten Varianten referenzieren Ebene
+809, die im indexierten Ebenenbestand fehlt. Ohne belegte Textgröße erzeugt der
+Importer eine Diagnose statt einer geratenen Beschriftung. Browser-Schriften
+und die Helvetica-Näherung des PDF-Exports sind kein pixelidentischer Ersatz
+für die Originalschrift Tahoma.
 
 ## Prüfen
 

@@ -11,7 +11,7 @@ export function drawingToSvg(graphics: DrawingPrimitive[], options: { color?: st
     switch (g.kind) {
       case 'line': return `<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="${color}" stroke-width="${g.width ?? 0.6}" ${g.dash ? `stroke-dasharray="${g.dash.join(',')}"` : ''}/>`;
       case 'rect': return `<rect x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" fill="none" stroke="${color}" stroke-width="${g.lineWidth ?? 0.6}" ${g.dash ? `stroke-dasharray="${g.dash.join(',')}"` : ''}/>`;
-      case 'circle': return `<circle cx="${g.x}" cy="${g.y}" r="${g.radius}" fill="${fill}" stroke="${color}" stroke-width="0.5"/>`;
+      case 'circle': return `<circle cx="${g.x}" cy="${g.y}" r="${g.radius}" fill="${fill}" stroke="${color}" stroke-width="${g.width ?? 0.5}"/>`;
       case 'polygon': return `<polygon points="${g.points.map(p => `${p.x},${p.y}`).join(' ')}" fill="${fill}" stroke="${color}" stroke-width="${g.width ?? 0.6}"/>`;
       case 'arc': {
         const points = arcPoints(g);

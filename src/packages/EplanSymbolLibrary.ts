@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import { DrawingPrimitive, PinDefinition, SymbolDefinition, TextFormatConfig } from '../model/types';
 import { drawingToSvg } from '../model/ImportedDrawing';
 import { EodRecord, eplanText, readIndexedEodRecords } from './EodReader';
+import { EplanLayerStyle, readEplanLayers } from './EplanLayers';
 
 export const EPLAN_SCALE = 1000 / 420;
 export type Point = { x: number; y: number };
@@ -15,9 +16,12 @@ const zero = { x: 0, y: 0 };
 const direction: Record<number, PinDefinition['direction']> = { 1: 'top', 2: 'right', 4: 'bottom', 8: 'left' };
 
 /** Only immutable geometry and physical pins belong to a library definition. */
-export function eplanPrimitives(record: EodRecord): DrawingPrimitive[] {
+export function eplanPrimitives(record: EodRecord, layers?: ReadonlyMap<number, EplanLayerStyle>): DrawingPrimitive[] {
   const s = EPLAN_SCALE, at = (p: Point) => ({ x: p.x * s, y: -p.y * s });
-  const color = 'currentColor', width = 0.55;
+  const layer = layers?.get(record.number(0xebfb) ?? -1);
+  const sourceWidth = layer?.lineWidth;
+  const color = 'currentColor', width = sourceWidth !== undefined && sourceWidth >= 0 && sourceWidth < 100
+    ? sourceWidth * s : 0.55;
   if (record.type === 0x1f) {
     const a = at(record.point(0xec73) ?? zero), b = at(record.point(0xec74) ?? zero);
     return [{ kind: 'line', x1: a.x, y1: a.y, x2: b.x, y2: b.y, color, width }];
@@ -26,7 +30,9 @@ export function eplanPrimitives(record: EodRecord): DrawingPrimitive[] {
     const center = at(record.point(0xec8b) ?? zero), radius = record.point(0xec8c);
     if (!radius) return [];
     const fill = record.number(0xec8e, 1) === 1 ? color : undefined;
-    return [{ kind: 'circle', ...center, radius: Math.hypot(radius.x, radius.y) * s, color, fill }];
+    // Filled P8 markers use a hairline contour (0.02 mm in the reference PDF),
+    // rather than expanding the dot by the layer's ordinary outline width.
+    return [{ kind: 'circle', ...center, radius: Math.hypot(radius.x, radius.y) * s, color, fill, width: fill ? 0.02 * s : width }];
   }
   if (record.type === 0x59) {
     const a = at(record.point(0xf0d3) ?? zero), b = at(record.point(0xf0d4) ?? zero);
@@ -49,7 +55,7 @@ export function eplanPrimitives(record: EodRecord): DrawingPrimitive[] {
     // A literal tilde is a P8 placeholder, not an immutable printed label.
     if (!text || text === '~') return [];
     return [{ kind: 'text', ...at(record.point(0xec55) ?? zero), text, color,
-      size: (record.double(0xee21) ?? 2.5) * s }];
+      size: (record.double(0xee21) ?? layer?.fontSize ?? 2.5) * s }];
   }
   return [];
 }
@@ -72,7 +78,9 @@ export function normalizeDefinition(definition: SymbolDefinition, labels = new M
   const minX = Math.min(...bounds.map(p => p.x)), minY = Math.min(...bounds.map(p => p.y));
   definition.width = Math.max(1, Math.max(...bounds.map(p => p.x)) - minX);
   definition.height = Math.max(1, Math.max(...bounds.map(p => p.y)) - minY);
-  definition.pins = definition.pins.map(p => ({ ...p, x: p.x - minX, y: p.y - minY }));
+  definition.pins = definition.pins.map(p => ({ ...p, x: p.x - minX, y: p.y - minY,
+    ...(p.labelPosition ? { labelPosition: { ...p.labelPosition,
+      x: p.labelPosition.x - minX, y: p.labelPosition.y - minY } } : {}) }));
   definition.importedGraphics = translatePrimitives(definition.importedGraphics ?? [], -minX, -minY);
   definition.svgContent = drawingToSvg(definition.importedGraphics, { color: 'currentColor' });
   return { definition, origin: { x: -minX, y: -minY }, labels };
@@ -92,6 +100,102 @@ export function propertyPositions(data: Uint8Array): Map<number, Point> {
   return result;
 }
 
+/** Field widths observed in the two serialized groups of property-placement objects. */
+const placementFieldWidths = new Map<number, number>([
+  [0xea64, 2], [0xea67, 6], [0xebf4, 1], [0xebf6, 1], [0xebfb, 2],
+  [0xec55, 16], [0xec56, 10], [0xec57, 2], [0xec59, 2],
+  [0xee21, 8], [0xee22, 8], [0xee26, 1], [0xed63, 2], [0xed64, 2],
+  [0xee17, 2], [0xee18, 1], [0xee19, 1], [0xee1a, 1], [0xfa00, 4], [0xfa01, 4]
+]);
+
+class PropertyPlacement extends EodRecord {
+  constructor(data: Uint8Array, private fields: Map<number, number>) { super(0, 0x35, 0, data); }
+  override find(tag: number, start = 0): number {
+    const offset = this.fields.get(tag);
+    return offset !== undefined && offset >= start ? offset : -1;
+  }
+}
+
+/**
+ * A placement has a base-text group and a property group, each terminated by
+ * FFFF. Walk typed values, not byte matches inside float payloads. An unfinished
+ * or unfamiliar object cannot borrow values from the following placement.
+ */
+function completePropertyPlacements(data: Uint8Array): EodRecord[] {
+  const result: EodRecord[] = [];
+  for (let start = 0; start + 16 <= data.length; start++) {
+    if (data[start] !== 0x65 || data[start + 1] !== 0xea || data[start + 2] !== 0x35 || data[start + 3] !== 0
+      || data[start + 4] !== 0x64 || data[start + 5] !== 0xea
+      || data[start + 8] !== 0x67 || data[start + 9] !== 0xea) continue;
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    let cursor = start + 4, groups = 0;
+    const fields = new Map<number, number>([[0xea65, 0]]);
+    while (cursor + 2 <= data.length) {
+      const tag = view.getUint16(cursor, true);
+      if (tag === 0xffff) {
+        cursor += 2;
+        if (++groups === 2) {
+          result.push(new PropertyPlacement(data.subarray(start, cursor), fields));
+          start = cursor - 1;
+          break;
+        }
+        continue;
+      }
+      const width = placementFieldWidths.get(tag);
+      if (width === undefined || cursor + 2 + width > data.length || fields.has(tag)) break;
+      fields.set(tag, cursor - start);
+      cursor += 2 + width;
+    }
+  }
+  return result;
+}
+
+/** Pin designations remain editable instance strings; only their source layout is shared. */
+export function sourcePinLabelPositions(data: Uint8Array, pins: PinDefinition[],
+  layers: ReadonlyMap<number, EplanLayerStyle>, diagnostic?: (message: string) => void): PinDefinition[] {
+  const placements = completePropertyPlacements(data).filter(r => r.number(0xed63) === 20028
+    && r.number(0xea67) === 0x2d);
+  return pins.map(pin => {
+    const index = Number(pin.id) + 1;
+    const unresolved = (reason: string) => { diagnostic?.(`Anschlussbeschriftung ${index}: ${reason}`); return pin; };
+    // The supplied project prints the horizontal designation arrangement.
+    // The vertical EE19=1 object is an alternative, not a second label.
+    const placement = placements.find(r => r.number(0xed64) === index && r.number(0xee19, 1) === 2);
+    if (!placement) return pin;
+    const point = placement.point(0xec55);
+    if (!point) return pin;
+    const layer = layers.get(placement.number(0xebfb) ?? -1);
+    const explicitSize = placement.double(0xee21);
+    if (placement.find(0xee21) >= 0 && explicitSize === undefined) return pin;
+    const size = explicitSize ?? layer?.fontSize;
+    if (size === undefined || size <= 0 || size >= 1000)
+      return unresolved(`Textgröße der Quellebene ${placement.number(0xebfb) ?? '?'} fehlt oder ist ungültig.`);
+    const explicitAngle = placement.double(0xee22);
+    if (placement.find(0xee22) >= 0 && explicitAngle === undefined) return pin;
+    // -16002 is the P8 automatic/unset text-angle sentinel, not radians.
+    const angle = explicitAngle === -16002 ? layer?.angle ?? 0 : explicitAngle ?? layer?.angle ?? 0;
+    const degrees = -angle * 180 / Math.PI;
+    const quarterTurns = Math.round(degrees / 90);
+    if (Math.abs(degrees - quarterTurns * 90) > 1e-6) return unresolved('Textwinkel wird noch nicht unterstützt.');
+    const alignment = placement.number(0xec57);
+    // The sample's horizontal labels use bottom-left (20) and top-left (4).
+    // Other source alignments are deliberately not guessed.
+    if (alignment !== 4 && alignment !== 20) return unresolved(`Textausrichtung ${alignment ?? '?'} wird noch nicht unterstützt.`);
+    // P8 specifies nominal text height, while the PDF uses Tahoma em size.
+    // Both 1.8 mm pin labels (6.33713 pt) and 2.5 mm BMKs (8.80157 pt)
+    // in the supplied export verify the same 1.242 conversion.
+    const fontSize = size * EPLAN_SCALE * 1.242;
+    // Source insertion points anchor the P8 text box. Convert its verified
+    // top/bottom alignment to the baseline used by the SVG/PDF renderers.
+    const baseline = fontSize * (alignment === 20 ? -0.12753948 : 1.08014513);
+    const radians = quarterTurns * Math.PI / 2;
+    return { ...pin, labelPosition: { x: pin.x + point.x * EPLAN_SCALE - Math.sin(radians) * baseline,
+      y: pin.y - point.y * EPLAN_SCALE + Math.cos(radians) * baseline,
+      fontSize, alignment: 'start', rotation: (((quarterTurns % 4) + 4) % 4 * 90) as 0 | 90 | 180 | 270,
+      ...(layer?.visible !== undefined ? { visible: layer.visible } : {}) } };
+  });
+}
+
 export function labelPosition(entry: LibraryEntry, field: number, override?: Map<number, Point>): TextFormatConfig {
   const p = override?.get(field) ?? entry.labels.get(field);
   if (!p) return { visible: field === 20010 };
@@ -108,7 +212,8 @@ export class EplanSymbolLibrary {
   private names: string[];
   readonly diagnostics: string[] = [];
   readonly definitions: SymbolDefinition[] = [];
-  private constructor(private zip: JSZip, private root: string, names: string[]) { this.names = names; }
+  private constructor(private zip: JSZip, private root: string, names: string[],
+    readonly layers: ReadonlyMap<number, EplanLayerStyle>) { this.names = names; }
 
   static async create(zip: JSZip, root: string): Promise<EplanSymbolLibrary> {
     const setting = zip.file(`${root}Settings.xdb/Setting.eod`);
@@ -130,7 +235,7 @@ export class EplanSymbolLibrary {
       names = new TextDecoder().decode(data.subarray(i + 11, i + 7 + length)).split('\0').slice(0, count); break;
     }
     if (!names) throw new Error('Die EPLAN-Bibliothekszuordnung ist nicht lesbar.');
-    return new EplanSymbolLibrary(zip, root, names);
+    return new EplanSymbolLibrary(zip, root, names, await readEplanLayers(zip, root));
   }
 
   private loaded = new Set<number>();
@@ -186,8 +291,9 @@ export class EplanSymbolLibrary {
           : functionClass === 200 ? 'relays' : library === 'SPECIAL' ? 'connections' : /^F/.test(name) ? 'protection' : /^K/.test(name) ? 'relays'
           : /^X/.test(name) ? 'terminals' : 'controls',
         standard: 'DIN EN 60617', defaultBmkPrefix: '', defaultFunctionText: '',
-        width: 1, height: 1, pins, svgContent: '', description: description || `${library}: ${name}`,
-        importedGraphics: (shapes.get(variant.id) ?? []).flatMap(eplanPrimitives), source: { library, number, variant: variantIndex },
+        width: 1, height: 1, pins: sourcePinLabelPositions(variant.data, pins, this.layers,
+          message => this.diagnostics.push(`${library}/${number}:${variantIndex}: ${message}`)), svgContent: '', description: description || `${library}: ${name}`,
+        importedGraphics: (shapes.get(variant.id) ?? []).flatMap(r => eplanPrimitives(r, this.layers)), source: { library, number, variant: variantIndex },
         isMaster: functionClass === 200 || undefined,
         isContact: functionClass === 201 || functionClass === 202 || undefined,
         contactType: functionClass === 202 ? 'NC' : functionClass === 201 ? (symbol.number(0xefc7) === 3 ? 'PowerNO' : 'NO') : undefined

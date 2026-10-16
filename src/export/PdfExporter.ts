@@ -6,7 +6,8 @@
 // - DIN EN ISO 7200 plot frame and title block
 // - Appended report pages: Klemmenplan and Stückliste (BOM)
 
-import { orthogonalWirePoints, wirePinDirection } from '../model/WireRouting';
+import { wirePolyline, wirePinDirection } from '../model/WireRouting';
+import { connectionCutouts, connectionGraphicWires, isConnectionGraphic, supersededConnectionGraphics, visibleWireSegments } from '../model/ConnectionGraphics';
 import { arcPoints, rotateDrawing } from '../model/ImportedDrawing';
 import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
 import { jsPDF } from 'jspdf';
@@ -351,49 +352,19 @@ export class PdfExporter {
     hMm: number,
     colorMode: 'color' | 'monochrome'
   ): void {
-    doc.setLineWidth(0.35);
-
+    const sx = wMm / page.plotFrame.width, sy = hMm / page.plotFrame.height;
+    const cutouts = connectionCutouts(page, project);
     for (const wire of page.wires) {
       const p1 = this.getPinCoords(page, wire.from.componentId, wire.from.pinId, project);
       const p2 = this.getPinCoords(page, wire.to.componentId, wire.to.pinId, project);
       if (!p1 || !p2) continue;
-
-      const x1 = p1.x * wMm / page.plotFrame.width;
-      const y1 = p1.y * hMm / page.plotFrame.height;
-      const x2 = p2.x * wMm / page.plotFrame.width;
-      const y2 = p2.y * hMm / page.plotFrame.height;
-
-      doc.setLineWidth(0.35);
-      // Color coding
-      if (colorMode === 'color') {
-        const rgb = this.getPotentialRgb(wire.potential, wire.color);
-        doc.setDrawColor(rgb.r, rgb.g, rgb.b);
-        doc.setFillColor(rgb.r, rgb.g, rgb.b);
-      } else {
-        doc.setDrawColor(0, 0, 0);
-        doc.setFillColor(0, 0, 0);
-      }
-
-      const comp1 = page.components.find(c => c.id === wire.from.componentId);
-      const isBusbar = comp1?.symbolId === 'potential_rail_source';
-
-      if (wire.waypoints?.length) {
-        const points = orthogonalWirePoints(p1, p2, wire.waypoints, wirePinDirection(page, project, wire.from), wirePinDirection(page, project, wire.to))
-          .map(p => ({ x: p.x * wMm / page.plotFrame.width, y: p.y * hMm / page.plotFrame.height }));
-        for (let i = 1; i < points.length; i++) doc.line(points[i - 1].x, points[i - 1].y, points[i].x, points[i].y);
-      } else if (Math.abs(x1 - x2) < 0.5) {
-        doc.line(x1, y1, x1, y2);
-      } else if (Math.abs(y1 - y2) < 0.5) {
-        doc.line(x1, y1, x2, y1);
-      } else if (isBusbar) {
-        doc.line(x1, y1, x2, y1);
-        doc.line(x2, y1, x2, y2);
-      } else {
-        const midY = (y1 + y2) / 2;
-        doc.line(x1, y1, x1, midY);
-        doc.line(x1, midY, x2, midY);
-        doc.line(x2, midY, x2, y2);
-      }
+      doc.setLineWidth(wire.lineWidth === undefined ? 0.35 : wire.lineWidth * sx);
+      const rgb = colorMode === 'color' ? this.getPotentialRgb(wire.potential, wire.color) : { r: 0, g: 0, b: 0 };
+      doc.setDrawColor(rgb.r, rgb.g, rgb.b);
+      doc.setFillColor(rgb.r, rgb.g, rgb.b);
+      const points = wirePolyline(p1, p2, wire.waypoints, wirePinDirection(page, project, wire.from), wirePinDirection(page, project, wire.to),
+        page.components.find(c => c.id === wire.from.componentId)?.symbolId === 'potential_rail_source');
+      for (const [a, b] of visibleWireSegments(points, cutouts)) doc.line(a.x * sx, a.y * sy, b.x * sx, b.y * sy);
     }
   }
 
@@ -409,6 +380,8 @@ export class PdfExporter {
     options: PdfExportOptions,
     pageMapping: Map<string, number>
   ): void {
+    const superseded = supersededConnectionGraphics(page, project);
+    const graphicWires = connectionGraphicWires(page, project);
     for (const comp of page.components) {
       const sym = getSymbolForComponent(comp, project);
       if (!sym) continue;
@@ -417,9 +390,16 @@ export class PdfExporter {
       const compX = comp.x * sx, compY = comp.y * sy;
       const compW = sym.width * sx, compH = sym.height * sy;
 
-      if (sym.importedGraphics) {
+      const routingGlyph = isConnectionGraphic(comp, sym);
+      const connectedWire = graphicWires.get(comp.id);
+      const rgb = this.getPotentialRgb(connectedWire?.potential ?? 'Signal', connectedWire?.color);
+      const foreground = routingGlyph ? '#' + [rgb.r, rgb.g, rgb.b].map(c => c.toString(16).padStart(2, '0')).join('') : '#000000';
+      if (superseded.has(comp.id) || comp.source?.routingUsed === false) {
+        // Functional source object is retained in the model; its co-located
+        // explicit routing symbol supplies the visible connection geometry.
+      } else if (sym.importedGraphics) {
         this.renderImportedGraphics(doc, rotateDrawing(sym.importedGraphics, comp.rotation, sym.width, sym.height), wMm / page.plotFrame.width, hMm / page.plotFrame.height,
-          options.colorMode, comp.x, comp.y, '#000000');
+          options.colorMode, comp.x, comp.y, foreground);
       } else {
       // Draw Symbol Vector Outline
       doc.setDrawColor(0, 0, 0);
@@ -431,7 +411,23 @@ export class PdfExporter {
       const isTerminal = sym.id === 'terminal_single';
 
       // Draw Pins only for standard multi-pin components (not connection arrows or terminals)
-      if (!isConnection && !isTerminal) {
+      if (sym.source) {
+        // Physical pins are editing anchors, not extra printed circles. Any real
+        // contact circle is already present in the source library's vectors.
+        for (const pin of sym.pins) {
+          const label = pin.labelPosition;
+          if (!label || label.visible === false) continue;
+          const a = comp.rotation * Math.PI / 180;
+          const dx = label.x - sym.width / 2, dy = label.y - sym.height / 2;
+          const px = comp.x + sym.width / 2 + dx * Math.cos(a) - dy * Math.sin(a);
+          const py = comp.y + sym.height / 2 + dx * Math.sin(a) + dy * Math.cos(a);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(label.fontSize * sy * 72 / 25.4);
+          doc.setTextColor(0, 0, 0);
+          doc.text(comp.pins[pin.id]?.customLabel ?? pin.name, px * sx, py * sy,
+            { align: label.alignment === 'middle' ? 'center' : label.alignment === 'end' ? 'right' : 'left', angle: -(comp.rotation + (label.rotation ?? 0)) });
+        }
+      } else if (!isConnection && !isTerminal) {
         for (const pin of sym.pins) {
           const coords = this.getPinCoords(page, comp.id, pin.id, project)!;
           const px = coords.x * sx, py = coords.y * sy;

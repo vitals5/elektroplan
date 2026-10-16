@@ -10,12 +10,15 @@ export interface PinDefinition {
   y: number;
   direction: 'top' | 'bottom' | 'left' | 'right';
   description?: string;
+  /** Optional source label position in symbol-local editor coordinates. */
+  labelPosition?: { x: number; y: number; fontSize: number; alignment: 'start' | 'middle' | 'end';
+    rotation?: 0 | 90 | 180 | 270; visible?: boolean };
 }
 
 export type DrawingPrimitive =
   | { kind: 'line'; x1: number; y1: number; x2: number; y2: number; color: string; width?: number; dash?: number[] }
   | { kind: 'rect'; x: number; y: number; width: number; height: number; color: string; lineWidth?: number; dash?: number[] }
-  | { kind: 'circle'; x: number; y: number; radius: number; color: string; fill?: string }
+  | { kind: 'circle'; x: number; y: number; radius: number; color: string; fill?: string; width?: number }
   | { kind: 'polygon'; points: { x: number; y: number }[]; color: string; width?: number; fill?: string }
   | { kind: 'arc'; x: number; y: number; radius: number; startAngle: number; endAngle: number; color: string; width?: number; counterClockwise?: boolean }
   | { kind: 'text'; x: number; y: number; text: string; color: string; size: number; anchor?: 'start' | 'middle' | 'end'; rotation?: number };
@@ -33,6 +36,8 @@ export interface SymbolDefinition {
   /** Original symbol-library reference, retained with the project's master data. */
   source?: { library: string; number: number; variant: number };
   importedGraphics?: DrawingPrimitive[];
+  /** A library routing glyph replaces the wire strokes within its own bounds. */
+  connectionGraphic?: boolean;
   // SVG drawing paths or markup relative to (0, 0)
   svgContent: string;
   description: string;
@@ -57,7 +62,9 @@ export interface TextFormatConfig {
 export interface PlacedComponent {
   id: string;
   symbolId: string;
-  source?: { format: 'EPLAN_P8'; objectType: number; objectId: number };
+  source?: { format: 'EPLAN_P8'; objectType: number; objectId: number;
+    /** Auto-routing records without any drawn source connection remain editable helpers. */
+    routingUsed?: boolean };
   importedSymbol?: SymbolDefinition;
   bmk: string;                  // e.g. "-K1", "-Q1", "-F1"
   deviceTag?: string;           // Gerätebezeichnung z.B. "Hauptschütz K1", "Motorschutzschalter"
@@ -98,6 +105,7 @@ export interface Wire {
   wireNumber?: string;          // e.g. "101", "102"
   crossSection?: string;        // e.g. "1.5mm²"
   color?: string;               // e.g. "BK", "BU", "GNYE", "RD"
+  lineWidth?: number;           // drawing units, including imported layer defaults
   waypoints?: { x: number; y: number }[];
   isAutoconnect?: boolean;
 }

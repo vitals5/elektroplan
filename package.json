@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc && vite build",
-    "test": "tsx src/model/AutoconnectEngine.test.ts && tsx src/model/LabelLayout.test.ts && tsx src/model/MacroManager.test.ts && tsx src/model/symbols.test.ts && tsx src/editor/CadCanvas.test.ts && tsx src/ui/PropertiesDialog.test.ts && tsx src/packages/PackageXml.test.ts && tsx src/packages/PackageHandler.test.ts && tsx src/packages/EplanNativePage.test.ts",
+    "test": "tsx src/model/AutoconnectEngine.test.ts && tsx src/model/LabelLayout.test.ts && tsx src/model/ConnectionGraphics.test.ts && tsx src/model/MacroManager.test.ts && tsx src/model/symbols.test.ts && tsx src/editor/CadCanvas.test.ts && tsx src/ui/PropertiesDialog.test.ts && tsx src/packages/PackageXml.test.ts && tsx src/packages/PackageHandler.test.ts && tsx src/packages/EplanNativePage.test.ts && tsx src/packages/EplanSymbolLibrary.test.ts",
     "preview": "vite preview",
     "electron:dev": "concurrently \"vite\" \"wait-on tcp:5173 && electron .\"",
     "electron:start": "electron .",

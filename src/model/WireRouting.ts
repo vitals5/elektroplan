@@ -4,6 +4,16 @@ import { getSymbolForComponent } from './symbols';
 type Point = { x: number; y: number };
 type Direction = PinDefinition['direction'];
 
+/** Shared centerline for painting, dragging, hit testing and PDF export. */
+export function wirePolyline(from: Point, to: Point, waypoints: readonly Point[] = [],
+  fromDirection?: Direction, toDirection?: Direction, busbar = false): Point[] {
+  if (waypoints.length) return orthogonalWirePoints(from, to, waypoints, fromDirection, toDirection);
+  if (Math.abs(from.x - to.x) < 1e-8 || Math.abs(from.y - to.y) < 1e-8) return [from, to];
+  if (busbar) return [from, { x: to.x, y: from.y }, to];
+  const midY = (from.y + to.y) / 2;
+  return [from, { x: from.x, y: midY }, { x: to.x, y: midY }, to];
+}
+
 export function wirePinDirection(page: Page, project: Project, endpoint: Wire['from']): Direction | undefined {
   const component = page.components.find(c => c.id === endpoint.componentId);
   if (!component) return;

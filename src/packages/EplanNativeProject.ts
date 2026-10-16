@@ -134,6 +134,10 @@ export class EplanNativeProject {
     const referenced = new Set(connections.flatMap(r => [`${r.number(0xeb2b)}:${r.number(0xeb2b, 4, 4)}`,
       `${r.number(0xeb2e)}:${r.number(0xeb2e, 4, 4)}`]));
     const add = (r: EodRecord, entry: LibraryEntry, position: Point): PlacedComponent => {
+      // 1400 is the source function definition for an electrical distributor.
+      // Its symbol can be superseded by a co-located graphical routing node.
+      if ([0x2a, 0x82].includes(r.type) || r.type === 17 && r.number(0xefc5) === 1400)
+        entry.definition.connectionGraphic = true;
       this.library.use(entry);
       const p = canvas(position), d = entry.definition;
       const pinLabels = r.pins;
@@ -193,7 +197,7 @@ export class EplanNativeProject {
         comp.functionTextPosition = { preset: 'custom', offsetX: -width / 2,
           offsetY: size - entry.definition.height - 12, fontSize: size, alignment: 'start', visible: true };
       } else {
-        const graphics = eplanPrimitives(r);
+        const graphics = eplanPrimitives(r, this.library.layers);
         if (!graphics.length) continue;
         const first = graphics[0];
         const anchor = first.kind === 'line' ? { x: first.x1, y: first.y1 }
@@ -206,6 +210,7 @@ export class EplanNativeProject {
     }
     const corners = records.filter(r => r.type === 0x2a).flatMap(r => r.position ? [r.position] : []);
     const wires: Wire[] = [];
+    const sourceSegments: [Point, Point][] = [];
     for (const r of connections) {
       const fromKey = `${r.number(0xeb2b)}:${r.number(0xeb2b, 4, 4)}`, toKey = `${r.number(0xeb2e)}:${r.number(0xeb2e, 4, 4)}`;
       const fromPin = r.number(0xeb2c) ?? 0, toPin = r.number(0xeb2f) ?? 0;
@@ -215,12 +220,30 @@ export class EplanNativeProject {
         diagnostics.push(`Verbindung ${r.id}: Bibliotheksanschluss ${!a ? fromKey + ':' + fromPin : toKey + ':' + toPin} fehlt.`);
         continue;
       }
+      const route = this.route(a, b, corners);
+      const routePoints = [a.point, ...route, b.point];
+      for (let i = 1; i < routePoints.length; i++) sourceSegments.push([routePoints[i - 1], routePoints[i]]);
       const wire: Wire = { id: `eplan_wire_${pageId}_${r.id}`, from: { componentId: from.id, pinId: String(fromPin) },
         to: { componentId: to.id, pinId: String(toPin) }, potential: 'Signal',
+        lineWidth: (this.library.layers.get(311)?.lineWidth ?? 0.25) * SCALE,
         color: r.string(0x791c, 4) || undefined, crossSection: r.string(0x791a, 4) || undefined,
-        waypoints: this.route(a, b, corners).map(canvas) };
+        waypoints: route.map(canvas) };
       wires.push(wire);
       from.pins[String(fromPin)].wireIds!.push(wire.id); to.pins[String(toPin)].wireIds!.push(wire.id);
+    }
+    // P8 retains automatic routing records that are not on any drawn source
+    // connection. They are not printed; keep them in the editable model rather
+    // than painting dangling corners from this unused routing cache.
+    for (const r of records.filter(r => r.type === 0x2a && r.position)) {
+      const comp = objects.get(identity(r));
+      if (!comp?.source) continue;
+      const p = r.position!;
+      comp.source.routingUsed = sourceSegments.some(([a, b]) => {
+        const dx = b.x - a.x, dy = b.y - a.y, length = dx * dx + dy * dy;
+        if (length < 1e-12) return false;
+        const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / length;
+        return t >= -1e-8 && t <= 1 + 1e-8 && Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < 1e-6;
+      });
     }
     for (const key of referenced) if (!objects.has(key)) diagnostics.push(`Referenziertes Objekt ${key} fehlt.`);
     const partial = records.filter(r => r.partial);
@@ -241,13 +264,15 @@ export class EplanNativeProject {
 
   /** Route explicit source connections; geometric nodes never create new net edges. */
   private route(a: Endpoint, b: Endpoint, corners: Point[]): Point[] {
-    if (a.point.x === b.point.x || a.point.y === b.point.y) return [];
     const nodes = [a.point, b.point, ...corners];
     const distance = nodes.map(() => Infinity), previous = nodes.map(() => -1), visited = new Set<number>();
     distance[0] = 0;
     const faces = (p: Point, q: Point, direction: PinDefinition['direction']) =>
       (direction === 'top' && q.y > p.y && q.x === p.x) || (direction === 'bottom' && q.y < p.y && q.x === p.x) ||
       (direction === 'left' && q.x < p.x && q.y === p.y) || (direction === 'right' && q.x > p.x && q.y === p.y);
+    // Aligned pins may face the same way, e.g. both Q12 inputs point up. Their
+    // connection must still travel through the source corners above the device.
+    if (faces(a.point, b.point, a.direction) && faces(b.point, a.point, b.direction)) return [];
     for (let step = 0; step < nodes.length; step++) {
       let u = -1;
       for (let i = 0; i < nodes.length; i++) if (!visited.has(i) && (u < 0 || distance[i] < distance[u])) u = i;

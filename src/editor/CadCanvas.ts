@@ -1,7 +1,8 @@
 // src/editor/CadCanvas.ts
 // Interactive SVG-based CAD drawing canvas for electrical schematics
 
-import { orthogonalWirePoints, wirePinDirection } from '../model/WireRouting';
+import { wirePolyline, wirePinDirection } from '../model/WireRouting';
+import { connectionCutouts, connectionGraphicWires, isConnectionGraphic, supersededConnectionGraphics, visibleWireSegments } from '../model/ConnectionGraphics';
 import { drawingToSvg, escapeSvg } from '../model/ImportedDrawing';
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
 import { getSymbolById, getSymbolForComponent } from '../model/symbols';
@@ -960,29 +961,29 @@ export class CadCanvas {
     });
   }
 
+  private wirePoints(wire: Wire): { x: number; y: number }[] {
+    const from = this.getPinCoordinates(wire.from.componentId, wire.from.pinId);
+    const to = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
+    if (!from || !to) return [];
+    return wirePolyline(from, to, wire.waypoints,
+      wirePinDirection(this.activePage, this.project, wire.from), wirePinDirection(this.activePage, this.project, wire.to),
+      this.activePage.components.find(c => c.id === wire.from.componentId)?.symbolId === 'potential_rail_source');
+  }
+
   private updateConnectedWiresFast(componentId: string): void {
+    const component = this.activePage.components.find(c => c.id === componentId);
+    const symbol = component && getSymbolForComponent(component, this.project);
+    const movingGlyph = component && symbol && isConnectionGraphic(component, symbol);
+    const cutouts = connectionCutouts(this.activePage, this.project);
     for (const wire of this.activePage.wires) {
-      if (wire.from.componentId === componentId || wire.to.componentId === componentId) {
-        const p1 = this.getPinCoordinates(wire.from.componentId, wire.from.pinId);
-        const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
-        if (p1 && p2) {
-          const wireEl = this.svg.getElementById(wire.id);
-          if (wireEl) {
-            let pathData = '';
-            if (wire.waypoints?.length) {
-              pathData = orthogonalWirePoints(p1, p2, wire.waypoints, wirePinDirection(this.activePage, this.project, wire.from), wirePinDirection(this.activePage, this.project, wire.to)).map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
-            } else if (Math.abs(p1.x - p2.x) <= 2) {
-              pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y}`;
-            } else if (Math.abs(p1.y - p2.y) <= 2) {
-              pathData = `M ${p1.x} ${p1.y} L ${p2.x} ${p1.y}`;
-            } else {
-              const midY = (p1.y + p2.y) / 2;
-              pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
-            }
-            wireEl.querySelectorAll('path').forEach(p => p.setAttribute('d', pathData));
-          }
-        }
-      }
+      if (!movingGlyph && wire.from.componentId !== componentId && wire.to.componentId !== componentId) continue;
+      const points = this.wirePoints(wire);
+      const wireEl = this.svg.getElementById(wire.id);
+      if (!wireEl) continue;
+      wireEl.querySelector('[data-wire-role="hit"]')?.setAttribute('d',
+        points.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' '));
+      wireEl.querySelector('[data-wire-role="ink"]')?.setAttribute('d',
+        visibleWireSegments(points, cutouts).map(([a, b]) => `M ${a.x} ${a.y} L ${b.x} ${b.y}`).join(' '));
     }
   }
 
@@ -1039,22 +1040,9 @@ export class CadCanvas {
       const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
       if (!p1 || !p2) continue;
 
-      if (wire.waypoints?.length) {
-        const points = orthogonalWirePoints(p1, p2, wire.waypoints, wirePinDirection(this.activePage, this.project, wire.from), wirePinDirection(this.activePage, this.project, wire.to));
-        if (points.slice(1).some((p, i) =>
-          this.distToSegment(x, y, points[i].x, points[i].y, p.x, p.y) < hitTolerance)) return wire;
-      } else if (p1.x === p2.x || p1.y === p2.y) {
-        const d = this.distToSegment(x, y, p1.x, p1.y, p2.x, p2.y);
-        if (d < hitTolerance) return wire;
-      } else {
-        const midY = (p1.y + p2.y) / 2;
-        const d1 = this.distToSegment(x, y, p1.x, p1.y, p1.x, midY);
-        const d2 = this.distToSegment(x, y, p1.x, midY, p2.x, midY);
-        const d3 = this.distToSegment(x, y, p2.x, midY, p2.x, p2.y);
-        if (d1 < hitTolerance || d2 < hitTolerance || d3 < hitTolerance) {
-          return wire;
-        }
-      }
+      const points = this.wirePoints(wire);
+      if (points.slice(1).some((p, i) =>
+        this.distToSegment(x, y, points[i].x, points[i].y, p.x, p.y) < hitTolerance)) return wire;
     }
     return null;
   }
@@ -1214,6 +1202,8 @@ export class CadCanvas {
   }
 
   private renderComponents(): string {
+    const superseded = supersededConnectionGraphics(this.activePage, this.project);
+    const graphicWires = connectionGraphicWires(this.activePage, this.project);
     const labelText = (text: string, x: number, size: number): string => {
       if (!text.includes('\n')) return escapeSvg(text);
       return text.split(/\r?\n/).map((line, i) => `<tspan x="${x}" dy="${i ? size * 1.2 : 0}">${escapeSvg(line)}</tspan>`).join('');
@@ -1225,7 +1215,9 @@ export class CadCanvas {
       const isConn = !sym.importedGraphics && (sym.category === 'connections' || sym.id.startsWith('potential_arrow') || sym.id === 'potential_rail_source');
       const isTerminal = sym.id === 'terminal_single';
       const isSelected = comp.id === this.selectedComponentId;
-      const strokeColor = isSelected ? '#63b3ed' : '#e2e8f0';
+      const connectedWire = graphicWires.get(comp.id);
+      const strokeColor = isSelected ? '#63b3ed' : isConnectionGraphic(comp, sym)
+        ? this.getWireColor(connectedWire?.potential ?? 'Signal', connectedWire?.color) : '#e2e8f0';
 
       const bmkPos = computeBmkPosition(comp, sym);
       const fnPos = computeFunctionTextPosition(comp, sym);
@@ -1244,6 +1236,14 @@ export class CadCanvas {
 
       // Pins render
       const pinsSvg = sym.pins.map(pin => {
+        if (sym.source) {
+          const label = pin.labelPosition;
+          const handle = this.mode === 'wire' || this.wireStart
+            ? `<circle class="pin-handle" cx="${pin.x}" cy="${pin.y}" r="3" fill="#2d3748" stroke="#63b3ed" stroke-width="1.2"/>` : '';
+          const text = label && label.visible !== false
+            ? `<text class="source-pin-label" x="${label.x}" y="${label.y}" font-size="${label.fontSize}" font-family="Tahoma, Arial, sans-serif" fill="#e2e8f0" text-anchor="${label.alignment}" transform="rotate(${label.rotation ?? 0}, ${label.x}, ${label.y})">${escapeSvg(comp.pins[pin.id]?.customLabel ?? pin.name)}</text>` : '';
+          return `<g class="pin">${handle}${text}</g>`;
+        }
         if (isConn || isTerminal) {
           return `
             <g class="pin" transform="translate(${pin.x}, ${pin.y})">
@@ -1300,7 +1300,7 @@ export class CadCanvas {
 
           <!-- Symbol Vector Graphics -->
           <g color="${strokeColor}">
-            ${sym.importedGraphics ? drawingToSvg(sym.importedGraphics, { color: 'currentColor' }) : sym.svgContent}
+            ${superseded.has(comp.id) || comp.source?.routingUsed === false && !isSelected ? '' : sym.importedGraphics ? drawingToSvg(sym.importedGraphics, { color: 'currentColor' }) : sym.svgContent}
           </g>
 
           <!-- Terminal Pins -->
@@ -1345,66 +1345,38 @@ export class CadCanvas {
   }
 
   private renderWires(): string {
-    const coordCounts = new Map<string, number>();
+    // P8 junction ink is supplied by its library variant. Only the original
+    // built-in symbols retain the editor's dot at a multiply connected pin.
+    const pinCounts = new Map<string, { count: number; x: number; y: number }>();
     for (const wire of this.activePage.wires) {
-      const p1 = this.getPinCoordinates(wire.from.componentId, wire.from.pinId);
-      const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
-      if (p1) {
-        const k1 = `${p1.x},${p1.y}`;
-        coordCounts.set(k1, (coordCounts.get(k1) || 0) + 1);
-      }
-      if (p2) {
-        const k2 = `${p2.x},${p2.y}`;
-        coordCounts.set(k2, (coordCounts.get(k2) || 0) + 1);
+      for (const endpoint of [wire.from, wire.to]) {
+        const comp = this.activePage.components.find(c => c.id === endpoint.componentId);
+        if (!comp || getSymbolForComponent(comp, this.project)?.source) continue;
+        const point = this.getPinCoordinates(endpoint.componentId, endpoint.pinId);
+        if (!point) continue;
+        const key = `${endpoint.componentId}:${endpoint.pinId}`;
+        const previous = pinCounts.get(key);
+        pinCounts.set(key, { ...point, count: (previous?.count ?? 0) + 1 });
       }
     }
-
-    const junctionDotsHtml: string[] = [];
-    coordCounts.forEach((count, key) => {
-      if (count >= 2) {
-        const [x, y] = key.split(',').map(Number);
-        junctionDotsHtml.push(`
-          <circle cx="${x}" cy="${y}" r="3.5" fill="#e2e8f0" stroke="#1a202c" stroke-width="1" class="junction-dot"/>
-        `);
-      }
-    });
-
+    const cutouts = connectionCutouts(this.activePage, this.project);
     const wiresHtml = this.activePage.wires.map(wire => {
-      const p1 = this.getPinCoordinates(wire.from.componentId, wire.from.pinId);
-      const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
-      if (!p1 || !p2) return '';
-
+      const points = this.wirePoints(wire);
+      if (!points.length) return '';
+      const pathData = points.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
+      const ink = visibleWireSegments(points, cutouts).map(([a, b]) => `M ${a.x} ${a.y} L ${b.x} ${b.y}`).join(' ');
       const isSelected = wire.id === this.selectedWireId;
-      const wireColor = this.getWireColor(wire.potential, wire.color);
-
-      const comp1 = this.activePage.components.find(c => c.id === wire.from.componentId);
-      const isBusbar = comp1?.symbolId === 'potential_rail_source';
-
-      let pathData = '';
-      if (wire.waypoints?.length) {
-        pathData = orthogonalWirePoints(p1, p2, wire.waypoints, wirePinDirection(this.activePage, this.project, wire.from), wirePinDirection(this.activePage, this.project, wire.to)).map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
-      } else if (Math.abs(p1.x - p2.x) <= 2) {
-        pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y}`;
-      } else if (Math.abs(p1.y - p2.y) <= 2) {
-        pathData = `M ${p1.x} ${p1.y} L ${p2.x} ${p1.y}`;
-      } else if (isBusbar) {
-        pathData = `M ${p1.x} ${p1.y} L ${p2.x} ${p1.y} L ${p2.x} ${p2.y}`;
-      } else {
-        const midY = (p1.y + p2.y) / 2;
-        pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
-      }
-
+      const width = wire.lineWidth ?? 2;
       return `
         <g id="${wire.id}" class="wire ${isSelected ? 'selected' : ''}" style="cursor: pointer;">
-          <!-- Hit area -->
-          <path d="${pathData}" fill="none" stroke="transparent" stroke-width="12"/>
-          <!-- Active Wire -->
-          <path d="${pathData}" fill="none" stroke="${isSelected ? '#63b3ed' : wireColor}" stroke-width="${isSelected ? 2.5 : 2}"/>
+          <path data-wire-role="hit" d="${pathData}" fill="none" stroke="transparent" stroke-width="12"/>
+          <path data-wire-role="ink" d="${ink}" fill="none" stroke="${isSelected ? '#63b3ed' : this.getWireColor(wire.potential, wire.color)}" stroke-width="${isSelected ? Math.max(width, 2.5) : width}"/>
         </g>
       `;
     }).join('');
-
-    return wiresHtml + junctionDotsHtml.join('');
+    const dots = [...pinCounts.values()].filter(p => p.count >= 2).map(p =>
+      `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="#e2e8f0" stroke="#1a202c" stroke-width="1" class="junction-dot"/>`).join('');
+    return wiresHtml + dots;
   }
 
   private renderAutoconnectPreview(): string {
