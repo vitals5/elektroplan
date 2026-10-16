@@ -2,7 +2,7 @@
 // Calculates automatic cross-references (Kontaktspiegel & Querverweise) according to DIN EN 81346 logic
 
 import { Project, PlacedComponent, Page } from './types';
-import { getSymbolById } from './symbols';
+import { getSymbolForComponent } from './symbols';
 
 export interface ContactMirrorItem {
   type: 'PowerNO' | 'NO' | 'NC' | 'Changeover';
@@ -68,12 +68,12 @@ export class CrossReferenceEngine {
     for (const [bmk, items] of bmkGroups.entries()) {
       // Find masters (e.g. coils) and slaves (e.g. contacts)
       const masters = items.filter(i => {
-        const sym = getSymbolById(i.comp.symbolId);
+        const sym = getSymbolForComponent(i.comp);
         return sym?.isMaster === true;
       });
 
       const slaves = items.filter(i => {
-        const sym = getSymbolById(i.comp.symbolId);
+        const sym = getSymbolForComponent(i.comp);
         return sym?.isContact === true;
       });
 
@@ -88,7 +88,7 @@ export class CrossReferenceEngine {
         // Calculate contact mirror items for master
         const mirrorItems: ContactMirrorItem[] = [];
         for (const slave of slaves) {
-          const sym = getSymbolById(slave.comp.symbolId);
+          const sym = getSymbolForComponent(slave.comp);
           const pinKeys = Object.keys(sym?.pins || {});
           const pinNames = pinKeys.map(k => sym?.pins.find(p => p.id === k)?.name || k).join('-');
 
@@ -109,7 +109,7 @@ export class CrossReferenceEngine {
         // Pairs / multiple components with same BMK without explicit master
         // Terminals in the same strip do not cross-reference each other
         const isTerminalGroup = items.every(i => {
-          const sym = getSymbolById(i.comp.symbolId);
+          const sym = getSymbolForComponent(i.comp);
           return sym?.category === 'terminals';
         });
 
@@ -133,7 +133,7 @@ export class CrossReferenceEngine {
    * Retrieves detailed contact mirror items for rendering under a contactor coil
    */
   public static getContactMirror(masterComp: PlacedComponent, project: Project): ContactMirrorItem[] {
-    const sym = getSymbolById(masterComp.symbolId);
+    const sym = getSymbolForComponent(masterComp);
     if (!sym?.isMaster) return [];
 
     const mirror: ContactMirrorItem[] = [];
@@ -144,7 +144,7 @@ export class CrossReferenceEngine {
         if (comp.id === masterComp.id) continue;
         if (comp.bmk.trim() !== bmk) continue;
 
-        const compSym = getSymbolById(comp.symbolId);
+        const compSym = getSymbolForComponent(comp);
         if (compSym?.isContact) {
           const pinNames = compSym.pins.map(p => p.name).join('-');
           const col = this.calculatePath(comp.x);

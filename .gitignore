@@ -7,3 +7,5 @@ npm-debug.log*
 .agents/
 scratch/
 Eplan_Haus.zip
+
+artifacts/

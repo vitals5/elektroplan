@@ -1,8 +1,10 @@
 // src/editor/CadCanvas.ts
 // Interactive SVG-based CAD drawing canvas for electrical schematics
 
+import { eplanPlotFrame } from '../model/EplanPlotFrame';
+import { drawingToSvg, rotateDrawing } from '../model/ImportedDrawing';
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
-import { getSymbolById } from '../model/symbols';
+import { getSymbolById, getSymbolForComponent } from '../model/symbols';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
 import { AutoconnectEngine, AutoconnectPreviewSegment } from '../model/AutoconnectEngine';
 import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
@@ -212,7 +214,7 @@ export class CadCanvas {
     const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
     if (!comp) return;
 
-    const sym = getSymbolById(comp.symbolId);
+    const sym = getSymbolForComponent(comp);
     const existingCount = this.activePage.components.filter(c => c.symbolId === comp.symbolId).length;
     const prefix = sym?.defaultBmkPrefix || '-K';
     const newBmk = prefix ? `${prefix}${existingCount + 1}` : '';
@@ -462,7 +464,7 @@ export class CadCanvas {
 
     let items = '';
     if (comp) {
-      const sym = getSymbolById(comp.symbolId);
+      const sym = getSymbolForComponent(comp);
       items += `
         <div class="ctx-header"><strong>${comp.bmk}</strong> (${sym?.name || 'Bauteil'})</div>
         <div class="ctx-item" data-action="properties">⚙️ Eigenschaften... <span class="ctx-key">DblClick</span></div>
@@ -680,7 +682,7 @@ export class CadCanvas {
     if (this.isDraggingComponent && this.selectedComponentId) {
       const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
       if (comp) {
-        const sym = getSymbolById(comp.symbolId);
+        const sym = getSymbolForComponent(comp);
         const rawX = world.x - this.dragOffset.x;
         const rawY = world.y - this.dragOffset.y;
         const isModifier = e.shiftKey || e.altKey;
@@ -885,7 +887,7 @@ export class CadCanvas {
         const world = this.screenToWorld(touch.clientX, touch.clientY);
         const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
         if (comp) {
-          const sym = getSymbolById(comp.symbolId);
+          const sym = getSymbolForComponent(comp);
           const rawX = world.x - this.dragOffset.x;
           const rawY = world.y - this.dragOffset.y;
           comp.x = this.snap(rawX, false);
@@ -949,7 +951,9 @@ export class CadCanvas {
           const wireEl = this.svg.getElementById(wire.id);
           if (wireEl) {
             let pathData = '';
-            if (Math.abs(p1.x - p2.x) <= 2) {
+            if (wire.waypoints?.length) {
+              pathData = [p1, ...wire.waypoints, p2].map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
+            } else if (Math.abs(p1.x - p2.x) <= 2) {
               pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y}`;
             } else if (Math.abs(p1.y - p2.y) <= 2) {
               pathData = `M ${p1.x} ${p1.y} L ${p2.x} ${p1.y}`;
@@ -973,7 +977,7 @@ export class CadCanvas {
     const pad = isTouch ? 20 : 6;
     for (let i = this.activePage.components.length - 1; i >= 0; i--) {
       const comp = this.activePage.components[i];
-      const sym = getSymbolById(comp.symbolId);
+      const sym = getSymbolForComponent(comp);
       if (!sym) continue;
       
       const rot = comp.rotation || 0;
@@ -996,7 +1000,7 @@ export class CadCanvas {
   private findPinAt(x: number, y: number): { componentId: string; pinId: string } | null {
     const pinRadius = 8;
     for (const comp of this.activePage.components) {
-      const sym = getSymbolById(comp.symbolId);
+      const sym = getSymbolForComponent(comp);
       if (!sym) continue;
       for (const pin of sym.pins) {
         const pCoord = this.getPinCoordinates(comp.id, pin.id);
@@ -1017,7 +1021,11 @@ export class CadCanvas {
       const p2 = this.getPinCoordinates(wire.to.componentId, wire.to.pinId);
       if (!p1 || !p2) continue;
 
-      if (p1.x === p2.x || p1.y === p2.y) {
+      if (wire.waypoints?.length) {
+        const points = [p1, ...wire.waypoints, p2];
+        if (points.slice(1).some((p, i) =>
+          this.distToSegment(x, y, points[i].x, points[i].y, p.x, p.y) < hitTolerance)) return wire;
+      } else if (p1.x === p2.x || p1.y === p2.y) {
         const d = this.distToSegment(x, y, p1.x, p1.y, p2.x, p2.y);
         if (d < hitTolerance) return wire;
       } else {
@@ -1044,7 +1052,7 @@ export class CadCanvas {
   public getPinCoordinates(componentId: string, pinId: string): { x: number; y: number } | null {
     const comp = this.activePage.components.find(c => c.id === componentId);
     if (!comp) return null;
-    const sym = getSymbolById(comp.symbolId);
+    const sym = getSymbolForComponent(comp);
     if (!sym) return null;
     const pin = sym.pins.find(p => p.id === pinId);
     if (!pin) return null;
@@ -1073,11 +1081,11 @@ export class CadCanvas {
       </defs>
       <g id="viewportTransform" transform="translate(${this.panX}, ${this.panY}) scale(${this.scale})">
         <!-- Page Paper -->
-        <rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="#1a202c" stroke="#2d3748" stroke-width="2"/>
-        <rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="url(#cadGrid)"/>
+        <rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="${this.activePage.importedDrawing ? '#ffffff' : '#1a202c'}" stroke="#2d3748" stroke-width="2"/>
+        ${this.activePage.importedDrawing ? '' : `<rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="url(#cadGrid)"/>`}
         
         <!-- DIN A3 Normblatt Plot Frame -->
-        ${this.renderPlotFrame(pageWidth, pageHeight)}
+        ${this.activePage.importedDrawing ? drawingToSvg(eplanPlotFrame(this.activePage)) : this.renderPlotFrame(pageWidth, pageHeight)}
 
         <!-- Wires -->
         <g id="wiresLayer">
@@ -1102,6 +1110,7 @@ export class CadCanvas {
         <!-- Free Texts & Annotations -->
         <g id="textsLayer">
           ${this.renderTexts()}
+          ${drawingToSvg(this.activePage.importedDrawing?.graphics ?? [])}
         </g>
 
         <!-- Live Autoconnect Previews (Cyan Dashed Guide Lines & Targets) -->
@@ -1188,8 +1197,14 @@ export class CadCanvas {
 
   private renderComponents(): string {
     return this.activePage.components.map(comp => {
-      const sym = getSymbolById(comp.symbolId);
+      const sym = getSymbolForComponent(comp);
       if (!sym) return '';
+      if (sym.importedGraphics) {
+        return `<g id="${comp.id}" class="component" transform="translate(${comp.x},${comp.y})">
+          ${drawingToSvg(rotateDrawing(sym.importedGraphics, comp.rotation, sym.width, sym.height))}
+          ${comp.id === this.selectedComponentId ? `<circle r="8" fill="none" stroke="#63b3ed" stroke-width="2"/>` : ''}
+        </g>`;
+      }
 
       const isConn = sym.category === 'connections' || sym.id.startsWith('potential_arrow') || sym.id === 'potential_rail_source';
       const isTerminal = sym.id === 'terminal_single';
@@ -1350,7 +1365,9 @@ export class CadCanvas {
       const isBusbar = comp1?.symbolId === 'potential_rail_source';
 
       let pathData = '';
-      if (Math.abs(p1.x - p2.x) <= 2) {
+      if (wire.waypoints?.length) {
+        pathData = [p1, ...wire.waypoints, p2].map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
+      } else if (Math.abs(p1.x - p2.x) <= 2) {
         pathData = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y}`;
       } else if (Math.abs(p1.y - p2.y) <= 2) {
         pathData = `M ${p1.x} ${p1.y} L ${p2.x} ${p1.y}`;
@@ -1366,12 +1383,12 @@ export class CadCanvas {
           <!-- Hit area -->
           <path d="${pathData}" fill="none" stroke="transparent" stroke-width="12"/>
           <!-- Active Wire -->
-          <path d="${pathData}" fill="none" stroke="${isSelected ? '#63b3ed' : wireColor}" stroke-width="${isSelected ? 2.5 : 2}"/>
+          <path d="${pathData}" fill="none" stroke="${isSelected ? '#63b3ed' : wireColor}" stroke-width="${isSelected ? 2.5 : (this.activePage.importedDrawing ? 0.6 : 2)}"/>
         </g>
       `;
     }).join('');
 
-    return wiresHtml + junctionDotsHtml.join('');
+    return wiresHtml + (this.activePage.importedDrawing ? '' : junctionDotsHtml.join(''));
   }
 
   private renderAutoconnectPreview(): string {
@@ -1465,7 +1482,7 @@ export class CadCanvas {
 
       let componentsGhost = '';
       for (const c of macro.components) {
-        const sym = getSymbolById(c.symbolId);
+        const sym = getSymbolForComponent(c);
         if (sym) {
           componentsGhost += `
             <g transform="translate(${c.x}, ${c.y})">

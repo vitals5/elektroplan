@@ -3,7 +3,7 @@
 // Automatically detects and forms orthogonal electrical connections between aligned pins
 
 import { PlacedComponent, PinDefinition, SymbolDefinition, Wire, Page } from './types';
-import { getSymbolById } from './symbols';
+import { getSymbolForComponent } from './symbols';
 
 export interface RotatedPinInfo {
   componentId: string;
@@ -71,8 +71,8 @@ export class AutoconnectEngine {
       componentId: comp.id,
       pinId: pinDef.id,
       pinName: pinDef.name,
-      worldX: Math.round(comp.x + rx),
-      worldY: Math.round(comp.y + ry),
+      worldX: comp.importedSymbol ? comp.x + rx : Math.round(comp.x + rx),
+      worldY: comp.importedSymbol ? comp.y + ry : Math.round(comp.y + ry),
       direction: dir
     };
   }
@@ -83,7 +83,7 @@ export class AutoconnectEngine {
   public static getAllPins(components: PlacedComponent[]): RotatedPinInfo[] {
     const pins: RotatedPinInfo[] = [];
     for (const comp of components) {
-      const sym = getSymbolById(comp.symbolId);
+      const sym = getSymbolForComponent(comp);
       if (!sym) continue;
       for (const pinDef of sym.pins) {
         pins.push(this.getRotatedPinInfo(comp, pinDef, sym));
@@ -199,6 +199,8 @@ export class AutoconnectEngine {
    * Obsolete autoconnections are cleared; valid new ones are added.
    */
   public static updatePageAutoconnections(page: Page): void {
+    // Native P8 pages already own an explicit connection graph, including bundles.
+    if (page.importedDrawing) return;
     const manualWires = page.wires.filter(w => !w.isAutoconnect);
     const existingAutoWires = page.wires.filter(w => w.isAutoconnect);
 
@@ -269,7 +271,7 @@ export class AutoconnectEngine {
     existingComponents: PlacedComponent[],
     activeComp: PlacedComponent
   ): AutoconnectPreviewSegment[] {
-    const sym = getSymbolById(activeComp.symbolId);
+    const sym = getSymbolForComponent(activeComp);
     if (!sym) return [];
 
     const activePins = sym.pins.map(p => this.getRotatedPinInfo(activeComp, p, sym));

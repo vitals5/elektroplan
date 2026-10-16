@@ -12,6 +12,12 @@ export interface PinDefinition {
   description?: string;
 }
 
+export type DrawingPrimitive =
+  | { kind: 'line'; x1: number; y1: number; x2: number; y2: number; color: string; width?: number; dash?: number[] }
+  | { kind: 'rect'; x: number; y: number; width: number; height: number; color: string; lineWidth?: number; dash?: number[] }
+  | { kind: 'circle'; x: number; y: number; radius: number; color: string; fill?: string }
+  | { kind: 'text'; x: number; y: number; text: string; color: string; size: number; anchor?: 'start' | 'middle' | 'end'; rotation?: number };
+
 export interface SymbolDefinition {
   id: string;
   name: string;
@@ -22,6 +28,7 @@ export interface SymbolDefinition {
   width: number;
   height: number;
   pins: PinDefinition[];
+  importedGraphics?: DrawingPrimitive[];
   // SVG drawing paths or markup relative to (0, 0)
   svgContent: string;
   description: string;
@@ -46,6 +53,7 @@ export interface TextFormatConfig {
 export interface PlacedComponent {
   id: string;
   symbolId: string;
+  importedSymbol?: SymbolDefinition;
   bmk: string;                  // e.g. "-K1", "-Q1", "-F1"
   deviceTag?: string;           // Gerätebezeichnung z.B. "Hauptschütz K1", "Motorschutzschalter"
   higherLevelFunction?: string; // e.g. "=A1" (Anlage)
@@ -145,6 +153,11 @@ export interface Page {
   boxes?: PageBox[];
   images?: PageImage[];
   suppressedAutoconnections?: string[];
+  importedDrawing?: {
+    source: 'EPLAN_P8';
+    graphics: DrawingPrimitive[];
+    diagnostics: string[];
+  };
   plotFrame: {
     type: 'DIN_A3_LANDSCAPE';
     width: number;              // in mm, default 420

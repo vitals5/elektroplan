@@ -1416,3 +1416,8 @@ export function getSymbolById(id: string): SymbolDefinition | undefined {
   return SYMBOL_DEFINITIONS.find(s => s.id === id);
 }
 
+
+/** Imported placements keep their own geometry through JSON save/load. */
+export function getSymbolForComponent(comp: import('./types').PlacedComponent): SymbolDefinition | undefined {
+  return comp.importedSymbol ?? getSymbolById(comp.symbolId);
+}

@@ -2,7 +2,7 @@
 // Plausibility Check & Message Management ("Prüflauf / Meldungsverwaltung")
 
 import { Project, PlacedComponent } from '../model/types';
-import { getSymbolById } from '../model/symbols';
+import { getSymbolForComponent } from '../model/symbols';
 
 export interface PlausibilityMessage {
   id: string;
@@ -201,7 +201,7 @@ export class PlausibilityDialog {
         }
 
         // Check open pins
-        const sym = getSymbolById(comp.symbolId);
+        const sym = getSymbolForComponent(comp);
         if (sym) {
           const connectedPins = new Set<string>();
           for (const wire of page.wires) {
@@ -229,7 +229,7 @@ export class PlausibilityDialog {
     // Check duplicate BMK conflicts (e.g. two separate motors with same BMK)
     for (const [bmk, entry] of bmkMap.entries()) {
       if (entry.count > 1) {
-        const firstSym = getSymbolById(entry.components[0].comp.symbolId);
+        const firstSym = getSymbolForComponent(entry.components[0].comp);
         // If not contactor coil + contacts, warn about duplicate
         const isNormalContactSet = firstSym?.isMaster || firstSym?.isContact;
         if (!isNormalContactSet) {

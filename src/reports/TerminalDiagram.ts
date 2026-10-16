@@ -2,7 +2,7 @@
 // Generates terminal diagrams (Klemmenplan) according to DIN EN 81346 standards
 
 import { Project, PlacedComponent, Wire } from '../model/types';
-import { getSymbolById } from '../model/symbols';
+import { getSymbolForComponent } from '../model/symbols';
 
 export interface TerminalEntry {
   terminalStrip: string;      // e.g. "-X1"
@@ -21,7 +21,7 @@ export class TerminalDiagramGenerator {
     for (const page of project.pages) {
       // Find all terminal components
       for (const comp of page.components) {
-        const sym = getSymbolById(comp.symbolId);
+        const sym = getSymbolForComponent(comp);
         if (sym?.category !== 'terminals' || comp.bmk === 'PE') continue;
 
         const stripName = comp.bmk;

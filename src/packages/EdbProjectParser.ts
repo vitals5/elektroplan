@@ -3,8 +3,9 @@
 // Extracts pages, symbols, functions, coordinates, and potential connections following IEC 81346.
 
 import JSZip from 'jszip';
+import { EplanNativePage } from './EplanNativePage';
 import { Project, Page, PlacedComponent, PageType, Wire, PageText, PageBox, PageImage } from '../model/types';
-import { SYMBOL_DEFINITIONS, getSymbolById } from '../model/symbols';
+import { SYMBOL_DEFINITIONS, getSymbolById, getSymbolForComponent } from '../model/symbols';
 import { AutoconnectEngine } from '../model/AutoconnectEngine';
 
 export interface ExtractedPageMeta {
@@ -240,6 +241,10 @@ export class EdbProjectParser {
         }
       };
 
+      if (await EplanNativePage.import(zip, pageZipEntry.name.slice(0, -'Page.eod'.length), pageId, page, new Map(rawPages.map(p => [p.pageId, p.pageNumber])))) {
+        messages.push(`Native P8-Platzierungen für „${page.title}“: ${page.components.length} Objekte, ${page.wires.length} Verbindungen.`);
+        messages.push(...(page.importedDrawing?.diagnostics ?? []));
+      }
       pages.push(page);
     }
 
@@ -1351,7 +1356,7 @@ export class EdbProjectParser {
 
     if (!comp) return null;
 
-    const sym = getSymbolById(comp.symbolId);
+    const sym = getSymbolForComponent(comp);
     if (!sym) return null;
 
     if (sym.id === 'terminal_single') {

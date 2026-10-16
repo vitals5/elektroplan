@@ -6,9 +6,11 @@
 // - DIN EN ISO 7200 plot frame and title block
 // - Appended report pages: Klemmenplan and Stückliste (BOM)
 
+import { rotateDrawing } from '../model/ImportedDrawing';
+import { eplanPlotFrame } from '../model/EplanPlotFrame';
 import { jsPDF } from 'jspdf';
-import { Project, Page, PlacedComponent, Wire } from '../model/types';
-import { getSymbolById } from '../model/symbols';
+import { Project, Page, PlacedComponent, Wire, DrawingPrimitive } from '../model/types';
+import { getSymbolForComponent } from '../model/symbols';
 import { TerminalDiagramGenerator } from '../reports/TerminalDiagram';
 import { PartsListGenerator } from '../reports/PartsList';
 
@@ -86,7 +88,9 @@ export class PdfExporter {
 
       // Render Plot Frame (Normblatt)
       if (options.plotFrame) {
-        this.renderPlotFrame(doc, page, pageWidthMm, pageHeightMm, options.colorMode, totalSheetsCount);
+        if (page.importedDrawing) this.renderImportedGraphics(doc, eplanPlotFrame(page), pageWidthMm / page.plotFrame.width,
+          pageHeightMm / page.plotFrame.height, options.colorMode);
+        else this.renderPlotFrame(doc, page, pageWidthMm, pageHeightMm, options.colorMode, totalSheetsCount);
       }
 
       // Render Embedded Images
@@ -103,6 +107,8 @@ export class PdfExporter {
 
       // Render Free Texts & Annotations
       this.renderTexts(doc, page, pageWidthMm, pageHeightMm, options.colorMode);
+      this.renderImportedGraphics(doc, page.importedDrawing?.graphics ?? [], pageWidthMm / page.plotFrame.width,
+        pageHeightMm / page.plotFrame.height, options.colorMode);
     }
 
     // Render Optional Klemmenplan Page
@@ -352,11 +358,12 @@ export class PdfExporter {
       const p2 = this.getPinCoords(page, wire.to.componentId, wire.to.pinId);
       if (!p1 || !p2) continue;
 
-      const x1 = this.scaleX(p1.x, wMm);
-      const y1 = this.scaleY(p1.y, hMm);
-      const x2 = this.scaleX(p2.x, wMm);
-      const y2 = this.scaleY(p2.y, hMm);
+      const x1 = p1.x * wMm / page.plotFrame.width;
+      const y1 = p1.y * hMm / page.plotFrame.height;
+      const x2 = p2.x * wMm / page.plotFrame.width;
+      const y2 = p2.y * hMm / page.plotFrame.height;
 
+      doc.setLineWidth(page.importedDrawing ? 0.15 : 0.35);
       // Color coding
       if (colorMode === 'color') {
         const rgb = this.getPotentialRgb(wire.potential, wire.color);
@@ -370,7 +377,11 @@ export class PdfExporter {
       const comp1 = page.components.find(c => c.id === wire.from.componentId);
       const isBusbar = comp1?.symbolId === 'potential_rail_source';
 
-      if (Math.abs(x1 - x2) < 0.5) {
+      if (wire.waypoints?.length) {
+        const points = [{ x: x1, y: y1 }, ...wire.waypoints.map(p => ({ x: p.x * wMm / page.plotFrame.width,
+          y: p.y * hMm / page.plotFrame.height })), { x: x2, y: y2 }];
+        for (let i = 1; i < points.length; i++) doc.line(points[i - 1].x, points[i - 1].y, points[i].x, points[i].y);
+      } else if (Math.abs(x1 - x2) < 0.5) {
         doc.line(x1, y1, x1, y2);
       } else if (Math.abs(y1 - y2) < 0.5) {
         doc.line(x1, y1, x2, y1);
@@ -399,7 +410,7 @@ export class PdfExporter {
     pageMapping: Map<string, number>
   ): void {
     for (const comp of page.components) {
-      const sym = getSymbolById(comp.symbolId);
+      const sym = getSymbolForComponent(comp);
       if (!sym) continue;
 
       const compX = this.scaleX(comp.x, wMm);
@@ -407,6 +418,11 @@ export class PdfExporter {
       const compW = this.scaleX(sym.width, wMm);
       const compH = this.scaleY(sym.height, hMm);
 
+      if (sym.importedGraphics) {
+        this.renderImportedGraphics(doc, rotateDrawing(sym.importedGraphics, comp.rotation, sym.width, sym.height), wMm / page.plotFrame.width, hMm / page.plotFrame.height,
+          options.colorMode, comp.x, comp.y);
+        continue;
+      }
       // Draw Symbol Vector Outline
       doc.setDrawColor(0, 0, 0);
       doc.setLineWidth(0.35);
@@ -1039,11 +1055,34 @@ export class PdfExporter {
   private static getPinCoords(page: Page, compId: string, pinId: string): { x: number; y: number } | null {
     const comp = page.components.find(c => c.id === compId);
     if (!comp) return null;
-    const sym = getSymbolById(comp.symbolId);
+    const sym = getSymbolForComponent(comp);
     if (!sym) return null;
     const pin = sym.pins.find(p => p.id === pinId);
     if (!pin) return null;
-    return { x: comp.x + pin.x, y: comp.y + pin.y };
+    const angle = comp.rotation * Math.PI / 180, dx = pin.x - sym.width / 2, dy = pin.y - sym.height / 2;
+    return { x: comp.x + sym.width / 2 + dx * Math.cos(angle) - dy * Math.sin(angle),
+      y: comp.y + sym.height / 2 + dx * Math.sin(angle) + dy * Math.cos(angle) };
+  }
+
+  private static renderImportedGraphics(doc: jsPDF, graphics: DrawingPrimitive[], sx: number, sy: number,
+    mode: 'color' | 'monochrome', ox = 0, oy = 0): void {
+    const x = (n: number) => (n + ox) * sx, y = (n: number) => (n + oy) * sy;
+    for (const g of graphics) {
+      const rgb = mode === 'monochrome' ? [0, 0, 0] : [1, 3, 5].map(i => parseInt(g.color.slice(i, i + 2), 16));
+      doc.setDrawColor(rgb[0], rgb[1], rgb[2]); doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+      doc.setLineWidth((g.kind === 'line' ? g.width ?? 0.6 : g.kind === 'rect' ? g.lineWidth ?? 0.6 : 0.5) * sx);
+      doc.setLineDashPattern('dash' in g ? g.dash?.map(n => n * sx) ?? [] : [], 0);
+      if (g.kind === 'line') doc.line(x(g.x1), y(g.y1), x(g.x2), y(g.y2));
+      else if (g.kind === 'rect') doc.rect(x(g.x), y(g.y), g.width * sx, g.height * sy);
+      else if (g.kind === 'circle') {
+        if (g.fill) doc.setFillColor(rgb[0], rgb[1], rgb[2]); else doc.setFillColor(255, 255, 255);
+        doc.circle(x(g.x), y(g.y), g.radius * sx, 'FD');
+      } else {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(g.size * sy * 72 / 25.4);
+        doc.text(g.text, x(g.x), y(g.y), { align: g.anchor === 'end' ? 'right' : g.anchor === 'middle' ? 'center' : 'left', angle: -(g.rotation ?? 0) });
+      }
+    }
+    doc.setLineDashPattern([], 0);
   }
 
   private static getPotentialRgb(potential: string, color?: string): { r: number; g: number; b: number } {

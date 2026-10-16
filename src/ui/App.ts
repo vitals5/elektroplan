@@ -2,7 +2,7 @@
 // Main application controller for Elektroplan (Elektro-CAD CAE Suite)
 
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
-import { SYMBOL_DEFINITIONS, getSymbolById } from '../model/symbols';
+import { SYMBOL_DEFINITIONS, getSymbolById, getSymbolForComponent } from '../model/symbols';
 import { CadCanvas } from '../editor/CadCanvas';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
 import { PackageHandler, PackageInspectionResult } from '../packages/PackageHandler';
@@ -82,7 +82,7 @@ export class App {
           Projekt
           <div class="menu-dropdown">
             <div class="menu-opt" id="menuNew">📄 Neu... <span class="opt-key">Strg+N</span></div>
-            <label class="menu-opt" style="margin:0; cursor:pointer;">📂 Öffnen (.zw1, .edz, .xml, .json)... <span class="opt-key">Strg+O</span><input type="file" id="menuFileInput" accept=".zw1,.edz,.xml,.json,.elk" style="display:none;"></label>
+            <label class="menu-opt" style="margin:0; cursor:pointer;">📂 Öffnen (.zw1, .zip, .001/.002, .xml, .json)... <span class="opt-key">Strg+O</span><input type="file" id="menuFileInput" accept=".zw1,.zip,.edz,.xml,.json,.elk,.001,.002,.003" multiple style="display:none;"></label>
             <div class="menu-opt" id="menuSave">💾 Speichern <span class="opt-key">Strg+S</span></div>
             <div class="menu-sep"></div>
             <div class="menu-opt" id="menuExportPdf">📑 Intelligenter PDF-Export (DIN A3)... <span class="opt-key">Strg+P</span></div>
@@ -865,8 +865,8 @@ export class App {
     const menuFileInput = document.getElementById('menuFileInput') as HTMLInputElement;
     menuFileInput?.addEventListener('change', async (e) => {
       closeAllMenus();
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) await this.handleFileOpen(file);
+      const files = (e.target as HTMLInputElement).files;
+      if (files?.length) await this.handleFilesOpen(files);
     });
 
     bindMenuOpt('menuSave', () => this.saveProjectJson());
@@ -1746,7 +1746,7 @@ export class App {
   private renderPropertiesTab(container: HTMLElement): void {
     if (this.selectedComponent) {
       const comp = this.selectedComponent;
-      const sym = getSymbolById(comp.symbolId);
+      const sym = getSymbolForComponent(comp);
 
       const bmkPreset = comp.bmkPosition?.preset || 'top';
 
@@ -2117,6 +2117,7 @@ export class App {
         if (this.project.activePageId) {
           this.canvas.setPage(this.project.activePageId);
         }
+        this.canvas.fitToScreen();
         this.updateUI();
       }
 

@@ -104,3 +104,11 @@ Elektroplan unterstützt mobile Endgeräte (iOS Safari, Android Chrome) mit nati
 
 ## 📄 Lizenz
 MIT License.
+
+## EPLAN-P8-Import: Einspeisung
+
+Für „Eplan Haus.zip.001“ und „.002“ gibt es einen anhand des P8-PDF-Exports
+geprüften Importpfad für die Seite **Einspeisung** (PDF-Seite 2 / Blatt 1).
+Beide Archivteile gemeinsam öffnen. Befunde, REA-Herkunft, Tests und verbleibende
+Abweichungen stehen in [der Reverse-Engineering-Dokumentation](docs/reverse-engineering/einspeisung.md).
+Eine Prüf-PDF lässt sich mit `npx tsx scripts/export-einspeisung.ts` erzeugen.

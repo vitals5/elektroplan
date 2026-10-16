@@ -2,7 +2,7 @@
 // Component properties modal ("Eigenschaften (Schaltzeichen)")
 
 import { PlacedComponent, Project, TextFormatConfig } from '../model/types';
-import { getSymbolById } from '../model/symbols';
+import { getSymbolForComponent } from '../model/symbols';
 import { MANUFACTURER_PARTS } from '../model/PartCatalogue';
 import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
 
@@ -27,7 +27,7 @@ export class PropertiesDialog {
     const existing = document.getElementById('propertiesModal');
     if (existing) existing.remove();
 
-    const sym = getSymbolById(this.component.symbolId);
+    const sym = getSymbolForComponent(this.component);
 
     const modal = document.createElement('div');
     modal.id = 'propertiesModal';
@@ -114,7 +114,7 @@ export class PropertiesDialog {
   }
 
   private renderActiveTabContent(): string {
-    const sym = getSymbolById(this.component.symbolId);
+    const sym = getSymbolForComponent(this.component);
 
     if (this.activeTab === 'symbol') {
       return `
@@ -464,7 +464,7 @@ export class PropertiesDialog {
   }
 
   private generatePreviewSvg(): string {
-    const sym = getSymbolById(this.component.symbolId);
+    const sym = getSymbolForComponent(this.component);
     if (!sym) return '<span style="color:#a0aec0;">Kein Symbol gefunden</span>';
 
     const bmkPos = computeBmkPosition(this.component, sym);
@@ -535,7 +535,7 @@ export class PropertiesDialog {
     for (const p of this.project.pages) {
       for (const c of p.components) {
         if (c.bmk === this.component.bmk && c.id !== this.component.id) {
-          const sym = getSymbolById(c.symbolId);
+          const sym = getSymbolForComponent(c);
           related.push(`
             <li style="margin-bottom: 4px;">
               <strong>Blatt ${p.pageNumber}:</strong> ${sym?.name || 'Bauteil'} (${c.functionText || 'Ohne Funktionstext'})

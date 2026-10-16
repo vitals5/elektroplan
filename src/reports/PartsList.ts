@@ -2,7 +2,7 @@
 // Generates Bill of Materials (Stückliste / Artikelliste) according to DIN EN 81346 standards
 
 import { Project } from '../model/types';
-import { getSymbolById } from '../model/symbols';
+import { getSymbolForComponent } from '../model/symbols';
 
 export interface PartEntry {
   articleNumber: string;
@@ -19,7 +19,7 @@ export class PartsListGenerator {
 
     for (const page of project.pages) {
       for (const comp of page.components) {
-        const sym = getSymbolById(comp.symbolId);
+        const sym = getSymbolForComponent(comp);
         // Skip auxiliary contacts if part is counted on master coil
         if (sym?.isContact && !sym.isMaster && sym.category === 'relays' && sym.contactType !== 'PowerNO') {
           continue;

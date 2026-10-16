@@ -3,7 +3,7 @@
 
 import JSZip from 'jszip';
 import { Project, Page, PlacedComponent, Wire } from './types';
-import { getSymbolById } from './symbols';
+import { getSymbolForComponent } from './symbols';
 
 export interface WindowMacro {
   id: string;
@@ -737,7 +737,7 @@ export class MacroManager {
     let maxX = 0;
     let maxY = 0;
     for (const c of components) {
-      const sym = getSymbolById(c.symbolId);
+      const sym = getSymbolForComponent(c);
       const w = sym ? sym.width : 40;
       const h = sym ? sym.height : 48;
       if (c.x + w > maxX) maxX = c.x + w;
@@ -1043,7 +1043,7 @@ export class MacroManager {
     let maxY = -Infinity;
 
     for (const c of components) {
-      const sym = getSymbolById(c.symbolId);
+      const sym = getSymbolForComponent(c);
       const w = sym ? sym.width : 40;
       const h = sym ? sym.height : 48;
       if (c.x < minX) minX = c.x;
@@ -1286,7 +1286,7 @@ export class MacroManager {
 
     let symbolsPreview = '';
     for (const c of components.slice(0, 8)) {
-      const sym = getSymbolById(c.symbolId);
+      const sym = getSymbolForComponent(c);
       if (sym) {
         symbolsPreview += `
           <g transform="translate(${c.x * scale + 8}, ${c.y * scale + 8}) scale(${scale})">
