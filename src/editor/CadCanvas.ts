@@ -1089,6 +1089,16 @@ export class CadCanvas {
           ${this.renderComponents()}
         </g>
 
+        <!-- Embedded Images & Diagrams -->
+        <g id="imagesLayer">
+          ${this.renderImages()}
+        </g>
+
+        <!-- Structure Boxes (Ortskästen / Schaltschrankumrahmungen) -->
+        <g id="boxesLayer">
+          ${this.renderBoxes()}
+        </g>
+
         <!-- Free Texts & Annotations -->
         <g id="textsLayer">
           ${this.renderTexts()}
@@ -1279,6 +1289,28 @@ export class CadCanvas {
       const rot = t.rotation ? `transform="rotate(${t.rotation}, ${t.x}, ${t.y})"` : '';
       return `<text x="${t.x}" y="${t.y}" font-size="${size}" font-family="sans-serif" font-weight="${weight}" fill="${color}" ${rot} pointer-events="none">${t.text}</text>`;
     }).join('');
+  }
+
+  private renderImages(): string {
+    if (!this.activePage.images || this.activePage.images.length === 0) return '';
+    return this.activePage.images.map(img => `
+      <g id="${img.id}" class="embedded-image" pointer-events="none">
+        <image href="${img.dataUrl}" x="${img.x}" y="${img.y}" width="${img.width}" height="${img.height}" preserveAspectRatio="none"/>
+      </g>
+    `).join('');
+  }
+
+  private renderBoxes(): string {
+    if (!this.activePage.boxes || this.activePage.boxes.length === 0) return '';
+    return this.activePage.boxes.map(box => `
+      <g id="${box.id}" class="structure-box" pointer-events="none">
+        <rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" 
+              fill="rgba(66, 153, 225, 0.03)" stroke="#4299e1" stroke-width="1.2" stroke-dasharray="4,3"/>
+        ${box.label ? `<text x="${box.x + 6}" y="${box.y + 14}" font-size="11" font-weight="bold" font-family="sans-serif" fill="#63b3ed">${box.label}</text>` : ''}
+        ${box.description ? `<text x="${box.x + 6}" y="${box.y + 26}" font-size="8.5" font-family="sans-serif" fill="#a0aec0">${box.description}</text>` : ''}
+        ${box.subLabel ? `<text x="${box.x + 6}" y="${box.y + 36}" font-size="8.5" font-family="sans-serif" fill="#cbd5e0">${box.subLabel}</text>` : ''}
+      </g>
+    `).join('');
   }
 
   private renderWires(): string {

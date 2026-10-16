@@ -89,6 +89,12 @@ export class PdfExporter {
         this.renderPlotFrame(doc, page, pageWidthMm, pageHeightMm, options.colorMode, totalSheetsCount);
       }
 
+      // Render Embedded Images
+      this.renderImages(doc, page, pageWidthMm, pageHeightMm);
+
+      // Render Structure Boxes (Ortskästen / Schaltschrankumrahmungen)
+      this.renderBoxes(doc, page, pageWidthMm, pageHeightMm, options.colorMode);
+
       // Render Wires
       this.renderWires(doc, page, pageWidthMm, pageHeightMm, options.colorMode);
 
@@ -257,6 +263,75 @@ export class PdfExporter {
       }
 
       doc.text(t.text, xMm, yMm);
+    }
+  }
+
+  /**
+   * Renders embedded raster images and diagrams
+   */
+  private static renderImages(doc: jsPDF, page: Page, wMm: number, hMm: number): void {
+    if (!page.images || page.images.length === 0) return;
+    const scaleX = wMm / page.plotFrame.width;
+    const scaleY = hMm / page.plotFrame.height;
+
+    for (const img of page.images) {
+      const ix = img.x * scaleX;
+      const iy = img.y * scaleY;
+      const iw = img.width * scaleX;
+      const ih = img.height * scaleY;
+      try {
+        const format = img.dataUrl.includes('image/jpeg') ? 'JPEG' : 'PNG';
+        doc.addImage(img.dataUrl, format, ix, iy, iw, ih);
+      } catch (err) {
+        console.warn('Failed to embed image into PDF:', err);
+      }
+    }
+  }
+
+  /**
+   * Renders structure boxes (Ortskästen / Schaltschrankumrahmungen)
+   */
+  private static renderBoxes(
+    doc: jsPDF,
+    page: Page,
+    wMm: number,
+    hMm: number,
+    colorMode: 'color' | 'monochrome'
+  ): void {
+    if (!page.boxes || page.boxes.length === 0) return;
+    const scaleX = wMm / page.plotFrame.width;
+    const scaleY = hMm / page.plotFrame.height;
+
+    for (const box of page.boxes) {
+      const bx = box.x * scaleX;
+      const by = box.y * scaleY;
+      const bw = box.width * scaleX;
+      const bh = box.height * scaleY;
+
+      doc.setDrawColor(colorMode === 'color' ? 0 : 80, colorMode === 'color' ? 140 : 80, colorMode === 'color' ? 220 : 80);
+      doc.setLineWidth(0.35);
+      doc.setLineDashPattern([3, 2], 0);
+      doc.rect(bx, by, bw, bh);
+      doc.setLineDashPattern([], 0);
+
+      if (box.label) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(colorMode === 'color' ? 0 : 0, colorMode === 'color' ? 100 : 0, colorMode === 'color' ? 180 : 0);
+        doc.text(box.label, bx + 2, by + 4);
+      }
+      if (box.description) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6);
+        doc.setTextColor(60, 60, 60);
+        doc.text(box.description, bx + 2, by + 7.5);
+      }
+      if (box.subLabel) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6);
+        doc.setTextColor(60, 60, 60);
+        doc.text(box.subLabel, bx + 2, by + 10.5);
+      }
     }
   }
 
@@ -488,21 +563,23 @@ export class PdfExporter {
         break;
       }
       case 'circuit_breaker_3p': {
+        const poleOffsets = [12, 31, 51];
         for (let p = 0; p < 3; p++) {
-          const px = x + w * ((p + 0.5) / 3);
+          const px = x + w * (poleOffsets[p] / 72);
           doc.line(px, y, px, y + h * 0.28);
           doc.line(px, y + h * 0.28, px + w * 0.1, y + h * 0.58);
           doc.line(px, y + h * 0.62, px, y + h);
           doc.rect(px - 1.2, y + h * 0.68, 2.4, 2.0);
         }
         doc.setLineDashPattern([1, 1], 0);
-        doc.line(x + w * 0.15, y + h * 0.44, x + w * 0.85, y + h * 0.44);
+        doc.line(x + w * (12 / 72), y + h * 0.44, x + w * (51 / 72), y + h * 0.44);
         doc.setLineDashPattern([], 0);
         break;
       }
       case 'fuse_switch_3p': {
+        const poleOffsets = [12, 31, 51];
         for (let p = 0; p < 3; p++) {
-          const px = x + w * ((p + 0.5) / 3);
+          const px = x + w * (poleOffsets[p] / 72);
           doc.line(px, y, px, y + h * 0.15);
           doc.rect(px - 1.5, y + h * 0.15, 3.0, h * 0.3);
           doc.line(px, y + h * 0.15, px, y + h * 0.45);
@@ -510,20 +587,21 @@ export class PdfExporter {
           doc.line(px, y + h * 0.75, px, y + h);
         }
         doc.setLineDashPattern([1, 1], 0);
-        doc.line(x + w * 0.15, y + h * 0.6, x + w * 0.85, y + h * 0.6);
+        doc.line(x + w * (12 / 72), y + h * 0.6, x + w * (51 / 72), y + h * 0.6);
         doc.setLineDashPattern([], 0);
         break;
       }
       case 'main_switch_4p':
       case 'changeover_switch_4p': {
+        const poleOffsets = [12, 31, 51, 70];
         for (let p = 0; p < 4; p++) {
-          const px = x + w * ((p + 0.5) / 4);
+          const px = x + w * (poleOffsets[p] / 96);
           doc.line(px, y, px, y + h * 0.3);
           doc.line(px, y + h * 0.3, px + w * 0.08, y + h * 0.65);
           doc.line(px, y + h * 0.68, px, y + h);
         }
         doc.setLineDashPattern([1, 1], 0);
-        doc.line(x + w * 0.1, y + h * 0.48, x + w * 0.9, y + h * 0.48);
+        doc.line(x + w * (12 / 96), y + h * 0.48, x + w * (70 / 96), y + h * 0.48);
         doc.setLineDashPattern([], 0);
         break;
       }
@@ -533,8 +611,9 @@ export class PdfExporter {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8);
         doc.text('kWh', x + w * 0.5, y + h * 0.35, { align: 'center' });
+        const poleOffsets = [12, 31, 51, 70];
         for (let p = 0; p < 4; p++) {
-          const px = x + w * ((p + 0.5) / 4);
+          const px = x + w * (poleOffsets[p] / 84);
           doc.line(px, y, px, y + h * 0.15);
           doc.line(px, y + h * 0.85, px, y + h);
         }
@@ -968,11 +1047,12 @@ export class PdfExporter {
   }
 
   private static getPotentialRgb(potential: string, color?: string): { r: number; g: number; b: number } {
-    if (color === 'BK') return { r: 40, g: 40, b: 40 };
-    if (color === 'BU' || potential === 'N') return { r: 49, g: 130, b: 206 };
-    if (color === 'GNYE' || potential === 'PE') return { r: 56, g: 161, b: 105 };
-    if (color === 'RD' || potential === '+24V') return { r: 229, g: 62, b: 62 };
-    if (color === 'DBU' || potential === '0V') return { r: 43, g: 108, b: 176 };
-    return { r: 70, g: 70, b: 70 };
+    const pot = (potential || '').toUpperCase();
+    const col = (color || '').toUpperCase();
+    if (col === 'BU' || pot === 'N' || pot.startsWith('N')) return { r: 37, g: 99, b: 235 };
+    if (col === 'GNYE' || pot === 'PE' || pot === 'PEN' || pot.startsWith('PE')) return { r: 22, g: 163, b: 74 };
+    if (col === 'RD' || pot.startsWith('L') || pot === '+24V' || col === 'BK') return { r: 220, g: 38, b: 38 };
+    if (col === 'DBU' || pot === '0V') return { r: 30, g: 64, b: 175 };
+    return { r: 220, g: 38, b: 38 };
   }
 }

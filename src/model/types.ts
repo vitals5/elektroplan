@@ -111,6 +111,27 @@ export interface PageText {
   rotation?: 0 | 90 | 180 | 270;
 }
 
+export interface PageBox {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label?: string;
+  subLabel?: string;
+  description?: string;
+}
+
+export interface PageImage {
+  id: string;
+  dataUrl: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  caption?: string;
+}
+
 export interface Page {
   id: string;
   pageNumber: string;           // e.g. "1", "2", "3"
@@ -121,6 +142,8 @@ export interface Page {
   components: PlacedComponent[];
   wires: Wire[];
   texts?: PageText[];
+  boxes?: PageBox[];
+  images?: PageImage[];
   suppressedAutoconnections?: string[];
   plotFrame: {
     type: 'DIN_A3_LANDSCAPE';

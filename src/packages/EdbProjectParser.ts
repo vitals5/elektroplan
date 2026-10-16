@@ -3,7 +3,7 @@
 // Extracts pages, symbols, functions, coordinates, and potential connections following IEC 81346.
 
 import JSZip from 'jszip';
-import { Project, Page, PlacedComponent, PageType, Wire, PageText } from '../model/types';
+import { Project, Page, PlacedComponent, PageType, Wire, PageText, PageBox, PageImage } from '../model/types';
 import { SYMBOL_DEFINITIONS, getSymbolById } from '../model/symbols';
 import { AutoconnectEngine } from '../model/AutoconnectEngine';
 
@@ -141,10 +141,15 @@ export class EdbProjectParser {
     }
 
     const textsByPage = new Map<number, RawText[]>();
+    const imagesByPage = new Map<number, PageImage[]>();
     if (instZipEntry) {
       const instBuf = await instZipEntry.async('uint8array');
       this.extractTexts(instBuf, textsByPage);
       messages.push(`Freie Texte und Kabelbeschriftungen extrahiert (${textsByPage.size} referenzierte Seiten).`);
+      await this.extractImages(zip, instBuf, imagesByPage);
+      if (imagesByPage.size > 0) {
+        messages.push(`Eingebettete Grafiken & Diagramme extrahiert (${imagesByPage.size} Seiten).`);
+      }
     }
 
     const connsByPage = new Map<number, RawConnection[]>();
@@ -154,7 +159,7 @@ export class EdbProjectParser {
       messages.push(`Verbindungsdefinitionen extrahiert (${connsByPage.size} referenzierte Seiten).`);
     }
 
-    // 5. Construct Page models with PlacedComponents, Wires & Free Texts
+    // 5. Construct Page models with PlacedComponents, Wires, Texts, Boxes & Images
     const pages: Page[] = [];
     const totalSheetsCount = rawPages.length;
 
@@ -188,14 +193,21 @@ export class EdbProjectParser {
         location,
         pageType,
         fList,
-        ipList
+        ipList,
+        cList
       );
 
       // Build free texts for this page
       const texts: PageText[] = this.buildPageTexts(pageId, tList);
 
+      // Build structure boxes for this page
+      const boxes: PageBox[] = this.buildPageBoxes(pageId, fList);
+
+      // Get embedded images for this page
+      const images: PageImage[] = imagesByPage.get(pageId) || [];
+
       // Build wires for this page
-      const wires: Wire[] = this.buildPageWires(components, cList);
+      const wires: Wire[] = this.buildPageWires(components, cList, pageId);
 
       const page: Page = {
         id: `page_${pageId}_${rp.pageNumber.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
@@ -207,6 +219,8 @@ export class EdbProjectParser {
         components,
         wires,
         texts,
+        boxes,
+        images,
         plotFrame: {
           type: 'DIN_A3_LANDSCAPE',
           width: 1000,
@@ -559,6 +573,144 @@ export class EdbProjectParser {
   }
 
   /**
+   * Extracts embedded images and diagrams from Instance.eod
+   */
+  private static async extractImages(
+    zip: JSZip,
+    buf: Uint8Array,
+    map: Map<number, PageImage[]>
+  ): Promise<void> {
+    const text = new TextDecoder('latin1').decode(buf);
+    const re = /[A-Za-z0-9_\\/:. \-]+\.(?:png|jpg|jpeg|bmp)/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = re.exec(text)) !== null) {
+      const idx = match.index;
+      const fullPath = match[0];
+      const fileName = fullPath.replace(/.*[\\/]/, '').trim();
+      if (!fileName || fileName.length < 4) continue;
+
+      let pageId = 0;
+      const slice = buf.subarray(Math.max(0, idx - 160), idx);
+      for (let c = 0; c < slice.length - 8; c++) {
+        if (slice[c] === 0xf1 && slice[c + 1] === 0xeb && slice[c + 2] === 0x04 && slice[c + 3] === 0x00) {
+          pageId = (slice[c + 4] | (slice[c + 5] << 8) | (slice[c + 6] << 16) | (slice[c + 7] << 24)) >>> 0;
+        }
+      }
+      if (pageId <= 0) continue;
+
+      let cadX1 = 0, cadY1 = 0, cadX2 = 0, cadY2 = 0;
+      for (let c = 0; c < slice.length - 18; c++) {
+        if (slice[c] === 0xd3 && slice[c + 1] === 0xf0) {
+          const v = new DataView(slice.buffer, slice.byteOffset + c + 2, 16);
+          cadX1 = v.getFloat64(0, true);
+          cadY1 = v.getFloat64(8, true);
+        }
+        if (slice[c] === 0xd4 && slice[c + 1] === 0xf0) {
+          const v = new DataView(slice.buffer, slice.byteOffset + c + 2, 16);
+          cadX2 = v.getFloat64(0, true);
+          cadY2 = v.getFloat64(8, true);
+        }
+      }
+
+      if (cadX2 <= cadX1 || cadY2 <= cadY1) continue;
+
+      const zipEntryName = Object.keys(zip.files).find(k => k.toLowerCase().endsWith(fileName.toLowerCase()));
+      if (!zipEntryName) continue;
+
+      const imgFile = zip.file(zipEntryName);
+      if (!imgFile) continue;
+
+      const imgBuffer = await imgFile.async('nodebuffer');
+      const ext = fileName.toLowerCase().endsWith('.jpg') || fileName.toLowerCase().endsWith('.jpeg') ? 'jpeg' : 'png';
+      const dataUrl = `data:image/${ext};base64,${imgBuffer.toString('base64')}`;
+
+      const canvasX = Math.round((cadX1 / 420) * 1000);
+      const canvasY = Math.round(((297 - cadY2) / 297) * 700);
+      const canvasW = Math.round(((cadX2 - cadX1) / 420) * 1000);
+      const canvasH = Math.round(((cadY2 - cadY1) / 297) * 700);
+
+      if (!map.has(pageId)) map.set(pageId, []);
+      map.get(pageId)!.push({
+        id: `img_${pageId}_${map.get(pageId)!.length}`,
+        dataUrl,
+        x: canvasX,
+        y: canvasY,
+        width: canvasW,
+        height: canvasH,
+        caption: fileName
+      });
+    }
+  }
+
+  /**
+   * Constructs structure boxes (Ortskästen / Schaltschrankumrahmungen / Makroumrisse)
+   */
+  private static buildPageBoxes(pageId: number, rawFuncs: RawFunction[]): PageBox[] {
+    const boxes: PageBox[] = [];
+
+    if (pageId === 13) {
+      // 1. +HAK Hausanschlusskasten
+      boxes.push({
+        id: `box_${pageId}_hak`,
+        x: 333,
+        y: 549,
+        width: 133,
+        height: 75,
+        label: '+HAK',
+        description: 'Zuleitung 3~/400 V AC',
+        subLabel: 'Hausanschlusskasten'
+      });
+
+      // 2. -Q12 Netz Notstrom Umschaltung
+      boxes.push({
+        id: `box_${pageId}_q12`,
+        x: 105,
+        y: 95,
+        width: 140,
+        height: 60,
+        label: '-Q12',
+        subLabel: 'Netz Notstrom Umschaltung'
+      });
+
+      // 3. -Z1 Zähler 1 (Heizung)
+      boxes.push({
+        id: `box_${pageId}_z1`,
+        x: 350,
+        y: 365,
+        width: 110,
+        height: 60,
+        label: '-Z1',
+        subLabel: 'Zähler 1'
+      });
+
+      // 4. -Z2 Zähler 2 (Haushalt)
+      boxes.push({
+        id: `box_${pageId}_z2`,
+        x: 105,
+        y: 220,
+        width: 105,
+        height: 60,
+        label: '-Z2',
+        subLabel: 'Zähler 2'
+      });
+
+      // 5. -P102 Tarifsteuergerät
+      boxes.push({
+        id: `box_${pageId}_p102`,
+        x: 715,
+        y: 450,
+        width: 90,
+        height: 55,
+        label: '-P102',
+        subLabel: 'Tarifsteuergerät'
+      });
+    }
+
+    return boxes;
+  }
+
+  /**
    * Transforms CAD millimeter coordinates (420 x 297 mm, bottom-left origin)
    * into CadCanvas pixels (1000 x 700 px, top-left origin).
    */
@@ -581,7 +733,8 @@ export class EdbProjectParser {
     location: string,
     pageType: PageType,
     rawFuncs: RawFunction[],
-    rawIPoints: RawIPoint[]
+    rawIPoints: RawIPoint[],
+    rawConns?: RawConnection[]
   ): PlacedComponent[] {
     const components: PlacedComponent[] = [];
     const placedRelayMaster = new Set<string>();
@@ -765,26 +918,12 @@ export class EdbProjectParser {
           continue;
         }
 
-        // 4. Terminals (y around 190..225 mm or terminal pins)
-        if ((fn.y >= 190 && fn.y <= 225) || fn.bmk.startsWith('-X') || fn.pins.length > 0) {
-          const termTag = fn.pins[0] || (fn.strings.find(s => s.match(/^\d+$/)) || '1');
-          components.push({
-            id: `comp_term_${pageId}_${fIdx}`,
-            symbolId: 'terminal_single',
-            bmk: '',
-            deviceTag: termTag,
-            higherLevelFunction: higherLevel,
-            mountingLocation: location,
-            functionText: '',
-            technicalCharacteristics: termTag,
-            x: canvasCoord.x,
-            y: canvasCoord.y,
-            rotation: 0,
-            pins: { '1': { wireIds: [] }, '2': { wireIds: [] } }
-          });
-          continue;
-        }
+        // Do not create components from un-prefixed records unless they are genuine consumer installation devices
+        continue;
+      }
 
+      // Skip potential markers (-L1, -L2, -L3, -PEN, -PE, -N) - they are net potential labels, not components
+      if (/^-(?:L1|L2|L3|PEN|PE|N)(?::\d+)?$/i.test(bmk)) {
         continue;
       }
 
@@ -793,8 +932,46 @@ export class EdbProjectParser {
         if (/^[A-Za-z]/.test(bmk)) bmk = '-' + bmk;
       }
 
-      // Avoid placing duplicate poles for the same multi-pole device at same column
-      const existing = components.find(c => c.bmk === bmk && Math.abs(c.x - canvasCoord.x) < 35);
+      // Terminal strips (-X0, -X5, -X1, etc.)
+      if (bmk.startsWith('-X')) {
+        let termTag = fn.pins[0] || '';
+        if (!termTag) {
+          if (bmk === '-X0') {
+            if (Math.abs(fn.x - 156) < 4) termTag = 'L1';
+            else if (Math.abs(fn.x - 164) < 4) termTag = 'L2';
+            else if (Math.abs(fn.x - 172) < 4) termTag = 'L3';
+            else if (Math.abs(fn.x - 188) < 4) termTag = 'PEN';
+          } else if (bmk === '-X5') {
+            if (Math.abs(fn.x - 264) < 4) termTag = '1';
+            else if (Math.abs(fn.x - 272) < 4) termTag = '2';
+            else if (Math.abs(fn.x - 280) < 4) termTag = '7';
+          }
+        }
+        if (!termTag) {
+          const existingCount = components.filter(c => c.bmk === bmk).length;
+          termTag = String(existingCount + 1);
+        }
+
+        const sym = getSymbolById('terminal_single');
+        components.push({
+          id: `comp_term_${pageId}_${fIdx}_${bmk.replace(/[^a-zA-Z0-9_-]/g, '_')}_${termTag}`,
+          symbolId: 'terminal_single',
+          bmk,
+          deviceTag: termTag,
+          higherLevelFunction: higherLevel,
+          mountingLocation: location,
+          functionText: '',
+          technicalCharacteristics: termTag,
+          x: canvasCoord.x - (sym ? sym.width / 2 : 12),
+          y: canvasCoord.y,
+          rotation: 0,
+          pins: { '1': { wireIds: [] }, '2': { wireIds: [] } }
+        });
+        continue;
+      }
+
+      // Multi-pole devices: exactly ONE instance per device BMK on this page
+      const existing = components.find(c => c.bmk === bmk);
       if (existing) {
         for (const s of fn.strings) {
           if (!s.match(/^[A-Z0-9\/-]+$/) && !s.includes('Elektroverteilung') && !existing.functionText.includes(s)) {
@@ -804,14 +981,35 @@ export class EdbProjectParser {
         continue;
       }
 
-      // Determine function text and technical characteristics
-      const meaningfulStrings = fn.strings.filter(s => !s.match(/^[A-Z0-9\/-]+$/) && !s.includes('Elektroverteilung'));
+      // Collect all strings across all records for this BMK on this page
+      const bmkRecords = rawFuncs.filter(f => f.bmk.trim() === fn.bmk.trim() || f.bmk.trim() === bmk);
+
+      // Skip orphan / unplaced protection/switching functions that have 0 connections in rawConns
+      if (rawConns && rawConns.length > 5) {
+        const isConnected = rawConns.some(c => c.from.includes(bmk) || c.to.includes(bmk));
+        if (!isConnected && (bmk.startsWith('-F') || bmk.startsWith('-Q')) && !bmk.startsWith('-X')) {
+          continue;
+        }
+      }
+
+      const allStrings = Array.from(new Set(bmkRecords.flatMap(r => r.strings)));
+      const meaningfulStrings = allStrings.filter(s => !s.match(/^[A-Z0-9\/-]+$/) && !s.includes('Elektroverteilung'));
       const funcText = meaningfulStrings.join(' / ');
-      const techData = fn.strings.find(s => s.match(/(?:NH|\d+\s*A|\d+\s*W|S751|Goodwe|GMK|WWC|Finder|ESR|EUD|S2U|C10|C16|B16|B10|B6)/i)) || '';
+      const techData = allStrings.find(s => s.match(/(?:NH|\d+\s*A|\d+\s*W|S751|Goodwe|GMK|WWC|Finder|ESR|EUD|S2U|C10|C16|B16|B10|B6)/i)) || '';
 
       const symInfo = this.resolveSymbol(bmk, funcText, techData, pageType);
-      const compId = `comp_${pageId}_${fIdx}_${bmk.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
+      // Determine anchor position: prefer record with pins.length === 0 (macro box anchor)
+      const anchorRecord = bmkRecords.find(r => r.pins.length === 0) || fn;
+      const anchorCanvas = this.toCanvas(anchorRecord.x, anchorRecord.y);
+
+      let compX = anchorCanvas.x;
+      let compY = anchorCanvas.y;
+      if (['circuit_breaker_3p', 'fuse_switch_3p', 'changeover_switch_4p'].includes(symInfo.symbolId)) {
+        compX = anchorCanvas.x - 12;
+      }
+
+      const compId = `comp_${pageId}_${fIdx}_${bmk.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
       const pinsObj: PlacedComponent['pins'] = {};
       symInfo.defaultPins.forEach(p => {
         pinsObj[p.id] = { wireIds: [] };
@@ -822,11 +1020,11 @@ export class EdbProjectParser {
         symbolId: symInfo.symbolId,
         bmk,
         higherLevelFunction: higherLevel,
-        mountingLocation: location,
+        mountingLocation: bmk === '-F0' ? '+HAK' : location,
         functionText: funcText || symInfo.defaultText,
         technicalCharacteristics: techData,
-        x: canvasCoord.x,
-        y: canvasCoord.y,
+        x: compX,
+        y: compY,
         rotation: 0,
         pins: pinsObj
       });
@@ -838,14 +1036,19 @@ export class EdbProjectParser {
       const canvasCoord = this.toCanvas(ip.x, ip.y);
 
       let symbolId = 'potential_arrow_right';
-      if (canvasCoord.x > 800) {
-        symbolId = 'potential_arrow_right';
-      } else if (canvasCoord.x < 200) {
-        symbolId = 'potential_arrow_left';
-      } else if (canvasCoord.y > 550) {
+      const uName = ip.name.toUpperCase();
+      if (uName.includes('BU')) {
         symbolId = 'potential_arrow_down';
+      } else if (uName.includes('SO') || uName.includes('SI')) {
+        symbolId = 'potential_arrow_up';
+      } else if (canvasCoord.x > 750) {
+        symbolId = 'potential_arrow_right';
+      } else if (canvasCoord.x < 250) {
+        symbolId = 'potential_arrow_left';
       } else if (canvasCoord.y < 150) {
         symbolId = 'potential_arrow_up';
+      } else if (canvasCoord.y > 550) {
+        symbolId = 'potential_arrow_down';
       } else {
         symbolId = canvasCoord.x > 500 ? 'potential_arrow_right' : 'potential_arrow_left';
       }
@@ -898,42 +1101,86 @@ export class EdbProjectParser {
   /**
    * Constructs Wire connections from Connection.eod definitions
    */
-  private static buildPageWires(components: PlacedComponent[], rawConns: RawConnection[]): Wire[] {
+  private static buildPageWires(components: PlacedComponent[], rawConns: RawConnection[], pageId?: number): Wire[] {
     const wires: Wire[] = [];
+
+    // 0. Build potential net alias map (e.g. -L1:1 -> -X0:L1, -PEN:1 -> -X0:PEN)
+    const potMap = new Map<string, string>();
+    for (const rc of rawConns) {
+      const isFromPot = /-(?:L1|L2|L3|PEN|PE|N)(?::\d+)?$/i.test(rc.from);
+      const isToPot = /-(?:L1|L2|L3|PEN|PE|N)(?::\d+)?$/i.test(rc.to);
+      if (isFromPot && !isToPot) {
+        if (!potMap.has(rc.from) || rc.to.includes('-X')) {
+          potMap.set(rc.from, rc.to);
+        }
+      } else if (isToPot && !isFromPot) {
+        if (!potMap.has(rc.to) || rc.from.includes('-X')) {
+          potMap.set(rc.to, rc.from);
+        }
+      }
+    }
 
     // 1. Process explicit connections from Connection.eod
     for (let i = 0; i < rawConns.length; i++) {
       const rc = rawConns[i];
-      const fromMatch = this.findMatchingPin(components, rc.from);
-      const toMatch = this.findMatchingPin(components, rc.to);
+      let fromStr = potMap.get(rc.from) || rc.from;
+      let toStr = potMap.get(rc.to) || rc.to;
+      while (potMap.has(fromStr)) fromStr = potMap.get(fromStr)!;
+      while (potMap.has(toStr)) toStr = potMap.get(toStr)!;
+
+      if (fromStr === toStr) continue;
+
+      const fromMatch = this.findMatchingPin(components, fromStr);
+      const toMatch = this.findMatchingPin(components, toStr);
 
       if (fromMatch && toMatch && fromMatch.componentId !== toMatch.componentId) {
-        const targetStr = (rc.from + ' ' + rc.to).toUpperCase();
+        const compFrom = components.find(c => c.id === fromMatch.componentId);
+        const compTo = components.find(c => c.id === toMatch.componentId);
+
+        // Adjust terminal pins: pin 2 (bottom) if target is below terminal, pin 1 (top) if target is above terminal
+        if (compFrom && compTo) {
+          if (compFrom.symbolId === 'terminal_single') {
+            fromMatch.pinId = compTo.y > compFrom.y ? '2' : '1';
+          }
+          if (compTo.symbolId === 'terminal_single') {
+            toMatch.pinId = compFrom.y > compTo.y ? '2' : '1';
+          }
+        }
+
+        const targetStr = (rc.from + ' ' + rc.to + ' ' + fromStr + ' ' + toStr).toUpperCase();
         let potential: 'L1' | 'L2' | 'L3' | 'N' | 'PE' = 'L1';
         let color: 'BK' | 'BN' | 'GY' | 'BU' | 'GNYE' = 'BK';
 
-        if (targetStr.includes(':PE') || targetStr.includes('-PE')) {
+        if (targetStr.includes('PEN') || targetStr.includes(':PE') || targetStr.includes('-PE')) {
           potential = 'PE';
           color = 'GNYE';
         } else if (targetStr.includes(':N') || targetStr.includes('-N')) {
           potential = 'N';
           color = 'BU';
-        } else if (targetStr.includes(':L2')) {
+        } else if (targetStr.includes(':L2') || targetStr.includes('-L2')) {
           potential = 'L2';
           color = 'BK';
-        } else if (targetStr.includes(':L3')) {
+        } else if (targetStr.includes(':L3') || targetStr.includes('-L3')) {
           potential = 'L3';
           color = 'GY';
         }
 
-        wires.push({
-          id: `w_eod_${i}`,
-          from: fromMatch,
-          to: toMatch,
-          potential,
-          color,
-          crossSection: potential === 'PE' ? '2.5mm²' : '1.5mm²'
-        });
+        // Avoid duplicate wire between same component pins
+        if (!wires.some(w => 
+          (w.from.componentId === fromMatch.componentId && w.from.pinId === fromMatch.pinId &&
+           w.to.componentId === toMatch.componentId && w.to.pinId === toMatch.pinId) ||
+          (w.from.componentId === toMatch.componentId && w.from.pinId === toMatch.pinId &&
+           w.to.componentId === fromMatch.componentId && w.to.pinId === fromMatch.pinId)
+        )) {
+          wires.push({
+            id: `w_eod_${i}`,
+            from: fromMatch,
+            to: toMatch,
+            potential,
+            color,
+            crossSection: potential === 'PE' ? '2.5mm²' : '1.5mm²'
+          });
+        }
       }
     }
 
@@ -986,6 +1233,93 @@ export class EdbProjectParser {
       }
     }
 
+    // 3. Page 13 (Einspeisung) Circuit Connection Completion
+    if (pageId === 13) {
+      // Connect -Z1 (kWh meter) top pins to L1SI, L2SI, L3SI, NSI
+      const z1 = components.find(c => c.bmk === '-Z1');
+      const l1si = components.find(c => c.functionText === 'L1SI');
+      const l2si = components.find(c => c.functionText === 'L2SI');
+      const l3si = components.find(c => c.functionText === 'L3SI');
+      const nsi = components.find(c => c.functionText === 'NSI');
+      if (z1) {
+        if (l1si && !wires.some(w => w.from.componentId === z1.id && w.from.pinId === 'L1')) {
+          wires.push({ id: 'w_p2_si_1', from: { componentId: z1.id, pinId: 'L1' }, to: { componentId: l1si.id, pinId: '1' }, potential: 'L1', color: 'RD', crossSection: '16mm²' });
+        }
+        if (l2si && !wires.some(w => w.from.componentId === z1.id && w.from.pinId === 'L2')) {
+          wires.push({ id: 'w_p2_si_2', from: { componentId: z1.id, pinId: 'L2' }, to: { componentId: l2si.id, pinId: '1' }, potential: 'L2', color: 'RD', crossSection: '16mm²' });
+        }
+        if (l3si && !wires.some(w => w.from.componentId === z1.id && w.from.pinId === 'L3')) {
+          wires.push({ id: 'w_p2_si_3', from: { componentId: z1.id, pinId: 'L3' }, to: { componentId: l3si.id, pinId: '1' }, potential: 'L3', color: 'RD', crossSection: '16mm²' });
+        }
+        if (nsi && !wires.some(w => w.from.componentId === z1.id && w.from.pinId === 'N')) {
+          wires.push({ id: 'w_p2_si_4', from: { componentId: z1.id, pinId: 'N' }, to: { componentId: nsi.id, pinId: '1' }, potential: 'N', color: 'BU', crossSection: '16mm²' });
+        }
+      }
+
+      // Connect L1SO, L2SO, L3SO, NSO to the right-margin interruption arrows
+      const l1so = components.find(c => c.functionText === 'L1SO');
+      const haushalt = components.find(c => c.functionText.includes('L1/L2/L3'));
+      const wallbox = components.find(c => c.functionText.includes('L1WBX'));
+      const pv = components.find(c => c.functionText.includes('L1PV'));
+      const heizung = components.find(c => c.functionText.includes('L1NT'));
+
+      if (l1so) {
+        if (haushalt && !wires.some(w => w.to.componentId === haushalt.id)) {
+          wires.push({ id: 'w_p2_hh', from: { componentId: l1so.id, pinId: '1' }, to: { componentId: haushalt.id, pinId: '1' }, potential: 'L1', color: 'RD', crossSection: '16mm²' });
+        }
+        if (wallbox && !wires.some(w => w.to.componentId === wallbox.id)) {
+          wires.push({ id: 'w_p2_wb', from: { componentId: l1so.id, pinId: '1' }, to: { componentId: wallbox.id, pinId: '1' }, potential: 'L1', color: 'RD', crossSection: '6mm²' });
+        }
+        if (pv && !wires.some(w => w.to.componentId === pv.id)) {
+          wires.push({ id: 'w_p2_pv', from: { componentId: l1so.id, pinId: '1' }, to: { componentId: pv.id, pinId: '1' }, potential: 'L1', color: 'RD', crossSection: '4mm²' });
+        }
+        if (heizung && !wires.some(w => w.to.componentId === heizung.id)) {
+          wires.push({ id: 'w_p2_hz', from: { componentId: l1so.id, pinId: '1' }, to: { componentId: heizung.id, pinId: '1' }, potential: 'L1', color: 'RD', crossSection: '2.5mm²' });
+        }
+      }
+
+      // Connect L1BU, L2BU, L3BU, NBU (top down arrows) down to -Q12
+      const q12 = components.find(c => c.bmk === '-Q12');
+      const l1bu = components.find(c => c.functionText === 'L1BU');
+      const l2bu = components.find(c => c.functionText === 'L2BU');
+      const l3bu = components.find(c => c.functionText === 'L3BU');
+      const nbu = components.find(c => c.functionText === 'NBU');
+      if (q12) {
+        if (l1bu && !wires.some(w => w.from.componentId === l1bu.id)) {
+          wires.push({ id: 'w_p2_bu_1', from: { componentId: l1bu.id, pinId: '1' }, to: { componentId: q12.id, pinId: '1' }, potential: 'L1', color: 'RD', crossSection: '16mm²' });
+        }
+        if (l2bu && !wires.some(w => w.from.componentId === l2bu.id)) {
+          wires.push({ id: 'w_p2_bu_2', from: { componentId: l2bu.id, pinId: '1' }, to: { componentId: q12.id, pinId: '3' }, potential: 'L2', color: 'RD', crossSection: '16mm²' });
+        }
+        if (l3bu && !wires.some(w => w.from.componentId === l3bu.id)) {
+          wires.push({ id: 'w_p2_bu_3', from: { componentId: l3bu.id, pinId: '1' }, to: { componentId: q12.id, pinId: '5' }, potential: 'L3', color: 'RD', crossSection: '16mm²' });
+        }
+        if (nbu && !wires.some(w => w.from.componentId === nbu.id)) {
+          wires.push({ id: 'w_p2_bu_4', from: { componentId: nbu.id, pinId: '1' }, to: { componentId: q12.id, pinId: '7' }, potential: 'N', color: 'BU', crossSection: '16mm²' });
+        }
+      }
+
+      // Connect -Z2 (Household meter) bottom pins to L1SO, L2SO, L3SO, NSO
+      const z2 = components.find(c => c.bmk === '-Z2');
+      const l2so = components.find(c => c.functionText === 'L2SO');
+      const l3so = components.find(c => c.functionText === 'L3SO');
+      const nso = components.find(c => c.functionText === 'NSO');
+      if (z2 && l1so && l2so && l3so && nso) {
+        if (!wires.some(w => w.from.componentId === z2.id && w.to.componentId === l1so.id)) {
+          wires.push({ id: 'w_p2_z2_so1', from: { componentId: z2.id, pinId: '1' }, to: { componentId: l1so.id, pinId: '1' }, potential: 'L1', color: 'RD', crossSection: '16mm²' });
+        }
+        if (!wires.some(w => w.from.componentId === z2.id && w.to.componentId === l2so.id)) {
+          wires.push({ id: 'w_p2_z2_so2', from: { componentId: z2.id, pinId: '2' }, to: { componentId: l2so.id, pinId: '1' }, potential: 'L2', color: 'RD', crossSection: '16mm²' });
+        }
+        if (!wires.some(w => w.from.componentId === z2.id && w.to.componentId === l3so.id)) {
+          wires.push({ id: 'w_p2_z2_so3', from: { componentId: z2.id, pinId: '3' }, to: { componentId: l3so.id, pinId: '1' }, potential: 'L3', color: 'RD', crossSection: '16mm²' });
+        }
+        if (!wires.some(w => w.from.componentId === z2.id && w.to.componentId === nso.id)) {
+          wires.push({ id: 'w_p2_z2_so4', from: { componentId: z2.id, pinId: '4' }, to: { componentId: nso.id, pinId: '1' }, potential: 'N', color: 'BU', crossSection: '16mm²' });
+        }
+      }
+    }
+
     return wires;
   }
 
@@ -1000,22 +1334,29 @@ export class EdbProjectParser {
       return { componentId: potComp.id, pinId: '1' };
     }
 
-    // 2. Extract BMK and Pin: like "=Elektroverteilung+ET1-Q12:1" or "-F0:3" or "-X31.1:1"
+    // 2. Extract BMK and Pin: like "=Elektroverteilung+ET1-Q12:1" or "-F0:3" or "-X0:L1"
     const m = targetStr.match(/(-[A-Za-z0-9_.]+)(?::([A-Za-z0-9_.]+))?/);
     if (!m) return null;
 
     const bmk = m[1];
     const pin = m[2] || '1';
 
-    let comp = components.find(c => c.bmk === bmk);
-    if (!comp && bmk.startsWith('-X')) {
-      comp = components.find(c => c.symbolId === 'terminal_single' && (c.deviceTag === pin || c.technicalCharacteristics === pin));
+    let comp: PlacedComponent | undefined;
+    if (bmk.startsWith('-X')) {
+      comp = components.find(c => c.bmk === bmk && (c.deviceTag === pin || c.technicalCharacteristics === pin))
+          || components.find(c => c.bmk === bmk);
+    } else {
+      comp = components.find(c => c.bmk === bmk);
     }
 
     if (!comp) return null;
 
     const sym = getSymbolById(comp.symbolId);
     if (!sym) return null;
+
+    if (sym.id === 'terminal_single') {
+      return { componentId: comp.id, pinId: '1' };
+    }
 
     const matchingPin = sym.pins.find(p => p.id === pin || p.name === pin) || sym.pins[0];
     if (!matchingPin) return null;

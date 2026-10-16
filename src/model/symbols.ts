@@ -946,7 +946,7 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     width: 24,
     height: 30,
     pins: [
-      { id: '1', name: '1', x: 12, y: 30, direction: 'bottom' }
+      { id: '1', name: '1', x: 12, y: 0, direction: 'top' }
     ],
     svgContent: `
       <line x1="12" y1="0" x2="12" y2="16" stroke="currentColor" stroke-width="2"/>
@@ -964,7 +964,7 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     width: 24,
     height: 30,
     pins: [
-      { id: '1', name: '1', x: 12, y: 0, direction: 'top' }
+      { id: '1', name: '1', x: 12, y: 30, direction: 'bottom' }
     ],
     svgContent: `
       <line x1="12" y1="30" x2="12" y2="14" stroke="currentColor" stroke-width="2"/>
@@ -984,10 +984,10 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     pins: [
       { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
       { id: '2', name: '2', x: 12, y: 48, direction: 'bottom' },
-      { id: '3', name: '3', x: 36, y: 0, direction: 'top' },
-      { id: '4', name: '4', x: 36, y: 48, direction: 'bottom' },
-      { id: '5', name: '5', x: 60, y: 0, direction: 'top' },
-      { id: '6', name: '6', x: 60, y: 48, direction: 'bottom' }
+      { id: '3', name: '3', x: 31, y: 0, direction: 'top' },
+      { id: '4', name: '4', x: 31, y: 48, direction: 'bottom' },
+      { id: '5', name: '5', x: 51, y: 0, direction: 'top' },
+      { id: '6', name: '6', x: 51, y: 48, direction: 'bottom' }
     ],
     svgContent: `
       <!-- Pol 1 -->
@@ -997,19 +997,19 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
       <rect x="7" y="18" width="5" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
       <path d="M 17 28 Q 14 30 19 32" fill="none" stroke="currentColor" stroke-width="1.5"/>
       <!-- Pol 2 -->
-      <line x1="36" y1="0" x2="36" y2="14" stroke="currentColor" stroke-width="2"/>
-      <line x1="36" y1="14" x2="46" y2="32" stroke="currentColor" stroke-width="2"/>
-      <line x1="36" y1="34" x2="36" y2="48" stroke="currentColor" stroke-width="2"/>
-      <rect x="31" y="18" width="5" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <path d="M 41 28 Q 38 30 43 32" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="31" y1="0" x2="31" y2="14" stroke="currentColor" stroke-width="2"/>
+      <line x1="31" y1="14" x2="41" y2="32" stroke="currentColor" stroke-width="2"/>
+      <line x1="31" y1="34" x2="31" y2="48" stroke="currentColor" stroke-width="2"/>
+      <rect x="26" y="18" width="5" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M 36 28 Q 33 30 38 32" fill="none" stroke="currentColor" stroke-width="1.5"/>
       <!-- Pol 3 -->
-      <line x1="60" y1="0" x2="60" y2="14" stroke="currentColor" stroke-width="2"/>
-      <line x1="60" y1="14" x2="70" y2="32" stroke="currentColor" stroke-width="2"/>
-      <line x1="60" y1="34" x2="60" y2="48" stroke="currentColor" stroke-width="2"/>
-      <rect x="55" y="18" width="5" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <path d="M 65 28 Q 62 30 67 32" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="51" y1="0" x2="51" y2="14" stroke="currentColor" stroke-width="2"/>
+      <line x1="51" y1="14" x2="61" y2="32" stroke="currentColor" stroke-width="2"/>
+      <line x1="51" y1="34" x2="51" y2="48" stroke="currentColor" stroke-width="2"/>
+      <rect x="46" y="18" width="5" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M 56 28 Q 53 30 58 32" fill="none" stroke="currentColor" stroke-width="1.5"/>
       <!-- Kopplung -->
-      <line x1="17" y1="23" x2="65" y2="23" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <line x1="17" y1="23" x2="56" y2="23" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2"/>
     `,
     description: '3-poliger Leitungsschutzschalter mit thermisch-magnetischer Auslösung'
   },
@@ -1047,24 +1047,24 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     pins: [
       { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
       { id: '2', name: '2', x: 12, y: 48, direction: 'bottom' },
-      { id: '3', name: '3', x: 36, y: 0, direction: 'top' },
-      { id: '4', name: '4', x: 36, y: 48, direction: 'bottom' },
-      { id: '5', name: '5', x: 60, y: 0, direction: 'top' },
-      { id: '6', name: '6', x: 60, y: 48, direction: 'bottom' }
+      { id: '3', name: '3', x: 31, y: 0, direction: 'top' },
+      { id: '4', name: '4', x: 31, y: 48, direction: 'bottom' },
+      { id: '5', name: '5', x: 51, y: 0, direction: 'top' },
+      { id: '6', name: '6', x: 51, y: 48, direction: 'bottom' }
     ],
     svgContent: `
       <line x1="12" y1="0" x2="12" y2="14" stroke="currentColor" stroke-width="2"/>
       <rect x="7" y="14" width="10" height="20" fill="none" stroke="currentColor" stroke-width="2"/>
       <line x1="12" y1="10" x2="12" y2="38" stroke="currentColor" stroke-width="1.5"/>
       <line x1="12" y1="34" x2="12" y2="48" stroke="currentColor" stroke-width="2"/>
-      <line x1="36" y1="0" x2="36" y2="14" stroke="currentColor" stroke-width="2"/>
-      <rect x="31" y="14" width="10" height="20" fill="none" stroke="currentColor" stroke-width="2"/>
-      <line x1="36" y1="10" x2="36" y2="38" stroke="currentColor" stroke-width="1.5"/>
-      <line x1="36" y1="34" x2="36" y2="48" stroke="currentColor" stroke-width="2"/>
-      <line x1="60" y1="0" x2="60" y2="14" stroke="currentColor" stroke-width="2"/>
-      <rect x="55" y="14" width="10" height="20" fill="none" stroke="currentColor" stroke-width="2"/>
-      <line x1="60" y1="10" x2="60" y2="38" stroke="currentColor" stroke-width="1.5"/>
-      <line x1="60" y1="34" x2="60" y2="48" stroke="currentColor" stroke-width="2"/>
+      <line x1="31" y1="0" x2="31" y2="14" stroke="currentColor" stroke-width="2"/>
+      <rect x="26" y="14" width="10" height="20" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="31" y1="10" x2="31" y2="38" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="31" y1="34" x2="31" y2="48" stroke="currentColor" stroke-width="2"/>
+      <line x1="51" y1="0" x2="51" y2="14" stroke="currentColor" stroke-width="2"/>
+      <rect x="46" y="14" width="10" height="20" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="51" y1="10" x2="51" y2="38" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="51" y1="34" x2="51" y2="48" stroke="currentColor" stroke-width="2"/>
     `,
     description: '3-poliger NH-Sicherungs-Lasttrennschalter'
   },
@@ -1080,21 +1080,21 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     pins: [
       { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
       { id: '2', name: '2', x: 12, y: 48, direction: 'bottom' },
-      { id: '3', name: '3', x: 36, y: 0, direction: 'top' },
-      { id: '4', name: '4', x: 36, y: 48, direction: 'bottom' },
-      { id: '5', name: '5', x: 60, y: 0, direction: 'top' },
-      { id: '6', name: '6', x: 60, y: 48, direction: 'bottom' },
-      { id: '7', name: '7', x: 84, y: 0, direction: 'top' },
-      { id: '8', name: '8', x: 84, y: 48, direction: 'bottom' }
+      { id: '3', name: '3', x: 31, y: 0, direction: 'top' },
+      { id: '4', name: '4', x: 31, y: 48, direction: 'bottom' },
+      { id: '5', name: '5', x: 51, y: 0, direction: 'top' },
+      { id: '6', name: '6', x: 51, y: 48, direction: 'bottom' },
+      { id: '7', name: '7', x: 70, y: 0, direction: 'top' },
+      { id: '8', name: '8', x: 70, y: 48, direction: 'bottom' }
     ],
     svgContent: `
       <g stroke="currentColor" stroke-width="2">
         <line x1="12" y1="0" x2="12" y2="14"/><line x1="12" y1="14" x2="20" y2="32"/><line x1="12" y1="34" x2="12" y2="48"/>
-        <line x1="36" y1="0" x2="36" y2="14"/><line x1="36" y1="14" x2="44" y2="32"/><line x1="36" y1="34" x2="36" y2="48"/>
-        <line x1="60" y1="0" x2="60" y2="14"/><line x1="60" y1="14" x2="68" y2="32"/><line x1="60" y1="34" x2="60" y2="48"/>
-        <line x1="84" y1="0" x2="84" y2="14"/><line x1="84" y1="14" x2="92" y2="32"/><line x1="84" y1="34" x2="84" y2="48"/>
+        <line x1="31" y1="0" x2="31" y2="14"/><line x1="31" y1="14" x2="39" y2="32"/><line x1="31" y1="34" x2="31" y2="48"/>
+        <line x1="51" y1="0" x2="51" y2="14"/><line x1="51" y1="14" x2="59" y2="32"/><line x1="51" y1="34" x2="51" y2="48"/>
+        <line x1="70" y1="0" x2="70" y2="14"/><line x1="70" y1="14" x2="78" y2="32"/><line x1="70" y1="34" x2="70" y2="48"/>
       </g>
-      <line x1="16" y1="23" x2="88" y2="23" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <line x1="16" y1="23" x2="74" y2="23" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2"/>
     `,
     description: '4-poliger Umschalter Netz/Notstrom mit Nullstellung'
   },
@@ -1135,29 +1135,29 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     standard: 'DIN EN 60617',
     defaultBmkPrefix: '-Z',
     defaultFunctionText: 'Energiezähler',
-    width: 64,
+    width: 84,
     height: 48,
     pins: [
-      { id: 'L1', name: 'L1', x: 10, y: 0, direction: 'top' },
-      { id: 'L2', name: 'L2', x: 24, y: 0, direction: 'top' },
-      { id: 'L3', name: 'L3', x: 38, y: 0, direction: 'top' },
-      { id: 'N', name: 'N', x: 52, y: 0, direction: 'top' },
-      { id: '1', name: '1', x: 10, y: 48, direction: 'bottom' },
-      { id: '2', name: '2', x: 24, y: 48, direction: 'bottom' },
-      { id: '3', name: '3', x: 38, y: 48, direction: 'bottom' },
-      { id: '4', name: 'N', x: 52, y: 48, direction: 'bottom' }
+      { id: 'L1', name: 'L1', x: 12, y: 0, direction: 'top' },
+      { id: 'L2', name: 'L2', x: 31, y: 0, direction: 'top' },
+      { id: 'L3', name: 'L3', x: 51, y: 0, direction: 'top' },
+      { id: 'N', name: 'N', x: 70, y: 0, direction: 'top' },
+      { id: '1', name: '1', x: 12, y: 48, direction: 'bottom' },
+      { id: '2', name: '2', x: 31, y: 48, direction: 'bottom' },
+      { id: '3', name: '3', x: 51, y: 48, direction: 'bottom' },
+      { id: '4', name: 'N', x: 70, y: 48, direction: 'bottom' }
     ],
     svgContent: `
-      <rect x="4" y="10" width="56" height="28" fill="none" stroke="currentColor" stroke-width="2"/>
-      <text x="32" y="27" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor" text-anchor="middle">kWh</text>
-      <line x1="10" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="2"/>
-      <line x1="24" y1="0" x2="24" y2="10" stroke="currentColor" stroke-width="2"/>
-      <line x1="38" y1="0" x2="38" y2="10" stroke="currentColor" stroke-width="2"/>
-      <line x1="52" y1="0" x2="52" y2="10" stroke="currentColor" stroke-width="2"/>
-      <line x1="10" y1="38" x2="10" y2="48" stroke="currentColor" stroke-width="2"/>
-      <line x1="24" y1="38" x2="24" y2="48" stroke="currentColor" stroke-width="2"/>
-      <line x1="38" y1="38" x2="38" y2="48" stroke="currentColor" stroke-width="2"/>
-      <line x1="52" y1="38" x2="52" y2="48" stroke="currentColor" stroke-width="2"/>
+      <rect x="4" y="10" width="76" height="28" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="42" y="27" font-size="10" font-family="sans-serif" font-weight="bold" fill="currentColor" text-anchor="middle">kWh</text>
+      <line x1="12" y1="0" x2="12" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="31" y1="0" x2="31" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="51" y1="0" x2="51" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="70" y1="0" x2="70" y2="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="38" x2="12" y2="48" stroke="currentColor" stroke-width="2"/>
+      <line x1="31" y1="38" x2="31" y2="48" stroke="currentColor" stroke-width="2"/>
+      <line x1="51" y1="38" x2="51" y2="48" stroke="currentColor" stroke-width="2"/>
+      <line x1="70" y1="38" x2="70" y2="48" stroke="currentColor" stroke-width="2"/>
     `,
     description: 'Drehstrom-Wirkleistungszähler für Hutschienenmontage'
   },
