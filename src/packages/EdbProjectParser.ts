@@ -621,9 +621,9 @@ export class EdbProjectParser {
       const imgFile = zip.file(zipEntryName);
       if (!imgFile) continue;
 
-      const imgBuffer = await imgFile.async('nodebuffer');
+      const base64Data = await imgFile.async('base64');
       const ext = fileName.toLowerCase().endsWith('.jpg') || fileName.toLowerCase().endsWith('.jpeg') ? 'jpeg' : 'png';
-      const dataUrl = `data:image/${ext};base64,${imgBuffer.toString('base64')}`;
+      const dataUrl = `data:image/${ext};base64,${base64Data}`;
 
       const canvasX = Math.round((cadX1 / 420) * 1000);
       const canvasY = Math.round(((297 - cadY2) / 297) * 700);
