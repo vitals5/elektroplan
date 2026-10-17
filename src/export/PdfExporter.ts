@@ -16,7 +16,7 @@ import { wirePolyline, wirePinDirection } from '../model/WireRouting';
 import { gridForPage } from '../model/DrawingGrid';
 import { connectionCutouts, connectionGraphicWires, isConnectionGraphic, supersededConnectionGraphics, visibleWireSegments } from '../model/ConnectionGraphics';
 import { arcPoints, rotateDrawing } from '../model/ImportedDrawing';
-import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition, computeCrossReferencePosition } from '../model/LabelLayout';
+import { computeBmkPosition, computeFunctionTextPosition, computeAdditionalTextPosition, computeTechnicalDataPosition, computeCrossReferencePosition } from '../model/LabelLayout';
 import { jsPDF } from 'jspdf';
 import { Project, Page, PlacedComponent, Wire, DrawingPrimitive } from '../model/types';
 import { getSymbolForComponent } from '../model/symbols';
@@ -389,7 +389,7 @@ export class PdfExporter {
         // Physical pins are editing anchors, not extra printed circles. Any real
         // contact circle is already present in the source library's vectors.
         for (const pin of sym.pins) {
-          const label = pin.labelPosition;
+          const label = comp.pins[pin.id]?.labelPosition ?? pin.labelPosition;
           if (!label || label.visible === false) continue;
           const a = comp.rotation * Math.PI / 180;
           const dx = label.x - sym.width / 2, dy = label.y - sym.height / 2;
@@ -457,7 +457,8 @@ export class PdfExporter {
           const anchor = rotatedLocalPoint({x:sym.width/2,y:-4},sym,comp.rotation);
           doc.text(comp.bmk, (comp.x+anchor.x)*sx, (comp.y+anchor.y)*sy, { align: 'center' });
         }
-      } else {
+      }
+      {
         const drawLabel = (text: string, pos: ReturnType<typeof computeBmkPosition>, bold: boolean, color: number[]) => {
           if (!text || !pos.visible) return;
           const a = comp.rotation * Math.PI / 180;
@@ -466,14 +467,19 @@ export class PdfExporter {
           const py = comp.y + sym.height / 2 + dx * Math.sin(a) + dy * Math.cos(a);
           doc.setFont('helvetica', bold ? 'bold' : 'normal');
           doc.setFontSize(pos.fontSize * sy * 72 / 25.4);
-          const rgb = options.colorMode === 'color' ? color : [0, 0, 0];
+          const hex = pos.fontColor?.match(/^#([0-9a-f]{6})$/i)?.[1];
+          const ownColor = hex ? [parseInt(hex.slice(0,2),16),parseInt(hex.slice(2,4),16),parseInt(hex.slice(4,6),16)] : color;
+          const rgb = options.colorMode === 'color' ? ownColor : [0, 0, 0];
           doc.setTextColor(rgb[0], rgb[1], rgb[2]);
           doc.text(text, px * sx, py * sy, { align: pos.anchor === 'middle' ? 'center' : pos.anchor === 'end' ? 'right' : 'left', angle: -pos.rotation });
         };
-        drawLabel(comp.bmk, computeBmkPosition(comp, sym), true, [140, 95, 0]);
-        drawLabel(comp.functionText, computeFunctionTextPosition(comp, sym), false, [0, 0, 0]);
-        const tech = comp.deviceTag ? comp.deviceTag + (comp.technicalCharacteristics ? ' · ' + comp.technicalCharacteristics : '') : comp.technicalCharacteristics || '';
-        drawLabel(tech, computeTechnicalDataPosition(comp, sym), false, [25, 100, 45]);
+        if (!isConnection && !isTerminal) {
+          drawLabel(comp.bmk, computeBmkPosition(comp, sym), true, [140, 95, 0]);
+          drawLabel(comp.functionText, computeFunctionTextPosition(comp, sym), false, [0, 0, 0]);
+          const tech = comp.deviceTag ? comp.deviceTag + (comp.technicalCharacteristics ? ' · ' + comp.technicalCharacteristics : '') : comp.technicalCharacteristics || '';
+          drawLabel(tech, computeTechnicalDataPosition(comp, sym), false, [25, 100, 45]);
+        }
+        drawLabel(comp.additionalText || '', computeAdditionalTextPosition(comp, sym), false, [0, 0, 0]);
       }
 
       // SMART PDF: Interactive Cross-References (Kontaktspiegel & Querverweise)

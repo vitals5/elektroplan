@@ -10,6 +10,7 @@ export interface CalculatedLabelPosition {
   anchor: 'start' | 'middle' | 'end';
   rotation: number;
   fontSize: number;
+  fontColor?: string;
   visible: boolean;
   transform: string;
 }
@@ -82,7 +83,7 @@ export function computeBmkPosition(comp: PlacedComponent, sym: SymbolDefinition)
   const visible = cfg?.visible !== false;
   const transform = labelTransform(x, y, comp.rotation, rotation);
 
-  return { x, y, anchor, rotation, fontSize, visible, transform };
+  return { x, y, anchor, rotation, fontSize, visible, transform, ...(cfg?.fontColor ? { fontColor: cfg.fontColor } : {}) };
 }
 
 export function computeFunctionTextPosition(comp: PlacedComponent, sym: SymbolDefinition): CalculatedLabelPosition {
@@ -153,7 +154,7 @@ export function computeFunctionTextPosition(comp: PlacedComponent, sym: SymbolDe
   const visible = cfg?.visible !== false;
   const transform = labelTransform(x, y, comp.rotation, rotation);
 
-  return { x, y, anchor, rotation, fontSize, visible, transform };
+  return { x, y, anchor, rotation, fontSize, visible, transform, ...(cfg?.fontColor ? { fontColor: cfg.fontColor } : {}) };
 }
 
 export function computeTechnicalDataPosition(comp: PlacedComponent, sym: SymbolDefinition): CalculatedLabelPosition {
@@ -224,7 +225,7 @@ export function computeTechnicalDataPosition(comp: PlacedComponent, sym: SymbolD
   const visible = cfg?.visible !== undefined ? cfg.visible : !!(comp.deviceTag || comp.technicalCharacteristics);
   const transform = labelTransform(x, y, comp.rotation, rotation);
 
-  return { x, y, anchor, rotation, fontSize, visible, transform };
+  return { x, y, anchor, rotation, fontSize, visible, transform, ...(cfg?.fontColor ? { fontColor: cfg.fontColor } : {}) };
 }
 
 /** Keep the automatic interruption layout unless an instance overrides it. */
@@ -232,7 +233,8 @@ export function computeCrossReferencePosition(comp: PlacedComponent, sym: Symbol
   const cfg = comp.crossRefPosition;
   const arrow = interruptionLabelPosition(project, comp, sym);
   const hasTech = computeTechnicalDataPosition(comp, sym).visible && !!(comp.deviceTag || comp.technicalCharacteristics);
-  const bottom = sym.height + (hasTech ? 38 : 24);
+  const extra = comp.additionalText && computeAdditionalTextPosition(comp,sym);
+  const bottom = Math.max(sym.height + (hasTech ? 38 : 24), extra && extra.visible ? extra.y + extra.fontSize * 1.7 : 0);
   let x = arrow?.referenceX ?? sym.width / 2;
   let y = arrow?.referenceY ?? bottom;
   let anchor: CalculatedLabelPosition['anchor'] = arrow?.anchor ?? 'middle';
@@ -258,4 +260,52 @@ export function computeCrossReferencePosition(comp: PlacedComponent, sym: Symbol
 export function labelTransform(x: number, y: number, componentRotation = 0, textRotation = 0): string {
   const angle = textRotation - componentRotation;
   return angle ? `transform="rotate(${angle}, ${x}, ${y})"` : '';
+}
+
+/** Text entered by the user reveals an inherited hidden import label, while an
+ * explicit visibility choice always remains in force. */
+export function setComponentLabelText(comp: PlacedComponent,
+  property: 'functionText' | 'additionalText' | 'deviceTag' | 'technicalCharacteristics', value: string): boolean {
+  if (comp[property] === value) return false;
+  comp[property] = value;
+  const key = property === 'functionText' ? 'functionTextPosition' : property === 'additionalText' ? 'additionalTextPosition' : 'technicalDataPosition';
+  if (value.trim() && comp.source && comp[key]?.visible === false && !comp[key]?.visibilityExplicit)
+    comp[key] = { ...comp[key], visible: true };
+  return true;
+}
+
+/** Zusatztext has its own editable layout, below the other populated labels. */
+export function computeAdditionalTextPosition(comp: PlacedComponent, sym: SymbolDefinition): CalculatedLabelPosition {
+  const cfg = comp.additionalTextPosition;
+  const pos = computeTechnicalDataPosition({ ...comp, technicalDataPosition: cfg }, sym);
+  if (cfg?.preset === 'custom') {
+    pos.y = sym.height + 34 + (cfg.offsetY || 0);
+    pos.transform = labelTransform(pos.x, pos.y, comp.rotation, pos.rotation);
+  } else if (!cfg?.preset || cfg.preset === 'bottom' || cfg.preset === 'bottom_left' || cfg.preset === 'bottom_right') {
+    const lines = Math.max(1, (comp.functionText || '').split('\n').length);
+    const fn = computeFunctionTextPosition(comp, sym), tech = computeTechnicalDataPosition(comp, sym);
+    const lowest = Math.max(sym.height + 12,
+      comp.functionText && fn.visible ? fn.y + (lines - 1) * fn.fontSize * 1.2 : 0,
+      (comp.deviceTag || comp.technicalCharacteristics) && tech.visible ? tech.y + Math.max(0, ((comp.deviceTag || '').split('\n').length - 1)) * tech.fontSize * 1.2 : 0);
+    pos.y = lowest + pos.fontSize * 1.4 + (cfg?.offsetY || 0);
+    pos.transform = labelTransform(pos.x, pos.y, comp.rotation, pos.rotation);
+  }
+  pos.visible = cfg?.visible !== false;
+  return pos;
+}
+
+/** Upgrade inherited hidden defaults in already saved imported projects once.
+ * New user visibility choices are persisted and are never changed here. */
+export function revealImportedComponentLabels(project: Project): void {
+  for (const page of project.pages) for (const comp of page.components) {
+    if (!comp.source) continue;
+    for (const [property, hasText] of [
+      ['functionTextPosition', !!comp.functionText?.trim()],
+      ['additionalTextPosition', !!comp.additionalText?.trim()],
+      ['technicalDataPosition', !!(comp.deviceTag?.trim() || comp.technicalCharacteristics?.trim())],
+    ] as const) {
+      if (hasText && comp[property]?.visible === false && !comp[property]?.visibilityExplicit)
+        comp[property] = { ...comp[property], visible: true };
+    }
+  }
 }

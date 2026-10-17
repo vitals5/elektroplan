@@ -74,3 +74,35 @@ assert.match(display,/id="propCrossRefOffsetY" value="-3.875"/);
 fields['#propCrossRefVisible'].checked=false;dialog.collectFormData(modal);
 assert.doesNotMatch(dialog.generatePreviewSvg(),/class="cross-reference"/);
 console.log('✓ Property dialog preserves imported layout precision and shows editable source labels');
+
+// Entering text reveals inherited hidden source defaults; a later explicit hide
+// remains authoritative when returning to the text tab and editing again.
+dialog.activeTab='symbol';
+dialog.component.source={format:'EPLAN_P8',objectType:17,objectId:123};
+dialog.component.functionTextPosition={visible:false,offsetX:3,fontSize:5};
+dialog.component.additionalTextPosition={visible:false};
+dialog.component.technicalDataPosition={visible:false};
+for(const key of Object.keys(fields))delete fields[key];
+Object.assign(fields,{'#propFunctionText':{value:'Neu eingetragen'},'#propAdditionalText':{value:'Gravur <1>'},'#propDeviceTag':{value:'Gerät'}});
+dialog.collectFormData(modal);
+assert.equal(dialog.component.functionTextPosition.visible,true);
+assert.equal(dialog.component.additionalTextPosition.visible,true);
+assert.equal(dialog.component.technicalDataPosition.visible,true);
+assert.match(dialog.generatePreviewSvg(),/Gravur &lt;1&gt;/);
+for(const key of Object.keys(fields))delete fields[key];
+fields['#propFnVisible']={checked:false};
+dialog.collectFormData(modal);
+assert.equal(dialog.component.functionTextPosition.visibilityExplicit,true);
+fields['#propFunctionText']={value:'Weiterhin ausgeblendet'};delete fields['#propFnVisible'];
+dialog.collectFormData(modal);
+assert.equal(dialog.component.functionTextPosition.visible,false);
+dialog.activeTab='display';
+assert.match(dialog.renderActiveTabContent(),/propAdditionalPreset/);
+assert.match(dialog.renderActiveTabContent(),/propAdditionalFontSize/);
+console.log('✓ Text entry reveals inherited hidden labels; display controls preserve explicit hiding and editable engraving layout');
+
+for(const key of Object.keys(fields))delete fields[key];
+dialog.component.technicalDataPosition=undefined;dialog.component.deviceTag='';dialog.component.technicalCharacteristics='';
+fields['#propTechVisible']={checked:false};
+dialog.collectFormData(modal);
+assert.equal(dialog.component.technicalDataPosition,undefined,'An untouched initially empty label is not recorded as explicitly hidden');

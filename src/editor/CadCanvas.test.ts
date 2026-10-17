@@ -157,3 +157,56 @@ assert.doesNotMatch(canvas.renderComponents(),/class="cross-reference"/);
 (PdfExporter as any).renderComponents(pdf,page,project,420,297,{colorMode:'color',interactiveCrossReferences:true},new Map([['2',1]]));
 assert(!referenceTexts.some(t=>t.text==='/2.4'));assert.equal(links.length,0);
 console.log('✓ Editable reference positions agree in SVG and PDF, including rotated text, clickable links and visibility');
+
+component.additionalText='Gravur <1>\nZweite Zeile';
+component.additionalTextPosition={preset:'custom',offsetX:4,offsetY:7,fontSize:6,fontColor:'#ff00ff'};
+component.functionTextPosition={fontColor:'#ff00ff'};
+component.rotation=0;
+const engravingSvg=canvas.renderComponents();
+assert.match(engravingSvg,/class="additional-text" x="14" y="71" font-size="6"[^>]*fill="#ff00ff"/);
+assert.match(engravingSvg,/Gravur &lt;1&gt;/);
+assert.match(engravingSvg,/fill="#ff00ff"[^>]*>Geändert<\/text>/);
+let currentColor:unknown[]=[];const coloredLabels:{text:string;color:unknown[]}[]=[];
+pdf.setTextColor=(...color:unknown[])=>{currentColor=color;};
+pdf.text=(text:string)=>coloredLabels.push({text,color:currentColor});
+(PdfExporter as any).renderComponents(pdf,page,project,420,297,{colorMode:'color'},new Map());
+assert.deepEqual(coloredLabels.find(t=>t.text===component.additionalText)?.color,[255,0,255]);
+assert.deepEqual(coloredLabels.find(t=>t.text===component.functionText)?.color,[255,0,255]);
+coloredLabels.length=0;
+(PdfExporter as any).renderComponents(pdf,page,project,420,297,{colorMode:'monochrome'},new Map());
+assert.deepEqual(coloredLabels.find(t=>t.text===component.additionalText)?.color,[0,0,0]);
+component.additionalTextPosition.visible=false;
+assert.doesNotMatch(canvas.renderComponents(),/class="additional-text"/);
+coloredLabels.length=0;
+(PdfExporter as any).renderComponents(pdf,page,project,420,297,{colorMode:'color'},new Map());
+assert(!coloredLabels.some(t=>t.text===component.additionalText));
+console.log('✓ Editable engraving text and imported label colors agree in SVG and PDF; monochrome and explicit hiding remain supported');
+
+// Embedded page images are selectable in the normal editor, and deleting an
+// image leaves all electrical components and connections untouched.
+page.images=[{id:'graphic',dataUrl:'data:image/png;base64,AA==',x:400,y:80,width:120,height:60,caption:'Grafik'}];
+canvas.selectedComponentId=null;canvas.selectedImageId='graphic';
+const imageSvg=canvas.renderImages();
+assert.match(imageSvg,/data-image-id="graphic"/);
+assert.match(imageSvg,/class="embedded-image selected"/);
+assert.match(imageSvg,/pointer-events="all"/);
+assert.match(imageSvg,/preserveAspectRatio="xMidYMid meet"/);
+assert.match(imageSvg,/class="image-selection-rect"[^>]*visibility="visible"/);
+let imageEdits=0;
+canvas.callbacks={onSelectComponent:()=>{},onSelectWire:()=>{},onProjectModified:()=>{imageEdits++;}};
+canvas.updateSelectionClasses=()=>{};canvas.render=()=>{};canvas.autoconnectEnabled=false;
+component.crossRef=''; // Clear the synthetic reference fixture before normal recomputation.
+const electricalBefore=JSON.stringify({components:page.components,wires:page.wires});
+canvas.deleteSelected();
+assert.deepEqual(page.images,[]);assert.equal(imageEdits,1);assert.equal(canvas.selectedImageId,null);
+assert.equal(JSON.stringify({components:page.components,wires:page.wires}),electricalBefore);
+console.log('✓ Embedded images are interactive and image deletion records a single edit without changing electrical objects');
+
+// A directly hit image wins over a loose imported component bounding box.
+// Imported large outlines can surround a visible image without drawing there.
+const hitImage={id:'hit-image',dataUrl:'data:image/png;base64,AA==',x:10,y:20,width:40,height:50};
+const hitCanvas=Object.assign(Object.create(CadCanvas.prototype),{activePage:{...page,images:[hitImage]},project,
+  callbacks:{onSelectComponent:()=>{},onSelectWire:()=>{}},updateSelectionClasses:()=>{},
+  cableFromEvent:()=>undefined,imageFromEvent:()=>hitImage,findComponentAt:()=>{throw new Error('A direct image target must not use a loose component hitbox');}});
+assert.equal(hitCanvas.handleSelectionMouseDown({}, {x:20,y:30}),true);
+assert.equal(hitCanvas.selectedImageId,'hit-image');assert(hitCanvas.selectionDrag);

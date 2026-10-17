@@ -6,7 +6,7 @@ import { PlacedComponent, Project, TextFormatConfig } from '../model/types';
 import { escapeSvg } from '../model/ImportedDrawing';
 import { getSymbolForComponent, getDrawingUnitsPerMm } from '../model/symbols';
 import { MANUFACTURER_PARTS } from '../model/PartCatalogue';
-import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition, computeCrossReferencePosition } from '../model/LabelLayout';
+import { computeBmkPosition, computeFunctionTextPosition, computeAdditionalTextPosition, computeTechnicalDataPosition, computeCrossReferencePosition, setComponentLabelText } from '../model/LabelLayout';
 import { componentInsertionPoint, positionAtInsertionPoint, rotatedLocalPoint } from '../model/SymbolGeometry';
 
 export interface PropertiesDialogCallbacks {
@@ -361,6 +361,7 @@ export class PropertiesDialog {
             </div>
           </div>
 
+          ${this.additionalTextPositionFields()}
           ${this.crossReferencePositionFields()}
 
           <div style="background:#1f242e;border:1px solid #3e4656;border-radius:6px;padding:12px">
@@ -498,6 +499,21 @@ export class PropertiesDialog {
     </fieldset>`;
   }
 
+  private additionalTextPositionFields(): string {
+    const cfg = this.component.additionalTextPosition || {};
+    const units = getDrawingUnitsPerMm(this.project);
+    const presets = [['bottom','Unten zentriert'],['bottom_left','Unten links'],['bottom_right','Unten rechts'],['top','Oben zentriert'],['top_left','Oben links'],['top_right','Oben rechts'],['left','Links'],['right','Rechts'],['custom','Benutzerdefiniert']];
+    return `<fieldset style="border:1px solid #3e4656;border-radius:6px;padding:12px"><legend>Zusatztext / Graviertext</legend>
+      <label><input id="propAdditionalVisible" type="checkbox" ${cfg.visible !== false ? 'checked' : ''}> Sichtbar</label>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">
+        <label class="form-label">Position<select class="form-input" id="propAdditionalPreset">${presets.map(([key,label])=>`<option value="${key}" ${(cfg.preset || 'bottom')===key?'selected':''}>${label}</option>`).join('')}</select></label>
+        <label class="form-label">Versatz X (mm)<input class="form-input" id="propAdditionalOffsetX" type="number" step="any" value="${(cfg.offsetX || 0)/units}"></label>
+        <label class="form-label">Versatz Y (mm)<input class="form-input" id="propAdditionalOffsetY" type="number" step="any" value="${(cfg.offsetY || 0)/units}"></label>
+        <label class="form-label">Ausrichtung<select class="form-input" id="propAdditionalAlignment">${[['middle','Zentriert'],['start','Linksbündig'],['end','Rechtsbündig']].map(([key,label])=>`<option value="${key}" ${(cfg.alignment || 'middle')===key?'selected':''}>${label}</option>`).join('')}</select></label>
+        <label class="form-label">Drehung<select class="form-input" id="propAdditionalRotation">${[0,90,180,270].map(angle=>`<option value="${angle}" ${(cfg.rotation || 0)===angle?'selected':''}>${angle}°</option>`).join('')}</select></label>
+      </div></fieldset>`;
+  }
+
   private fontSizeFields(): string {
     const sym = getSymbolForComponent(this.component, this.project);
     if (!sym) return '';
@@ -505,9 +521,10 @@ export class PropertiesDialog {
     return [
       ['Bmk', 'BMK', computeBmkPosition(this.component, sym).fontSize],
       ['Fn', 'Funktionstext', computeFunctionTextPosition(this.component, sym).fontSize],
+      ['Additional', 'Zusatztext / Graviertext', computeAdditionalTextPosition(this.component, sym).fontSize],
       ['Tech', 'Technische Daten', computeTechnicalDataPosition(this.component, sym).fontSize],
       ['CrossRef', 'Querverweise', this.component.crossRefFontSize ?? 8],
-      ['Pin', 'Anschlussbezeichnungen', this.component.pinLabelFontSize ?? sym.pins.find(p=>p.labelPosition)?.labelPosition?.fontSize ?? 6.5]
+      ['Pin', 'Anschlussbezeichnungen', this.component.pinLabelFontSize ?? Object.values(this.component.pins).find(p=>p.labelPosition)?.labelPosition?.fontSize ?? sym.pins.find(p=>p.labelPosition)?.labelPosition?.fontSize ?? 6.5]
     ].map(([key,label,size]) => `<label class="form-label">${label}<input class="form-input" type="number" min="0.1" max="20" step="0.1" id="prop${key}FontSize" value="${Number((Number(size)/units).toFixed(4))}"></label>`).join('');
   }
 
@@ -518,6 +535,7 @@ export class PropertiesDialog {
     const bmkPos = computeBmkPosition(this.component, sym);
     const fnPos = computeFunctionTextPosition(this.component, sym);
     const techPos = computeTechnicalDataPosition(this.component, sym);
+    const additionalPos = computeAdditionalTextPosition(this.component, sym);
     const refPos = computeCrossReferencePosition(this.component, sym, this.project);
 
     const isConn = !sym.importedGraphics && sym.category === 'connections';
@@ -528,22 +546,22 @@ export class PropertiesDialog {
 
     // Include moved reference anchors and the rotated symbol in the preview.
     const points = [{x:0,y:0},{x:sym.width,y:0},{x:0,y:sym.height},{x:sym.width,y:sym.height},
-      ...[bmkPos,fnPos,techPos,refPos].filter(p=>p.visible)].map(p=>rotatedLocalPoint(p,sym,this.component.rotation));
+      ...[bmkPos,fnPos,techPos,additionalPos,refPos].filter(p=>p.visible)].map(p=>rotatedLocalPoint(p,sym,this.component.rotation));
     const vbX = Math.min(...points.map(p=>p.x))-70;
     const vbY = Math.min(...points.map(p=>p.y))-45;
     const vbW = Math.max(...points.map(p=>p.x))-vbX+70;
     const vbH = Math.max(...points.map(p=>p.y))-vbY+45;
 
     const bmkSvg = (!isConn && bmkPos.visible) ? `
-      <text x="${bmkPos.x}" y="${bmkPos.y}" font-size="${bmkPos.fontSize}" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="${bmkPos.anchor}" ${bmkPos.transform}>${escapeSvg(this.component.bmk)}</text>
+      <text x="${bmkPos.x}" y="${bmkPos.y}" font-size="${bmkPos.fontSize}" font-weight="bold" font-family="monospace" fill="${escapeSvg(bmkPos.fontColor || '#f6e05e')}" text-anchor="${bmkPos.anchor}" ${bmkPos.transform}>${escapeSvg(this.component.bmk)}</text>
     ` : '';
 
     const fnSvg = (!isConn && fnPos.visible) ? `
-      <text x="${fnPos.x}" y="${fnPos.y}" font-size="${fnPos.fontSize}" font-family="sans-serif" fill="#e2e8f0" text-anchor="${fnPos.anchor}" ${fnPos.transform}>${escapeSvg(this.component.functionText || 'Funktionstext')}</text>
+      <text x="${fnPos.x}" y="${fnPos.y}" font-size="${fnPos.fontSize}" font-family="sans-serif" fill="${escapeSvg(fnPos.fontColor || '#e2e8f0')}" text-anchor="${fnPos.anchor}" ${fnPos.transform}>${escapeSvg(this.component.functionText || 'Funktionstext')}</text>
     ` : '';
 
     const techSvg = (!isConn && techPos.visible && (techText || this.activeTab === 'display')) ? `
-      <text x="${techPos.x}" y="${techPos.y}" font-size="${techPos.fontSize}" font-family="sans-serif" fill="#68d391" text-anchor="${techPos.anchor}" ${techPos.transform}>${escapeSvg(techText || 'Gerätebezeichnung')}</text>
+      <text x="${techPos.x}" y="${techPos.y}" font-size="${techPos.fontSize}" font-family="sans-serif" fill="${escapeSvg(techPos.fontColor || '#68d391')}" text-anchor="${techPos.anchor}" ${techPos.transform}>${escapeSvg(techText || 'Gerätebezeichnung')}</text>
     ` : '';
 
     const pinsSvg = sym.pins.map(pin => `
@@ -569,6 +587,7 @@ export class PropertiesDialog {
         ${bmkSvg}
         ${fnSvg}
         ${techSvg}
+        ${additionalPos.visible && this.component.additionalText ? `<text class="additional-text" x="${additionalPos.x}" y="${additionalPos.y}" font-size="${additionalPos.fontSize}" font-family="sans-serif" fill="${escapeSvg(additionalPos.fontColor || '#e2e8f0')}" text-anchor="${additionalPos.anchor}" ${additionalPos.transform}>${escapeSvg(this.component.additionalText)}</text>` : ''}
         ${this.component.crossRef && refPos.visible ? `<text class="cross-reference" x="${refPos.x}" y="${refPos.y}" text-anchor="${refPos.anchor}" font-size="${refPos.fontSize}" ${refPos.transform} fill="#f6ad55">${escapeSvg(this.component.crossRef)}</text>` : ''}
         </g>
       </svg>
@@ -694,8 +713,8 @@ export class PropertiesDialog {
 
         this.component.manufacturer = part.manufacturer;
         this.component.articleNumber = part.articleNumber;
-        this.component.technicalCharacteristics = part.technicalData;
-        this.component.deviceTag = part.name;
+        setComponentLabelText(this.component, 'technicalCharacteristics', part.technicalData);
+        setComponentLabelText(this.component, 'deviceTag', part.name);
       }
     });
 
@@ -717,6 +736,7 @@ export class PropertiesDialog {
       modal.querySelector('#btnResetPositions')?.addEventListener('click', () => {
         delete this.component.bmkPosition;
         delete this.component.functionTextPosition;
+        delete this.component.additionalTextPosition;
         delete this.component.technicalDataPosition;
         delete this.component.crossRefPosition;
         const content = modal.querySelector('#propTabContent');
@@ -734,16 +754,16 @@ export class PropertiesDialog {
     if (bmk) this.component.bmk = bmk.value.trim();
 
     const deviceTag = modal.querySelector('#propDeviceTag') as HTMLInputElement;
-    if (deviceTag) this.component.deviceTag = deviceTag.value.trim();
+    if (deviceTag) setComponentLabelText(this.component, 'deviceTag', deviceTag.value.trim());
 
     const fnText = modal.querySelector('#propFunctionText') as HTMLInputElement;
-    if (fnText) this.component.functionText = fnText.value.trim();
+    if (fnText) setComponentLabelText(this.component, 'functionText', fnText.value.trim());
 
     const additionalText = modal.querySelector('#propAdditionalText') as HTMLInputElement;
-    if (additionalText) this.component.additionalText = additionalText.value.trim();
+    if (additionalText) setComponentLabelText(this.component, 'additionalText', additionalText.value.trim());
 
     const techChar = modal.querySelector('#propTechChar') as HTMLInputElement;
-    if (techChar) this.component.technicalCharacteristics = techChar.value.trim();
+    if (techChar) setComponentLabelText(this.component, 'technicalCharacteristics', techChar.value.trim());
 
     const higherLevel = modal.querySelector('#propHigherLevel') as HTMLInputElement;
     if (higherLevel) this.component.higherLevelFunction = higherLevel.value.trim();
@@ -787,7 +807,7 @@ export class PropertiesDialog {
     });
 
     const units = getDrawingUnitsPerMm(this.project);
-    for (const [key, property] of [['Bmk','bmkPosition'],['Fn','functionTextPosition'],['Tech','technicalDataPosition']] as const) {
+    for (const [key, property] of [['Bmk','bmkPosition'],['Fn','functionTextPosition'],['Additional','additionalTextPosition'],['Tech','technicalDataPosition']] as const) {
       const input = modal.querySelector(`#prop${key}FontSize`) as HTMLInputElement | null;
       if (input && input.value !== '' && input.validity.valid && Number(input.value)>0)
         this.component[property] = { ...this.component[property], fontSize: Number(input.value)*units };
@@ -811,6 +831,22 @@ export class PropertiesDialog {
         rotation: number('Rotation') as TextFormatConfig['rotation'],
         visible: (modal.querySelector('#propCrossRefVisible') as HTMLInputElement | null)?.checked !== false,
       };
+    }
+    for (const [prefix, property] of [['Bmk','bmkPosition'],['Fn','functionTextPosition'],['Additional','additionalTextPosition'],['Tech','technicalDataPosition']] as const) {
+      const input = modal.querySelector(`#prop${prefix}Visible`) as HTMLInputElement | null;
+      const currentVisible = property === 'technicalDataPosition' && this.component[property]?.visible === undefined
+        ? !!(this.component.deviceTag || this.component.technicalCharacteristics) : this.component[property]?.visible !== false;
+      if (input && input.checked !== currentVisible)
+        this.component[property] = { ...this.component[property], visible: input.checked, visibilityExplicit: true };
+    }
+    const additionalPreset = modal.querySelector('#propAdditionalPreset') as HTMLSelectElement | null;
+    if (additionalPreset) {
+      const value = (key:string) => (modal.querySelector(`#propAdditional${key}`) as HTMLInputElement | HTMLSelectElement | null)?.value;
+      const number = (key:string) => { const n = Number(value(key)); return Number.isFinite(n) ? n : 0; };
+      this.component.additionalTextPosition = { ...this.component.additionalTextPosition,
+        preset: additionalPreset.value as TextFormatConfig['preset'], offsetX:number('OffsetX')*units,offsetY:number('OffsetY')*units,
+        alignment:(value('Alignment') || 'middle') as TextFormatConfig['alignment'],rotation:number('Rotation') as TextFormatConfig['rotation'],
+        visible:(modal.querySelector('#propAdditionalVisible') as HTMLInputElement | null)?.checked !== false };
     }
     const bmkPreset = modal.querySelector('#propBmkPreset') as HTMLSelectElement;
     if (bmkPreset) {

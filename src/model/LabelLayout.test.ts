@@ -109,3 +109,34 @@ for(const side of ['before','after'] as const)for(const rotation of [0,90,180,27
   assert.deepEqual([explicit.x,explicit.y,explicit.anchor],[-8,arrow.height/2,'end']);
 }
 console.log('✓ Reference position presets, offsets, visibility, serialization and automatic interruption layouts for every rotation');
+
+const { computeAdditionalTextPosition, setComponentLabelText, revealImportedComponentLabels } = await import('./LabelLayout');
+const inherited: PlacedComponent = { ...baseComp, source:{format:'EPLAN_P8',objectType:17,objectId:42},
+  functionText:'',additionalText:'',deviceTag:'',technicalCharacteristics:'',
+  functionTextPosition:{preset:'custom',offsetX:2,offsetY:3,fontSize:5,visible:false},
+  technicalDataPosition:{preset:'right',visible:false},additionalTextPosition:{preset:'custom',offsetX:4,offsetY:7,fontSize:6,visible:false} };
+assert(setComponentLabelText(inherited,'functionText','Neue Funktion'));
+assert.equal(inherited.functionTextPosition?.visible,true);
+assert.equal(inherited.functionTextPosition?.offsetX,2);
+assert(setComponentLabelText(inherited,'additionalText','Gravur\nZweite Zeile'));
+assert.equal(inherited.additionalTextPosition?.visible,true);
+assert.deepEqual([computeAdditionalTextPosition(inherited,mockSymbol).x,computeAdditionalTextPosition(inherited,mockSymbol).y],[24,101]);
+setComponentLabelText(inherited,'deviceTag','Neues Gerät');assert.equal(inherited.technicalDataPosition?.visible,true);
+inherited.functionTextPosition={...inherited.functionTextPosition,visible:false,visibilityExplicit:true};
+setComponentLabelText(inherited,'functionText','Bewusst ausgeblendeter Text');
+assert.equal(inherited.functionTextPosition.visible,false,'Entering text respects an explicit visibility choice');
+inherited.additionalTextPosition={...inherited.additionalTextPosition,visible:false};
+revealImportedComponentLabels({pages:[{components:[inherited]}]} as Project);
+assert.equal(inherited.additionalTextPosition.visible,true,'Loaded legacy text is revealed');
+assert.equal(inherited.functionTextPosition.visible,false,'Loading respects explicit hidden labels');
+const additionalScaled=scalePlacedComponent(inherited,2);
+assert.deepEqual(additionalScaled.additionalTextPosition,{...inherited.additionalTextPosition,fontSize:12,offsetX:8,offsetY:14});
+const stacked=computeAdditionalTextPosition({...baseComp,additionalText:'Gravur'},mockSymbol);
+assert(stacked.y>computeTechnicalDataPosition(baseComp,mockSymbol).y);
+assert(computeCrossReferencePosition({...baseComp,additionalText:'Gravur'},mockSymbol,project).y>stacked.y);
+console.log('✓ Entered and legacy imported labels are visible, deliberate hiding survives, and engraving positions scale and clear other labels');
+
+const instancePin = { ...inherited, pins: { '0': { customLabel: 'USB', labelPosition: { x: 2, y: -10, fontSize: 5, alignment: 'middle' as const } } } };
+const scaledPin=scalePlacedComponent(instancePin,2);
+assert.deepEqual(scaledPin.pins['0'].labelPosition,{x:4,y:-20,fontSize:10,alignment:'middle'});
+assert.equal(instancePin.pins['0'].labelPosition.x,2,'Macro scaling preserves the source instance');

@@ -3,8 +3,12 @@ import JSZip from 'jszip';
 import { readEplanPlotFrame } from './EplanPlotFrame';
 import { readEplanCoverPage } from './EplanCoverPage';
 import type { CoverPageTemplate } from '../model/CoverPage';
+import { nativePageText } from './NativeText';
+import { nativePinLabelOverrides } from './NativePinLabelOverrides';
+import { readNativePageImages } from './NativeImages';
+import { nativePropertyLayouts } from './NativePropertyLayout';
 import { PlotFrameTemplate } from '../model/PlotFrame';
-import { DrawingPrimitive, Page, PinDefinition, PlacedComponent, Project, SymbolDefinition, Wire } from '../model/types';
+import { DrawingPrimitive, Page, PageImage, PinDefinition, PlacedComponent, Project, SymbolDefinition, Wire } from '../model/types';
 import { NativePort, physicalConnections } from './EplanPhysicalConnections';
 import { EodRecord, eplanText, readEodTable, EOD_LAYOUTS } from './EodReader';
 import { EplanSymbolLibrary, EPLAN_SCALE as SCALE, LibraryEntry, Point,
@@ -21,6 +25,7 @@ export class EplanNativeProject {
   private plotFrameTemplate?: PlotFrameTemplate;
   private coverPageTemplate?: CoverPageTemplate;
   private graphics = new Map<string, LibraryEntry>();
+  private images = new Map<number, PageImage[]>();
   private recordsByPage = new Map<number, EodRecord[]>();
   private connectionsByPage = new Map<number, EodRecord[]>();
   get pages() {
@@ -93,6 +98,8 @@ export class EplanNativeProject {
     const library = await EplanSymbolLibrary.create(zip, root);
     await library.prepare([...tables.Function, ...tables.IPoint, ...tables.Potential, ...tables.Instance]);
     const importer = new EplanNativeProject(tables, library);
+    importer.images = await readNativePageImages(zip, root,
+      [...tables.Instance, ...tables.Function, ...tables.IPoint, ...tables.Potential], message => importer.messages.push(message));
     importer.plotFrameTemplate = await readEplanPlotFrame(zip, root, tables.Instance, library);
     importer.coverPageTemplate = await readEplanCoverPage(zip, root, tables.Instance, library);
     importer.messages.push(...library.diagnostics);
@@ -138,6 +145,7 @@ export class EplanNativeProject {
       sized = normalizeDefinition({ ...entry.definition, id: `${entry.definition.id}:size:${a.x},${a.y},${b.x},${b.y}`,
         name: `${entry.definition.name} (${Math.abs(b.x - a.x)} × ${Math.abs(b.y - a.y)} mm)`,
         pins: [], importedGraphics: graphics }, entry.labels);
+      sized.variantData = entry.variantData;
       this.graphics.set(key, sized);
     }
     return sized;
@@ -145,6 +153,7 @@ export class EplanNativeProject {
 
   importPage(pageId: number, page: Page, pageNumbers: Map<number, string>): void {
     const records = this.recordsByPage.get(pageId) ?? [];
+    page.images = this.images.get(pageId) ?? [];
     const connections = this.connectionsByPage.get(pageId) ?? [];
     const pageRecord = this.tables.Page.find(r => r.id === pageId);
     const stamp = pageRecord?.string(0x2b10, 4), editor = pageRecord?.string(0x2b0e, 4);
@@ -169,14 +178,28 @@ export class EplanNativeProject {
         x: p.x - entry.origin.x, y: p.y - entry.origin.y, rotation: 0,
         bmk: r.bmk && r.type !== 0x46 ? '-' + r.bmk : '', functionText,
         technicalCharacteristics: eplanText(r.string(0x4e3b, 4)), deviceTag: r.string(0x4e3e, 4) || undefined,
+        additionalText:eplanText(r.string(0x4e39,4)) || undefined,
         higherLevelFunction: page.higherLevel, mountingLocation: page.location,
         pins: Object.fromEntries(d.pins.map(pin => [pin.id, { customLabel: pinLabels[Number(pin.id)] ?? pin.name, wireIds: [] as string[] }]))
       };
+      for (const [id, label] of nativePinLabelOverrides(r, d.pins, this.library.layers))
+        comp.pins[id].labelPosition = { ...label, x: entry.origin.x + label.x, y: entry.origin.y + label.y };
       const overrides = propertyPositions(r.data);
-      comp.bmkPosition = labelPosition(entry, 20010, overrides);
+      const nativeLayouts = entry.variantData ? nativePropertyLayouts(entry.variantData, r, this.library.layers) : new Map();
+      const propertyLabel = (field: number) => {
+        const layout = nativeLayouts.get(field);
+        if (!layout || overrides.has(field)) return labelPosition(entry, field, overrides);
+        const baseY = field === 20010 ? -8 : d.height + (field === 20011 ? 12 : field === 20025 ? 34 : 22);
+        return { preset: 'custom' as const, offsetX: entry.origin.x + layout.point.x * SCALE - d.width / 2,
+          offsetY: entry.origin.y - layout.point.y * SCALE - baseY,
+          fontSize: layout.fontSize * SCALE, alignment: layout.alignment, rotation: layout.rotation, visible: true };
+      };
+      comp.bmkPosition = propertyLabel(20010);
       if (r.type === 17 && r.number(0xeb23, 4) === 3) comp.bmkPosition.visible = false;
-      comp.functionTextPosition = labelPosition(entry, 20011, overrides);
-      comp.technicalDataPosition = labelPosition(entry, 20027, overrides);
+      comp.functionTextPosition = propertyLabel(20011);
+      comp.technicalDataPosition = propertyLabel(comp.deviceTag &&
+        (nativeLayouts.has(20030) || overrides.has(20030)) ? 20030 : 20027);
+      comp.additionalTextPosition = propertyLabel(20025);
       if (r.type === 0x46) {
         comp.functionText = r.string(0xee2c) + r.string(0xee2d) + (r.string(0xee2e) ? '.' + r.string(0xee2e) : '');
         const other = this.tables.IPoint.find(ip => ip.pageId !== pageId && ip.bmk === r.bmk && ip.position && ip.pageId && pageNumbers.has(ip.pageId));
@@ -202,26 +225,24 @@ export class EplanNativeProject {
           continue;
         }
         add(r, this.sizedEntry(entry, r), r.position);
-      } else if (r.type === 0x1e) {
-        const position = r.point(0xec55), value = eplanText(r.string(0xec5f));
-        if (!position || !value) continue;
-        const size = (r.double(0xee21) ?? 2.5) * SCALE;
-        const width = Math.max(1, ...value.split('\n').map(s => s.length)) * size * 0.6;
-        const key = `text:${size}:${width}:${value.split('\n').length}`;
+      } else if ([0x1e,0x53].includes(r.type)) {
+        const text=nativePageText(r,this.library.layers);
+        if(!text)continue;
+        const {position,text:value,fontSize:size,width,height,origin,config}=text;
+        const key = `text:${size}:${width}:${height}:${origin.x}:${origin.y}`;
         let entry = this.graphics.get(key);
         if (!entry) {
-          entry = { definition: { id: `eplan:annotation:${size}:${width}:${value.split('\n').length}`, name: 'Projekttext',
+          entry = { definition: { id: `eplan:annotation:${size}:${width}:${height}:${origin.x}:${origin.y}`, name: 'Projekttext',
             category: 'controls', standard: 'DIN EN 60617', defaultBmkPrefix: '', defaultFunctionText: '',
-            width, height: size * Math.max(1, value.split('\n').length), unitsPerMm: SCALE, insertionPoint: { x: 0, y: size },
+            width, height, unitsPerMm: SCALE, insertionPoint: origin,
             pins: [], svgContent: '', importedGraphics: [], description: 'Editierbarer Projekttext' },
-            origin: { x: 0, y: size }, labels: new Map() };
+            origin, labels: new Map() };
           this.graphics.set(key, entry);
         }
         const comp = add(r, entry, position);
         comp.functionText = value;
         comp.bmkPosition = { visible: false }; comp.technicalDataPosition = { visible: false };
-        comp.functionTextPosition = { preset: 'custom', offsetX: -width / 2,
-          offsetY: size - entry.definition.height - 12, fontSize: size, alignment: 'start', visible: true };
+        comp.functionTextPosition = config;
       } else {
         const graphics = eplanPrimitives(r, this.library.layers);
         if (!graphics.length) continue;

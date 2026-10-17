@@ -64,6 +64,9 @@ export interface TextFormatConfig {
   rotation?: 0 | 90 | 180 | 270;
   fontSize?: number;            // in px, e.g. 8, 10, 12
   visible?: boolean;
+  /** A user explicitly chose this label visibility; imported defaults may be revealed on text entry. */
+  visibilityExplicit?: boolean;
+  fontColor?: string;
 }
 
 export interface PlacedComponent {
@@ -89,6 +92,8 @@ export interface PlacedComponent {
     [pinId: string]: {
       wireIds?: string[];
       customLabel?: string;
+      /** Per-placement source override; the shared pin geometry stays in the library. */
+      labelPosition?: PinDefinition['labelPosition'];
     };
   };
   crossRefFontSize?: number;
@@ -97,6 +102,7 @@ export interface PlacedComponent {
   // Label positioning & display properties
   bmkPosition?: TextFormatConfig;
   functionTextPosition?: TextFormatConfig;
+  additionalTextPosition?: TextFormatConfig;
   technicalDataPosition?: TextFormatConfig;
   crossRefPosition?: TextFormatConfig;
 }

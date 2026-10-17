@@ -1,3 +1,5 @@
+import { readImageFile } from './ImageFile';
+import { setComponentLabelText, revealImportedComponentLabels } from '../model/LabelLayout';
 import { selectionCount } from '../model/ElementSelection';
 import { createCoverPage } from '../model/CoverPage';
 import { CoverPageDialog } from './CoverPageDialog';
@@ -144,6 +146,7 @@ export class App {
             <div class="menu-opt" id="menuInsertSym">⚡ Symbol auswählen... <span class="opt-key">Einfg</span></div>
             <div class="menu-opt" id="menuInsertCable">Kabeldefinition / Kabelbeschriftung...</div>
             <div class="menu-opt" id="menuInsertConnections">🔗 Verbindungselemente...</div>
+            <div class="menu-opt" id="menuInsertImage">🖼️ Bilddatei hinzufügen...</div>
             <div class="menu-opt" id="menuInsertMacro">📦 Makro auswählen (.ema)...</div>
             <div class="menu-opt" id="menuWire">🔌 Verbindungslinie (Verdrahten) <span class="opt-key">D</span></div>
             <div class="menu-sep"></div>
@@ -206,6 +209,7 @@ export class App {
           <button class="btn" id="btnUndo" title="Rückgängig (Strg+Z)" aria-label="Rückgängig">↶</button>
           <button class="btn" id="btnRedo" title="Wiederholen (Strg+Y / Strg+Umschalt+Z)" aria-label="Wiederholen">↷</button>
           <button class="btn" id="btnOpenConnections" title="Verbindungselemente auswählen">🔗 <span class="hide-mobile">Verbindungen</span></button>
+          <button class="btn" id="btnAddImage" title="Grafikdatei hinzufügen und auf der Seite platzieren">🖼️ <span class="hide-mobile">Bild</span></button><input id="imageFileInput" type="file" accept="image/*,.svg,.bmp" style="display:none">
           <button class="btn" id="btnCableDefinition" title="Kabeldefinition: Start- und Endpunkt über die Adern setzen">▧ <span class="hide-mobile">Kabel</span></button>
           <button class="btn" id="btnSettings" title="Einstellungen">⚙️</button>
           <button class="btn" id="btnToolDuplicate" title="Ausgewähltes Bauteil duplizieren (Strg+D)">📋 <span class="hide-mobile">Duplizieren</span></button>
@@ -446,14 +450,17 @@ export class App {
     const btnRot = document.getElementById('btnFloatingRotate');
     const btnDel = document.getElementById('btnFloatingDelete');
 
+    const imageSelected=!!this.canvas?.selectedImageId;
     const multiple=this.canvas && selectionCount(this.canvas.getElementSelection())>1;
-    for(const id of ['btnToolRotate','btnToolDuplicate']){const button=document.getElementById(id) as HTMLButtonElement|null;if(button)button.disabled=!!multiple;}
-    const macroButton=document.getElementById('btnFloatingExportMacro');if(macroButton)macroButton.style.display=multiple?'none':'';
+    for(const id of ['btnToolRotate','btnToolDuplicate']){const button=document.getElementById(id) as HTMLButtonElement|null;if(button)button.disabled=!!multiple||imageSelected;}
+    const macroButton=document.getElementById('btnFloatingExportMacro');if(macroButton)macroButton.style.display=multiple||imageSelected?'none':'';
     if (bar && tag) {
       if (multiple) {
         tag.textContent=`${selectionCount(this.canvas.getElementSelection())} Elemente ausgewählt`;
         if(btnEdit)btnEdit.style.display='inline-flex';if(btnRot)btnRot.style.display='none';
         if(btnDel){btnDel.title='Ausgewählte Elemente löschen';btnDel.textContent='🗑️';}bar.style.display='flex';
+      } else if(imageSelected) {
+        tag.textContent='Bild ausgewählt';if(btnEdit)btnEdit.style.display='inline-flex';if(btnRot)btnRot.style.display='none';if(btnDel){btnDel.title='Bild löschen';btnDel.textContent='🗑️';}bar.style.display='flex';
       } else if (this.selectedComponent) {
         tag.textContent = `${this.selectedComponent.bmk} (${this.selectedComponent.functionText || 'Bauteil'})`;
         if (btnEdit) btnEdit.style.display = 'inline-flex';
@@ -669,7 +676,7 @@ export class App {
 
     // Floating action buttons (mobile bar & selection bar)
     document.getElementById('fabEdit')?.addEventListener('click', () => {
-      if(selectionCount(this.canvas.getElementSelection())>1){this.openSelectionProperties();return;}
+      if(this.canvas.selectedImageId||selectionCount(this.canvas.getElementSelection())>1){this.openSelectionProperties();return;}
       if (this.selectedComponent) {
         this.openPropertiesDialog(this.selectedComponent);
       } else if (this.selectedCable) {
@@ -680,7 +687,7 @@ export class App {
     });
 
     document.getElementById('btnFloatingEdit')?.addEventListener('click', () => {
-      if(selectionCount(this.canvas.getElementSelection())>1){this.openSelectionProperties();return;}
+      if(this.canvas.selectedImageId||selectionCount(this.canvas.getElementSelection())>1){this.openSelectionProperties();return;}
       if (this.selectedComponent) this.openPropertiesDialog(this.selectedComponent);
       else if (this.selectedCable) { this.activeRightTab='properties';this.setRightPanelCollapsed(false);this.renderRightTab(); }
     });
@@ -769,6 +776,12 @@ export class App {
     });
 
     document.getElementById('btnOpenConnections')?.addEventListener('click', () => this.openConnectionSelection());
+    document.getElementById('btnAddImage')?.addEventListener('click',()=>document.getElementById('imageFileInput')?.click());
+    document.getElementById('imageFileInput')?.addEventListener('change',async event=>{
+      const input=event.target as HTMLInputElement,file=input.files?.[0];input.value='';if(!file)return;
+      try {const image=await readImageFile(file,getDrawingUnitsPerMm(this.project));this.canvas.setImageToPlace(image);this.updateToolButtons('btnToolSelect');const status=document.getElementById('statusLeft');if(status)status.textContent='Bild platzieren: Position auf der Seite anklicken. Esc bricht ab.';}
+      catch(error){alert(error instanceof Error?error.message:'Die Grafikdatei konnte nicht geladen werden.');}
+    });
     document.getElementById('btnCableDefinition')?.addEventListener('click', () => this.startCableDefinition());
     document.getElementById('btnSettings')?.addEventListener('click', () => this.openSettings());
 
@@ -990,6 +1003,7 @@ export class App {
         onSelect: (sym) => this.canvas.setSymbolToPlace(sym.id)
       }).show();
     });
+    bindMenuOpt('menuInsertImage', () => document.getElementById('imageFileInput')?.click());
     bindMenuOpt('menuInsertMacro', () => {
       this.openMacroSelectionDialog('window');
     });
@@ -1176,7 +1190,7 @@ export class App {
     this.selectedWire = page.wires.find(w => w.id === wireId) ?? null;
     this.canvas.selectedComponentId = this.selectedComponent?.id ?? null;
     this.canvas.selectedWireId = this.selectedWire?.id ?? null;
-    if(selectionCount(elementSelection)>1)this.canvas.setElementSelection(elementSelection);
+    if(selectionCount(elementSelection)>1||elementSelection.imageIds?.length)this.canvas.setElementSelection(elementSelection);
     this.canvas.render();
     this.updateToolButtons('btnToolSelect');
     this.updateFloatingSelectionBar();
@@ -1831,8 +1845,8 @@ export class App {
           if (this.selectedComponent) {
             this.selectedComponent.manufacturer = part.manufacturer;
             this.selectedComponent.articleNumber = part.articleNumber;
-            this.selectedComponent.functionText = part.name;
-            this.selectedComponent.technicalCharacteristics = part.technicalData;
+            setComponentLabelText(this.selectedComponent, 'functionText', part.name);
+            setComponentLabelText(this.selectedComponent, 'technicalCharacteristics', part.technicalData);
             this.notifyChange();
           }
         }
@@ -1935,19 +1949,37 @@ export class App {
     this.activeRightTab='properties';if(this.isRightCollapsed)this.setRightPanelCollapsed(false);this.renderRightTab();
   }
 
+  private renderImageProperties(container:HTMLElement):void {
+    const page=this.project.pages.find(p=>p.id===this.project.activePageId),image=page?.images?.find(i=>i.id===this.canvas.selectedImageId);if(!image)return;
+    const units=getDrawingUnitsPerMm(this.project),ratio=image.width/image.height;
+    container.innerHTML=`<h3>Bild</h3><p>${escapeSvg(image.caption || 'Grafik')}</p>
+      ${[['X','Position X',image.x],['Y','Position Y',image.y],['Width','Breite',image.width],['Height','Höhe',image.height]].map(([id,label,n])=>`<label class="form-label">${label} (mm)<input class="form-input" id="image${id}" type="number" step="any" ${id==='Width'||id==='Height'?'min="0.1"':''} value="${Number((Number(n)/units).toFixed(4))}"></label>`).join('')}
+      <p style="font-size:12px;color:var(--text-muted)">Breite und Höhe werden proportional geändert.</p><button class="btn" id="applyImageProperties">Übernehmen</button> <button class="btn" id="deleteImage">Bild löschen</button>`;
+    let editedSize:'Width'|'Height'|undefined;
+    for(const key of ['Width','Height'] as const)container.querySelector('#image'+key)?.addEventListener('input',()=>{editedSize=key;const input=container.querySelector('#image'+key) as HTMLInputElement,other=container.querySelector('#image'+(key==='Width'?'Height':'Width')) as HTMLInputElement;if(input.value&&input.validity.valid)other.value=String(key==='Width'?Number(input.value)/ratio:Number(input.value)*ratio);});
+    container.querySelector('#applyImageProperties')?.addEventListener('click',()=>{
+      const inputs=['X','Y','Width','Height'].map(key=>container.querySelector('#image'+key) as HTMLInputElement);
+      if(inputs.some(i=>!i.value||!i.validity.valid||!Number.isFinite(Number(i.value))))return;
+      const before=JSON.stringify(image);image.x=Number(inputs[0].value)*units;image.y=Number(inputs[1].value)*units;
+      if(editedSize==='Width'){image.width=Number(inputs[2].value)*units;image.height=image.width/ratio;}else if(editedSize==='Height'){image.height=Number(inputs[3].value)*units;image.width=image.height*ratio;}
+      if(JSON.stringify(image)!==before)this.notifyChange();this.renderRightTab();
+    });
+    container.querySelector('#deleteImage')?.addEventListener('click',()=>this.canvas.deleteSelected());
+  }
+
   private renderSelectionProperties(container:HTMLElement):void {
     const selection=this.canvas.getElementSelection(),page=this.project.pages.find(p=>p.id===this.project.activePageId)!;
     const field=(key:SharedProperty,label:string,number=false)=>{
       const value=sharedPropertyValue(page,this.project,selection,key);
       return `<label class="form-label" style="display:block;margin-bottom:8px">${label}<input class="form-input" data-shared-property="${key}" id="shared-${key}" type="${number?'number':'text'}" ${number?'min="0.1" max="20" step="any"':''} value="${value===undefined?'':escapeSvg(String(typeof value==='number'?Number(value.toFixed(4)):value))}" placeholder="${value===undefined?'Unterschiedliche Werte':''}"></label>`;
     };
-    container.innerHTML=`<h3>Gemeinsame Eigenschaften</h3><p>${selectionCount(selection)} Elemente ausgewählt (${selection.componentIds.length} Bauteile / Verbindungselemente, ${selection.cableIds.length} Kabel).</p>
+    container.innerHTML=`<h3>Gemeinsame Eigenschaften</h3><p>${selectionCount(selection)} Elemente ausgewählt (${selection.componentIds.length} Bauteile / Verbindungselemente, ${selection.cableIds.length} Kabel, ${selection.imageIds?.length ?? 0} Bilder).</p>
       <p style="font-size:12px;color:var(--text-muted)">Nur geänderte Felder werden übernommen. Unterschiedliche Werte können gemeinsam vereinheitlicht werden.</p>
-      <fieldset style="border:1px solid var(--border-color);padding:8px;margin:10px 0"><legend>Schriftgrößen (mm)</legend>
+      ${selection.componentIds.length||selection.cableIds.length?`<fieldset style="border:1px solid var(--border-color);padding:8px;margin:10px 0"><legend>Schriftgrößen (mm)</legend>
       ${field('bmkFontSize','BMK',true)}${field('functionFontSize','Funktionstext / Kabelbeschriftung',true)}
-      ${selection.componentIds.length?field('technicalFontSize','Technische Daten (Bauteile)',true)+field('crossRefFontSize','Querverweise (Bauteile / Verbindungselemente)',true):''}
-      ${field('pinFontSize','Anschluss- / Aderbezeichnungen',true)}</fieldset>
-      ${selection.componentIds.length?`<fieldset style="border:1px solid var(--border-color);padding:8px;margin:10px 0"><legend>Bauteile / Verbindungselemente</legend>${field('functionText','Funktionstext')}${field('deviceTag','Gerätebezeichnung')}${field('technicalCharacteristics','Technische Kennwerte')}</fieldset>`:''}
+      ${selection.componentIds.length?field('additionalFontSize','Zusatztext / Graviertext (Bauteile)',true)+field('technicalFontSize','Technische Daten (Bauteile)',true)+field('crossRefFontSize','Querverweise (Bauteile / Verbindungselemente)',true):''}
+      ${field('pinFontSize','Anschluss- / Aderbezeichnungen',true)}</fieldset>`:''}
+      ${selection.componentIds.length?`<fieldset style="border:1px solid var(--border-color);padding:8px;margin:10px 0"><legend>Bauteile / Verbindungselemente</legend>${field('functionText','Funktionstext')}${field('additionalText','Zusatztext / Graviertext')}${field('deviceTag','Gerätebezeichnung')}${field('technicalCharacteristics','Technische Kennwerte')}</fieldset>`:''}
       ${selection.cableIds.length?`<fieldset style="border:1px solid var(--border-color);padding:8px;margin:10px 0"><legend>Kabeldefinitionen</legend>${field('cableType','Kabeltyp')}${field('crossSection','Aderquerschnitt (mm²)')}</fieldset>`:''}
       <button class="btn btn-primary" id="applySharedProperties" disabled>Änderungen übernehmen</button>
       <button class="btn" id="clearElementSelection">Auswahl aufheben</button>`;
@@ -2006,6 +2038,7 @@ export class App {
   }
 
   private renderPropertiesTab(container: HTMLElement): void {
+    if(this.canvas?.selectedImageId){this.renderImageProperties(container);return;}
     if(this.canvas && selectionCount(this.canvas.getElementSelection())>1){this.renderSelectionProperties(container);return;}
     if (this.selectedCable) { this.renderCableProperties(container,this.selectedCable);return; }
     if (this.selectedComponent) {
@@ -2027,21 +2060,22 @@ export class App {
 
         <div class="form-group">
           <label class="form-label">Betriebsmittelkennzeichen (BMK)</label>
-          <input class="form-input" id="propBmk" value="${comp.bmk}">
+          <input class="form-input" id="propBmk" value="${escapeSvg(comp.bmk)}">
         </div>
 
         <div class="form-group">
           <label class="form-label">Gerätebezeichnung</label>
-          <input class="form-input" id="propDeviceTag" value="${comp.deviceTag || ''}" placeholder="z.B. Hauptschütz, Netzteil">
+          <input class="form-input" id="propDeviceTag" value="${escapeSvg(comp.deviceTag || '')}" placeholder="z.B. Hauptschütz, Netzteil">
         </div>
 
         <div class="form-group">
           <label class="form-label">Funktionstext</label>
-          <input class="form-input" id="propFunctionText" value="${comp.functionText || ''}">
+          <input class="form-input" id="propFunctionText" value="${escapeSvg(comp.functionText || '')}">
         </div>
 
+        <div class="form-group"><label class="form-label">Zusatztext / Graviertext</label><textarea class="form-input" id="propAdditionalText">${escapeSvg(comp.additionalText || '')}</textarea></div>
         <fieldset style="border:1px solid var(--border-color);padding:8px;margin:0 0 12px"><legend>Schriftgrößen (mm)</legend>
-          ${[['Bmk','BMK',comp.bmkPosition?.fontSize ?? 10],['Fn','Funktionstext',comp.functionTextPosition?.fontSize ?? 8],['Tech','Technische Daten',comp.technicalDataPosition?.fontSize ?? 8],['CrossRef','Querverweise',comp.crossRefFontSize ?? 8],['Pin','Anschlussbezeichnungen',comp.pinLabelFontSize ?? sym?.pins.find(p=>p.labelPosition)?.labelPosition?.fontSize ?? 6.5]].map(([key,label,size])=>`<label class="form-label">${label}<input class="form-input" id="quick${key}FontSize" type="number" min="0.1" max="20" step="0.1" value="${Number((Number(size)/units).toFixed(4))}"></label>`).join('')}
+          ${[['Bmk','BMK',comp.bmkPosition?.fontSize ?? 10],['Fn','Funktionstext',comp.functionTextPosition?.fontSize ?? 8],['Additional','Zusatztext / Graviertext',comp.additionalTextPosition?.fontSize ?? 8],['Tech','Technische Daten',comp.technicalDataPosition?.fontSize ?? 8],['CrossRef','Querverweise',comp.crossRefFontSize ?? 8],['Pin','Anschlussbezeichnungen',comp.pinLabelFontSize ?? Object.values(comp.pins).find(p=>p.labelPosition)?.labelPosition?.fontSize ?? sym?.pins.find(p=>p.labelPosition)?.labelPosition?.fontSize ?? 6.5]].map(([key,label,size])=>`<label class="form-label">${label}<input class="form-input" id="quick${key}FontSize" type="number" min="0.1" max="20" step="0.1" value="${Number((Number(size)/units).toFixed(4))}"></label>`).join('')}
         </fieldset>
 
         <div class="form-group">
@@ -2060,7 +2094,7 @@ export class App {
 
         <div class="form-group">
           <label class="form-label">Technische Kennwerte</label>
-          <input class="form-input" id="propTechnical" value="${comp.technicalCharacteristics || ''}">
+          <input class="form-input" id="propTechnical" value="${escapeSvg(comp.technicalCharacteristics || '')}">
         </div>
 
         <div class="form-group" style="background: rgba(99, 179, 237, 0.08); padding: 8px; border-radius: 4px; border: 1px dashed var(--accent);">
@@ -2118,13 +2152,16 @@ export class App {
         if (bmkInput) comp.bmk = bmkInput.value.trim();
 
         const devInput = document.getElementById('propDeviceTag') as HTMLInputElement;
-        if (devInput) comp.deviceTag = devInput.value.trim();
+        if (devInput) setComponentLabelText(comp, 'deviceTag', devInput.value.trim());
 
         const fnInput = document.getElementById('propFunctionText') as HTMLInputElement;
-        if (fnInput) comp.functionText = fnInput.value.trim();
+        if (fnInput) setComponentLabelText(comp, 'functionText', fnInput.value.trim());
+
+        const additionalInput = document.getElementById('propAdditionalText') as HTMLInputElement;
+        if(additionalInput)setComponentLabelText(comp,'additionalText',additionalInput.value.trim());
 
         const techInput = document.getElementById('propTechnical') as HTMLInputElement;
-        if (techInput) comp.technicalCharacteristics = techInput.value.trim();
+        if (techInput) setComponentLabelText(comp, 'technicalCharacteristics', techInput.value.trim());
 
         const artInput = document.getElementById('propArticle') as HTMLInputElement;
         if (artInput) comp.articleNumber = artInput.value.trim();
@@ -2157,7 +2194,7 @@ export class App {
         comp.bmk = (e.target as HTMLInputElement).value;
         this.notifyChange();
       });
-      for (const [key,property] of [['Bmk','bmkPosition'],['Fn','functionTextPosition'],['Tech','technicalDataPosition']] as const) {
+      for (const [key,property] of [['Bmk','bmkPosition'],['Fn','functionTextPosition'],['Additional','additionalTextPosition'],['Tech','technicalDataPosition']] as const) {
         document.getElementById(`quick${key}FontSize`)?.addEventListener('input', e => {
           const input = e.target as HTMLInputElement;
           if (input.value && input.validity.valid && Number(input.value)>0) { comp[property] = {...comp[property],fontSize:Number(input.value)*units}; this.notifyChange(); }
@@ -2170,7 +2207,7 @@ export class App {
         });
       }
       document.getElementById('propDeviceTag')?.addEventListener('input', (e) => {
-        comp.deviceTag = (e.target as HTMLInputElement).value;
+        setComponentLabelText(comp, 'deviceTag', (e.target as HTMLInputElement).value);
         this.notifyChange();
       });
       document.getElementById('propQuickBmkPreset')?.addEventListener('change', (e) => {
@@ -2187,17 +2224,20 @@ export class App {
         if (part) {
           comp.manufacturer = part.manufacturer;
           comp.articleNumber = part.articleNumber;
-          comp.technicalCharacteristics = part.technicalData;
-          comp.functionText = part.name;
+          setComponentLabelText(comp, 'technicalCharacteristics', part.technicalData);
+          setComponentLabelText(comp, 'functionText', part.name);
           this.notifyChange();
         }
       });
+      document.getElementById('propAdditionalText')?.addEventListener('input', (e) => {
+        setComponentLabelText(comp, 'additionalText', (e.target as HTMLInputElement).value);this.notifyChange();
+      });
       document.getElementById('propFunctionText')?.addEventListener('input', (e) => {
-        comp.functionText = (e.target as HTMLInputElement).value;
+        setComponentLabelText(comp, 'functionText', (e.target as HTMLInputElement).value);
         this.notifyChange();
       });
       document.getElementById('propTechnical')?.addEventListener('input', (e) => {
-        comp.technicalCharacteristics = (e.target as HTMLInputElement).value;
+        setComponentLabelText(comp, 'technicalCharacteristics', (e.target as HTMLInputElement).value);
         this.notifyChange();
       });
       document.getElementById('propArticle')?.addEventListener('input', (e) => {
@@ -2397,6 +2437,7 @@ export class App {
       if (result.extractedProject) {
         this.project = result.extractedProject;
         prepareProjectPresentation(this.project);
+        revealImportedComponentLabels(this.project);
         setProjectSymbolLibrary(this.project);
         this.selectedComponent = null;
         this.selectedWire = null;

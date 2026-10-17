@@ -9,6 +9,7 @@ import { Project, Page, PlacedComponent, PageType, Wire, PageText, PageBox, Page
 import { SYMBOL_DEFINITIONS, getSymbolById, getSymbolForComponent, setProjectSymbolLibrary } from '../model/symbols';
 import { AutoconnectEngine } from '../model/AutoconnectEngine';
 import { prepareProjectPresentation, neutralSourceLabel } from '../model/PresentationNaming';
+import { revealImportedComponentLabels } from '../model/LabelLayout';
 
 export interface ExtractedPageMeta {
   pageType?: PageType;
@@ -154,7 +155,7 @@ export class EdbProjectParser {
         this.extractTexts(instBuf, textsByPage);
         messages.push(`Freie Texte und Kabelbeschriftungen extrahiert (${textsByPage.size} referenzierte Seiten).`);
       }
-      await this.extractImages(zip, instBuf, imagesByPage);
+      if (!native) await this.extractImages(zip, instBuf, imagesByPage);
       if (imagesByPage.size > 0) {
         messages.push(`Eingebettete Grafiken & Diagramme extrahiert (${imagesByPage.size} Seiten).`);
       }
@@ -288,6 +289,7 @@ export class EdbProjectParser {
 
     native?.finalize(project);
     prepareProjectPresentation(project);
+    revealImportedComponentLabels(project);
     if (project.plotFrameTemplate?.diagnostics?.length) messages.push(...project.plotFrameTemplate.diagnostics.map(d => 'Normblatt: ' + d));
     if (project.coverPageTemplate?.diagnostics?.length) messages.push(...project.coverPageTemplate.diagnostics.map(d => 'Titelseite: ' + d));
     if (native) messages.push(...native.messages, `${project.symbolLibrary!.length} gemeinsame Projekt-Bibliotheksdefinitionen übernommen.`);

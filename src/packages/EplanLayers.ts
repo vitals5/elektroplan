@@ -5,6 +5,7 @@ export type EplanLayerStyle = {
   /** Physical millimetres; convert to the application's drawing scale at use. */
   lineWidth?: number;
   fontSize?: number;
+  fontColor?: string;
   angle?: number;
   visible?: boolean;
 };
@@ -27,9 +28,13 @@ export async function readEplanLayers(zip: JSZip, root: string): Promise<Map<num
     const number = record.number(0xeff2), lineWidth = record.double(0xeff5);
     if (number === undefined) continue;
     const textHeight = record.double(0xee21), angle = record.double(0xee22);
+    // Palette entries corroborated by the supplied source and PDF: device
+    // graphics use blue (5), annotations use magenta (6).
+    const fontColor=({5:'#0000ff',6:'#ff00ff'} as Record<number,string>)[record.number(0xeff4) ?? -1];
     result.set(number, {
       ...(lineWidth !== undefined && lineWidth >= 0 && lineWidth <= 100 ? { lineWidth } : {}),
       ...(textHeight !== undefined && textHeight > 0 && textHeight < 1000 ? { fontSize: textHeight } : {}),
+      ...(fontColor ? {fontColor} : {}),
       ...(angle !== undefined && angle !== -16002 ? { angle } : {})
     });
     // Layer flags (0xeffb) are not decoded: 8 occurs on a visibly printed bus

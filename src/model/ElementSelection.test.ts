@@ -41,3 +41,39 @@ assert.throws(()=>applySelectionProperties(page,project,selection,{functionText:
 assert.equal(JSON.stringify(page),beforeInvalid,'Invalid shared changes are rejected atomically');
 assert.equal(applySelectionProperties(page,project,selection,{}),false);
 console.log('✓ Window selection, rotated bounds, relative group movement, internal routes and atomic shared font properties');
+
+page.components[0].source={format:'EPLAN_P8',objectType:17,objectId:1};
+page.components[0].functionTextPosition={visible:false,offsetX:2};
+page.components[0].additionalTextPosition={visible:false};
+page.components[1].source={format:'EPLAN_P8',objectType:17,objectId:2};
+page.components[1].functionTextPosition={visible:false,visibilityExplicit:true};
+assert(applySelectionProperties(page,project,selection,{functionText:'Gemeinsam',additionalText:'Gravur',additionalFontSize:1.5}));
+assert.equal(page.components[0].functionTextPosition.visible,true);
+assert.equal(page.components[0].functionTextPosition.offsetX,2);
+assert.equal(page.components[1].functionTextPosition.visible,false);
+assert.equal(page.components[0].additionalTextPosition.visible,true);
+assert.equal(page.components[0].additionalTextPosition.fontSize,3);
+assert.equal(sharedPropertyValue(page,project,selection,'additionalFontSize'),1.5);
+assert.equal(page.components[2].additionalText,undefined);
+console.log('✓ Shared engraving edits and sizes reveal only inherited hidden labels and preserve explicit hiding');
+
+// Images participate in window selection and a common move without changing
+// electrical connectivity; image-only moves produce one ordinary history step.
+page.images=[{id:'graphic',dataUrl:'data:image/png;base64,AA==',x:10,y:80,width:60,height:30}];
+const imagesOnly={componentIds:[],cableIds:[],imageIds:['graphic']};
+const { normalizeSelection,selectionBounds,selectionCount }=await import('./ElementSelection');
+assert.deepEqual(normalizeSelection(page,{...imagesOnly,imageIds:['graphic','missing','graphic']}),imagesOnly);
+assert.equal(selectionCount(imagesOnly),1);
+assert.deepEqual(selectionBounds(page,project,imagesOnly),{left:10,top:80,right:70,bottom:110});
+assert.deepEqual(elementsInWindow(page,project,{x:5,y:75},{x:75,y:115}),imagesOnly);
+const imageHistory=new ProjectHistory();imageHistory.reset(project);
+const imageSnapshot=captureSelectionMove(page,imagesOnly),beforeImageMove=JSON.stringify(page);
+translateSelection(page,imageSnapshot,20,40);translateSelection(page,imageSnapshot,40,60);
+assert.deepEqual([page.images[0].x,page.images[0].y],[50,140]);
+assert.equal(page.images[0].width,60);assert.equal(page.images[0].height,30);
+assert.deepEqual(page.wires,JSON.parse(beforeImageMove).wires);
+assert.deepEqual(page.components,JSON.parse(beforeImageMove).components);
+imageHistory.record(project);
+assert.equal(JSON.stringify(imageHistory.undo()!.pages[0]),beforeImageMove);
+assert.deepEqual(imageHistory.redo()!.pages[0].images,page.images);
+console.log('✓ Images support window selection, relative movement and one-step history without changing electrical objects');

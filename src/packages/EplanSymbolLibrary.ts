@@ -11,6 +11,7 @@ export type LibraryEntry = {
   /** Insertion point in the normalized, y-down library definition. */
   origin: Point;
   labels: Map<number, Point>;
+  variantData?: Uint8Array;
 };
 const zero = { x: 0, y: 0 };
 const direction: Record<number, PinDefinition['direction']> = { 1: 'top', 2: 'right', 4: 'bottom', 8: 'left' };
@@ -141,7 +142,7 @@ class PropertyPlacement extends EodRecord {
  * FFFF. Walk typed values, not byte matches inside float payloads. An unfinished
  * or unfamiliar object cannot borrow values from the following placement.
  */
-function completePropertyPlacements(data: Uint8Array): EodRecord[] {
+export function completePropertyPlacements(data: Uint8Array): EodRecord[] {
   const result: EodRecord[] = [];
   for (let start = 0; start + 16 <= data.length; start++) {
     if (data[start] !== 0x65 || data[start + 1] !== 0xea || data[start + 2] !== 0x35 || data[start + 3] !== 0
@@ -227,7 +228,7 @@ export function labelPosition(entry: LibraryEntry, field: number, override?: Map
   if (!p) return { visible: field === 20010 };
   const d = entry.definition;
   const base = field === 20010 ? { x: d.width / 2, y: -8 }
-    : { x: d.width / 2, y: d.height + (field === 20011 ? 12 : 22) };
+    : { x: d.width / 2, y: d.height + (field === 20011 ? 12 : field===20025 ? 34 : 22) };
   return { preset: 'custom', offsetX: entry.origin.x + p.x * EPLAN_SCALE - base.x,
     offsetY: entry.origin.y - p.y * EPLAN_SCALE - base.y, alignment: 'start', fontSize: field === 20010 ? 7 : 6, visible: true };
 }
@@ -326,6 +327,7 @@ export class EplanSymbolLibrary {
         contactType: functionClass === 202 ? 'NC' : functionClass === 201 ? (symbol.number(0xefc7) === 3 ? 'PowerNO' : 'NO') : undefined
       };
       const entry = normalizeDefinition(definition, propertyPositions(variant.data));
+      entry.variantData = variant.data;
       this.entries.set(`${index}:${number}:${variantIndex}`, entry);
     }
   }
