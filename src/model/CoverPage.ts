@@ -1,6 +1,7 @@
 import { FrameText, PlotFrameTemplate, fitFrameText } from './PlotFrame';
 import { drawingToSvg, escapeSvg } from './ImportedDrawing';
 import { Page, PageImage, Project } from './types';
+import { isBundledSupplierLogo } from './PresentationNaming';
 
 export type CoverPageTemplate = PlotFrameTemplate & { images?: PageImage[] };
 export type CoverPageData = { values?: Record<string,string>; logo?: PageImage | null };
@@ -74,7 +75,8 @@ export function coverPageTextRuns(page:Page,project:Project) {
     return {text,value,cell,fit:fitFrameText(value,text,cell)};});
 }
 export function coverPageLogo(page:Page,project:Project):PageImage|undefined {
-  return page.coverPage?.logo===null?undefined:page.coverPage?.logo ?? coverPageTemplate(project).images?.[0];
+  const logo=page.coverPage?.logo===null?undefined:page.coverPage?.logo ?? coverPageTemplate(project).images?.[0];
+  return logo && !isBundledSupplierLogo(logo)?logo:undefined;
 }
 export function coverPageSvg(page:Page,project:Project):string {
   if(page.pageType!=='cover')return '';
@@ -84,7 +86,7 @@ export function coverPageSvg(page:Page,project:Project):string {
     const id=`cover-clip-${text.id}`;
     return `<defs><clipPath id="${escapeSvg(id)}"><rect x="${cell.x}" y="${cell.y}" width="${cell.width}" height="${cell.height}"/></clipPath></defs><g clip-path="url(#${escapeSvg(id)})"><text class="cover-text" data-cover-field="${text.property===undefined?'':coverFieldKey(text)}" x="${fit.x}" y="${fit.y}" font-size="${fit.size}" fill="currentColor" font-family="Tahoma,Arial,sans-serif" text-anchor="${text.anchor}"><title>${escapeSvg(value)}</title>${fit.lines.map((line,i)=>`<tspan x="${fit.x}" dy="${i?fit.size*1.2:0}">${escapeSvg(line)}</tspan>`).join('')}</text></g>`;
   }).join('');
-  return `<g id="coverPageLayer" class="eplan-cover-page" color="#8fae65" transform="scale(${page.plotFrame.width/t.width},${page.plotFrame.height/t.height})">${drawingToSvg(t.graphics,{color:'currentColor'})}${logo?`<image class="cover-logo" href="${escapeSvg(logo.dataUrl)}" x="${logo.x}" y="${logo.y}" width="${logo.width}" height="${logo.height}" preserveAspectRatio="xMidYMid meet"/>`:''}${texts}</g>`;
+  return `<g id="coverPageLayer" class="native-cover-page" color="#8fae65" transform="scale(${page.plotFrame.width/t.width},${page.plotFrame.height/t.height})">${drawingToSvg(t.graphics,{color:'currentColor'})}${logo?`<image class="cover-logo" href="${escapeSvg(logo.dataUrl)}" x="${logo.x}" y="${logo.y}" width="${logo.width}" height="${logo.height}" preserveAspectRatio="xMidYMid meet"/>`:''}${texts}</g>`;
 }
 export function createCoverPage(project:Project):Page {
   const existing=project.pages.filter(p=>p.pageType==='cover'),first=project.pages[0],t=coverPageTemplate(project);

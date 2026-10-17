@@ -10,10 +10,10 @@ Eine moderne, professionelle **Elektroplan- & Stromlaufplan-Software für Window
 * **Projekt-Backups (`.zw1`)**: Öffnen, Entpacken, Bearbeiten und erneuter Export von kompletten Projektarchiven inklusive Steuerdatei und Projektdatenbank-Verzeichnis.
 * **Artikel- & Makropakete (`.edz`)**: Import und Inspektion von Artikel- und Makropaketen mit 2D/3D-Stammdaten und XML-Artikelspezifikationen.
 * **Projekt-XML**: Standardisiertes XML-Austauschformat für Schaltpläne, Symbole und Verbindungen.
-* **EPLAN-P8-Bibliotheksimport**: Mitgelieferte Symbolbibliotheken liefern Konturen, Varianten und physische Anschlüsse für alle aktiven Seiten. Platzierungen bleiben regulär editierbar; Stammdaten bleiben beim Speichern erhalten. Editor und PDF verwenden ihre jeweilige Farbgebung. Formatbefunde und Grenzen: [REA-Untersuchung](docs/reverse-engineering/einspeisung.md).
+* **Projektbibliotheksimport**: Mitgelieferte Symbolbibliotheken liefern Konturen, Varianten und physische Anschlüsse für alle aktiven Seiten. Platzierungen bleiben regulär editierbar; Stammdaten bleiben beim Speichern erhalten. Editor und PDF verwenden ihre jeweilige Farbgebung. Formatbefunde und Grenzen: [REA-Untersuchung](docs/reverse-engineering/einspeisung.md).
 
 ### 📐 Normgerechte Schaltungsplanung (DIN EN 81346 / IEC 60617)
-* **Titelseite im EPLAN-P8-Format**: „+ Titelblatt (EPLAN P8)“ in der Seitenliste oder „Einfügen → Titelblatt“ erzeugt eine editierbare Titelseite. „Titelblatt bearbeiten“, `F2` oder Doppelklick öffnet Kundendaten, Projektbeschreibung, Kennwerte, Termine und Logo mit Vorschau. Das Beispiel übernimmt die eingebettete Vorlage **F26_001** samt Feldpositionen, Grafiken und Logo. Neue Projekte erhalten dieselbe Formularanordnung ohne vorgegebenes Firmenlogo. Seitenzahl, Speichern, Rückgängig und Vektor-PDF werden unterstützt. Für die ursprünglichen Formulardaten eines früher importierten Beispiels beide Archivteile erneut öffnen. [Formatbefunde und Grenzen](docs/reverse-engineering/titelseite.md).
+* **Editierbare Titelseite**: „+ Titelblatt“ in der Seitenliste oder „Einfügen → Titelblatt“ erzeugt eine editierbare Titelseite. „Titelblatt bearbeiten“, `F2` oder Doppelklick öffnet Kundendaten, Projektbeschreibung, Kennwerte, Termine und Logo mit Vorschau. Das Beispiel übernimmt die eingebettete Vorlage **F26_001** samt Feldpositionen und Grafiken. Neue Projekte erhalten dieselbe Formularanordnung ohne vorgegebenes Firmenlogo; eigene Logos lassen sich laden. Seitenzahl, Speichern, Rückgängig und Vektor-PDF werden unterstützt. Für die ursprünglichen Formulardaten eines früher importierten Beispiels beide Archivteile erneut öffnen. [Formatbefunde und Grenzen](docs/reverse-engineering/titelseite.md).
 * **Kennzeichnungsstruktur**: Vollständige Unterstützung von `=Anlage` (z.B. `=A1`), `+Ort` (z.B. `+S1`) und `-BMK` (Betriebsmittelkennzeichen wie `-K1`, `-Q1`, `-M1`).
 * **CAD Normblatt (DIN A3 Landscape)**:
   * Pfad-Spalten `0` bis `9` für präzise Querverweise.
@@ -111,9 +111,9 @@ Elektroplan unterstützt mobile Endgeräte (iOS Safari, Android Chrome) mit nati
 ## 📄 Lizenz
 MIT License.
 
-## EPLAN-P8-Import mit Projektbibliotheken
+## Archivimport mit Projektbibliotheken
 
-„Eplan Haus.zip.001“ und „.002“ werden über einen gemeinsamen, seitenunabhängigen
+Die beiden bereitgestellten Archivteile (`.001` und `.002`) werden über einen gemeinsamen, seitenunabhängigen
 Import mit den eingebetteten Symbolbibliotheken gelesen. **Einspeisung**
 (PDF-Seite 2 / Blatt 1) dient als Referenzseite. Beide Archivteile gemeinsam öffnen.
 Befunde, REA-Herkunft, Tests und verbleibende

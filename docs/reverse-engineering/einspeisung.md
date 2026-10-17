@@ -1,8 +1,8 @@
-# EPLAN P8: allgemeiner Bibliotheksimport
+# Projektarchiv: allgemeiner Bibliotheksimport
 
 Stand: 17.10.2026. Ausgangspunkt ist PDF-Seite 2 „Einspeisung“ des
-bereitgestellten EPLAN-P8-Exports. Quelle sind ausschließlich die unveränderten
-Archivteile `Eplan Haus.zip.001` und `.002`. Der PDF-Export wird nicht eingeblendet.
+bereitgestellten PDF-Exports. Grundlage sind ausschließlich die beiden
+unveränderten Archivteile (`.001` und `.002`). Der PDF-Export wird nicht eingeblendet.
 
 ## REA und Evidenz
 
@@ -19,15 +19,15 @@ Das vorhandene REA-Artefaktinventar wird weiterverwendet:
 REA belegt Container und Mitgliederinventar. Die folgenden EOD-Felder wurden
 durch eigene begrenzte Byte-Proben, Identitäts-/Indexabgleich und Abgleich mit
 dem Beispiel untersucht. Sie sind keine vom REA-Provider behauptete
-formatspezifische Semantik. Es wurde keine EPLAN-Installation ausgeführt.
+formatspezifische Semantik. Es wurde keine Quellsystem-Installation ausgeführt.
 
 ## Gemeinsamer Importweg
 
 Der frühere, auf den Seitentitel „Einspeisung“ begrenzte Nachzeichnungsweg ist
-entfernt. `EplanNativeProject` liest die Tabellen einmal pro Projekt und verwendet
+entfernt. Der Projektimporter liest die Tabellen einmal pro Projekt und verwendet
 denselben Import für alle aktiven Seiten, unabhängig vom Titel.
 
-`EplanSymbolLibrary` liest die mitgelieferten `.sdb`-Stammdaten. Die Zuordnung
+Der Bibliotheksimporter liest die mitgelieferten `.sdb`-Stammdaten. Die Zuordnung
 der Bibliotheksindizes stammt aus dem benannten Setting
 `TrDMProject.EmbeddedMasterDataLibraries.SymbolLibs` in
 `Settings.xdb/Setting.eod`; Bibliotheksnummern werden nicht fest einprogrammiert.
@@ -87,12 +87,12 @@ gemeinsame größenabhängige Definition anhand ihrer Quellausdehnung.
   Eigenschaftendialog, Anschlussbezeichnungen und Verdrahtung.
 - PDF: weißes Papier, Druckfarben und aktuelle bearbeitete Eigenschaften.
 - JSON, eigenes Projekt-XML und eigene `.zw1`-Archive erhalten die Stammdaten.
-  Das ist kein Rückexport der proprietären EPLAN-Datenbank.
+  Das ist kein Rückexport der proprietären Quellsystem-Datenbank.
 
 Die explizit importierte Leitungsstruktur wird beim Öffnen erhalten. Autoconnect
 erfindet keine zusätzlichen Kanten zwischen unveränderten Quellplatzierungen;
 neue Editorplatzierungen können weiterhin automatisch verbunden werden.
-Gleiches BMK allein beweist bei P8-Geräteanschlüssen keinen Kontaktspiegel.
+Gleiches BMK allein beweist bei Quellprojekt-Geräteanschlüssen keinen Kontaktspiegel.
 
 ## Befund für das Beispiel
 
@@ -156,7 +156,7 @@ erfundenen Verbindungspunkt. Die elektrische Kantenliste bleibt unverändert.
 - Anschlussbezeichnungen stammen aus vollständig strukturiert gelesenen
   Property-Unterobjekten: `ED63=20028`, `ED64` = Anschlussindex plus 1,
   `EC55` relativ zum physischen Pin, `EE19=2` horizontale Anordnung, `EC57`
-  Ausrichtung. Die nominale P8-Textgröße wird für SVG/PDF mit dem am Export
+  Ausrichtung. Die nominale Quellprojekt-Textgröße wird für SVG/PDF mit dem am Export
   geprüften Faktor 1,242 zur Schriftgröße umgerechnet. Instanztexte bleiben
   veränderbar. Routing-Symbole bekommen keine künstlichen Pin-Nummern.
 
@@ -169,7 +169,7 @@ T-Verbindungen auf PDF-Seite 2 und die Kreuzung auf PDF-Seite 24.
 
 Das Projekt speichert `drawingUnitsPerMm`, die Seite ihr Raster mit Abstand
 und Ursprung, und jede Bibliotheksdefinition ihren Maßstab `unitsPerMm` und
-logischen `insertionPoint`. Beim P8-Import bleibt der Maßstab `1000/420`
+logischen `insertionPoint`. Beim Quellprojekt-Import bleibt der Maßstab `1000/420`
 Zeichnungseinheiten pro mm erhalten. Das Editor-Grundraster beträgt 4 mm,
 Halbraster 2 mm und Feinraster 1 mm, mit dem Quellursprung unten links.
 Rasterdarstellung und Fang verwenden dieselben Werte, einschließlich des
@@ -182,14 +182,14 @@ Punkt stehen. Der Eigenschaftendialog zeigt und bearbeitet denselben Punkt.
 „Raster aus“ lässt freie Koordinaten zu. Neu erzeugte Leitungsknicke und
 Ausweichstücke nach dem Verschieben richten sich nach dem Seitenraster.
 
-Die P8-Stammdaten bleiben maßhaltig. Im Beispiel besitzen auch tatsächlich
+Die Quellprojekt-Stammdaten bleiben maßhaltig. Im Beispiel besitzen auch tatsächlich
 verbundene Kontakte konturbedingte Viertelmillimeter-Abstände, etwa 0,75 mm
 bis zum Rand eines runden Anschlusses. Deren physische Koordinaten werden
 beibehalten. Der Rasterfang führt Einfügepunkte und Leitungsachsen; ein
 unabhängiges Runden aller Kontaktkonturen würde die Originalgeometrie verändern.
 
 Die Standardbibliothek hat explizite Einfügepunkte und einen Maßstab von zwei
-Zeichnungseinheiten pro mm. Beim Verwenden in einem P8-Projekt werden ihre
+Zeichnungseinheiten pro mm. Beim Verwenden in einem importierten Projekt werden ihre
 Konturen, physischen Pins und Maße zusammen in den Projektmaßstab umgerechnet.
 LS-Schalter 3P, NH-Trenner 3P, Umschalter 4P und Drehstromzähler haben jetzt
 einheitliche 12-mm-Polabstände. Einzelne ungerade Pin-Koordinaten wurden auf
@@ -207,7 +207,7 @@ normalisiert und beim Einfügen in einen anderen Maßstab umgerechnet.
 Prüfungen verwenden das ganze Originalarchiv, die Quellenkoordinaten von Q12,
 alle physischen Pins der importierten Bibliotheken, alle Standardbibliotheks-Pins,
 vier Drehstellungen, genaue Autoconnect-Achsen und Makro-Wegpunkte. Der
-Browser-Test prüft Import, Drehen und Verschieben von Q12, neue P8- und
+Browser-Test prüft Import, Drehen und Verschieben von Q12, neue Quellprojekt- und
 Standardplatzierungen, eine neue Leitung, Rasterwechsel und erneutes JSON-Laden.
 
 ## Wohnzimmer 1: Anschlussrichtungen und echte Leiterabschnitte
@@ -333,14 +333,14 @@ in Wohnzimmer 1 und 132 in Einspeisung bleiben unverändert.
 
 ## Verbleibende Grenzen
 
-Die Slot-/Indexinterpretation ist für das mitgelieferte P8-Layout rekonstruiert,
-kein vollständiger allgemeiner c-tree-/EPLAN-Parser für alle Versionen.
+Die Slot-/Indexinterpretation ist für das mitgelieferte Quellprojekt-Layout rekonstruiert,
+kein vollständiger allgemeiner c-tree-/Quellsystem-Parser für alle Versionen.
 Einige Slots liefern nur einen lesbaren Präfix. Solche Grenzen werden pro Seite
 in `importDiagnostics` gemeldet, nicht als fehlerfreie Dekodierung ausgegeben.
 Die vollständige Semantik dynamischer Property-Gruppen, Haupt-/Nebenfunktionen,
-aller Grafiktypen und automatisch erzeugter EPLAN-Auswertungsformulare ist
+aller Grafiktypen und automatisch erzeugter Quellsystem-Auswertungsformulare ist
 weiterhin nicht bewiesen. Ein pixelidentisches Property-Layout und ein nativer
-EPLAN-Rückexport werden nicht behauptet.
+Quellsystem-Rückexport werden nicht behauptet.
 Neun Anschluss-Textplatzierungen in verwendeten Varianten referenzieren Ebene
 809, die im indexierten Ebenenbestand fehlt. Ohne belegte Textgröße erzeugt der
 Importer eine Diagnose statt einer geratenen Beschriftung. Browser-Schriften

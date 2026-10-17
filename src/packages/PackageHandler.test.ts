@@ -37,7 +37,7 @@ async function runTests() {
   const project = inspectionResult.extractedProject!;
 
   console.log('\n=== 2. Testing Project Metadata Extraction ===');
-  assert(project.name.includes('EPLAN-Haus'), `Project name contains EPLAN-Haus (got "${project.name}")`);
+  assert(project.name === 'Haus', `Example project uses a neutral display name (got "${project.name}")`);
   assert(project.description.includes('Einfamilienhaus mit Garage'), `Description matches "Einfamilienhaus mit Garage" (got "${project.description}")`);
   assert(project.company === 'Viktor Steckler', `Company is "Viktor Steckler" (got "${project.company}")`);
   assert(project.author === 'VITAL', `Author is "VITAL" (got "${project.author}")`);

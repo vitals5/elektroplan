@@ -1,6 +1,7 @@
 import { selectionCount } from '../model/ElementSelection';
 import { createCoverPage } from '../model/CoverPage';
 import { CoverPageDialog } from './CoverPageDialog';
+import { neutralSourceLabel, prepareProjectPresentation } from '../model/PresentationNaming';
 import { SharedProperty, SelectionPatch, sharedPropertyValue, applySelectionProperties } from '../model/SelectionProperties';
 import { cableCrossings } from '../model/CableDefinition';
 // src/ui/App.ts
@@ -147,7 +148,7 @@ export class App {
             <div class="menu-opt" id="menuWire">🔌 Verbindungslinie (Verdrahten) <span class="opt-key">D</span></div>
             <div class="menu-sep"></div>
             <div class="menu-opt" id="menuNewPage">📄 Neue Seite anlegen...</div>
-            <div class="menu-opt" id="menuNewCoverPage">📄 Titelblatt (EPLAN P8) anlegen...</div>
+            <div class="menu-opt" id="menuNewCoverPage">📄 Titelblatt anlegen...</div>
             <div class="menu-opt" id="menuInsertPageMacro">📄 Seitenmakro anfügen (.ems)...</div>
           </div>
         </div>
@@ -1220,7 +1221,7 @@ export class App {
         <span style="font-size: 11px; font-weight: bold; color: var(--text-muted); text-transform: uppercase;">Projektseiten (DIN EN 81346)</span>
         <button class="btn btn-primary" id="btnAddPage" style="padding: 2px 8px; font-size: 11px;">+ Seite</button>
       </div>
-      <button class="btn" id="btnAddCoverPage" style="width:100%;margin-bottom:12px">+ Titelblatt (EPLAN P8)</button>
+      <button class="btn" id="btnAddCoverPage" style="width:100%;margin-bottom:12px">+ Titelblatt</button>
       <div class="page-tree">
     `;
 
@@ -2395,6 +2396,7 @@ export class App {
       
       if (result.extractedProject) {
         this.project = result.extractedProject;
+        prepareProjectPresentation(this.project);
         setProjectSymbolLibrary(this.project);
         this.selectedComponent = null;
         this.selectedWire = null;
@@ -2416,7 +2418,7 @@ export class App {
             <div style="margin-top: 10px;">
               <strong>Gefundene Archivelemente (${result.entries.length}):</strong>
               <div style="max-height: 150px; overflow-y: auto; background: var(--bg-primary); padding: 6px; border-radius: 4px; margin-top: 4px; font-family: monospace; font-size: 10px;">
-                ${result.entries.slice(0, 50).map(e => `<div>${e.type === 'elk' ? '⭐' : (e.type === 'edb' ? '📁' : '📄')} ${e.path}</div>`).join('')}
+                ${result.entries.slice(0, 50).map(e => `<div>${e.type === 'elk' ? '⭐' : (e.type === 'edb' ? '📁' : '📄')} ${escapeSvg(neutralSourceLabel(e.path))}</div>`).join('')}
                 ${result.entries.length > 50 ? `<div>... und ${result.entries.length - 50} weitere Einträge</div>` : ''}
               </div>
             </div>
@@ -2426,19 +2428,19 @@ export class App {
         const displayName = files.length > 1 ? `${files.length} Archivteile (${result.filename})` : (files[0]?.name || result.filename);
         detailsContainer.innerHTML = `
           <div style="padding: 10px; background-color: var(--bg-secondary); border: 1px solid var(--accent); border-radius: 4px;">
-            <div style="font-weight: bold; color: var(--success); margin-bottom: 4px;">✓ ${displayName} erfolgreich analysiert</div>
+            <div style="font-weight: bold; color: var(--success); margin-bottom: 4px;">✓ ${escapeSvg(neutralSourceLabel(displayName))} erfolgreich analysiert</div>
             <div>Format: <strong>${result.format}</strong></div>
-            <div>Projektname: <strong>${result.projectName}</strong></div>
+            <div>Projektname: <strong>${escapeSvg(neutralSourceLabel(result.extractedProject?.name ?? result.projectName))}</strong></div>
             <div>Seiten im Projekt: <strong>${result.extractedProject?.pages.length || 0}</strong></div>
             ${entriesSummary}
             <div style="margin-top: 8px; font-size: 10px; color: var(--warning);">
-              ${result.messages.join('<br>')}
+              ${result.messages.map(message=>escapeSvg(neutralSourceLabel(message))).join('<br>')}
             </div>
           </div>
         `;
       }
     } catch (err: any) {
-      alert(`Fehler beim Öffnen der Datei: ${err.message}`);
+      alert(`Fehler beim Öffnen der Datei: ${neutralSourceLabel(err.message)}`);
     }
   }
 

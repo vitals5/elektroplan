@@ -86,7 +86,7 @@ export function fitFrameText(value: string, text: FrameText, cell: ReturnType<ty
 
 export function plotFrameSvg(page: Page, project: Project): string {
   const t=project.plotFrameTemplate ?? defaultPlotFrame();
-  return `<g id="titleBlock" class="eplan-plot-frame" color="#8fae65" transform="scale(${page.plotFrame.width/t.width},${page.plotFrame.height/t.height})">${drawingToSvg(t.graphics,{color:'currentColor'})}${t.texts.map(text=>{
+  return `<g id="titleBlock" class="native-plot-frame" color="#8fae65" transform="scale(${page.plotFrame.width/t.width},${page.plotFrame.height/t.height})">${drawingToSvg(t.graphics,{color:'currentColor'})}${t.texts.map(text=>{
     const value=frameTextValue(text,page,project,t); if(!value)return '';
     const cell=frameTextCell(text,t),fit=fitFrameText(value,text,cell),id='frame-clip-'+text.id;
     return `<defs><clipPath id="${id}"><rect x="${cell.x}" y="${cell.y}" width="${cell.width}" height="${cell.height}"/></clipPath></defs><g clip-path="url(#${id})"><text class="frame-text" data-field="${text.property ?? ''}" x="${fit.x}" y="${fit.y}" font-size="${fit.size}" fill="currentColor" font-family="Tahoma,Arial,sans-serif" text-anchor="${text.anchor}">${fit.lines.map((line,i)=>`<tspan x="${fit.x}" dy="${i?fit.size*1.2:0}">${escapeSvg(line)}</tspan>`).join('')}</text></g>`;

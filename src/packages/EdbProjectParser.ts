@@ -8,6 +8,7 @@ import { EPLAN_SCALE } from './EplanSymbolLibrary';
 import { Project, Page, PlacedComponent, PageType, Wire, PageText, PageBox, PageImage } from '../model/types';
 import { SYMBOL_DEFINITIONS, getSymbolById, getSymbolForComponent, setProjectSymbolLibrary } from '../model/symbols';
 import { AutoconnectEngine } from '../model/AutoconnectEngine';
+import { prepareProjectPresentation, neutralSourceLabel } from '../model/PresentationNaming';
 
 export interface ExtractedPageMeta {
   pageType?: PageType;
@@ -121,7 +122,7 @@ export class EdbProjectParser {
 
     // 3. Extract and sort all page records from Page.eod
     const native = await EplanNativeProject.create(zip, pageZipEntry.name.slice(0, -'Page.eod'.length));
-    if (!native) throw new Error('Dieses EPLAN-Datenbanklayout wird noch nicht unterstützt. Ein Bibliotheksimport ist nicht möglich.');
+    if (!native) throw new Error('Dieses Datenbanklayout wird noch nicht unterstützt. Ein Bibliotheksimport ist nicht möglich.');
     const rawPages = native?.pages ?? this.extractPages(pageBuf);
     messages.push(`${rawPages.length} aktive Projektseiten in der Datenbank identifiziert.`);
 
@@ -251,7 +252,7 @@ export class EdbProjectParser {
 
       if (native) {
         native.importPage(pageId, page, new Map(rawPages.map(p => [p.pageId, p.pageNumber])));
-        messages.push(`P8-Bibliotheksimport „${page.title}“: ${page.components.length} Objekte, ${page.wires.length} Verbindungen.`);
+        messages.push(`Projektbibliotheksimport „${page.title}“: ${page.components.length} Objekte, ${page.wires.length} Verbindungen.`);
         messages.push(...(page.importDiagnostics ?? []).map(d => `Seite ${page.pageNumber}: ${d}`));
       }
       pages.push(page);
@@ -286,12 +287,13 @@ export class EdbProjectParser {
     };
 
     native?.finalize(project);
+    prepareProjectPresentation(project);
     if (project.plotFrameTemplate?.diagnostics?.length) messages.push(...project.plotFrameTemplate.diagnostics.map(d => 'Normblatt: ' + d));
     if (project.coverPageTemplate?.diagnostics?.length) messages.push(...project.coverPageTemplate.diagnostics.map(d => 'Titelseite: ' + d));
     if (native) messages.push(...native.messages, `${project.symbolLibrary!.length} gemeinsame Projekt-Bibliotheksdefinitionen übernommen.`);
     setProjectSymbolLibrary(project);
 
-    return { project, messages };
+    return { project, messages:messages.map(neutralSourceLabel) };
   }
 
   /**

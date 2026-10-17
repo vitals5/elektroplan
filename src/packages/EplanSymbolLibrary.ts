@@ -243,7 +243,7 @@ export class EplanSymbolLibrary {
 
   static async create(zip: JSZip, root: string): Promise<EplanSymbolLibrary> {
     const setting = zip.file(`${root}Settings.xdb/Setting.eod`);
-    if (!setting) throw new Error('EPLAN-Bibliotheksverzeichnis Settings.xdb/Setting.eod fehlt.');
+    if (!setting) throw new Error('Bibliotheksverzeichnis Settings.xdb/Setting.eod fehlt.');
     const data = await setting.async('uint8array');
     const key = new TextEncoder().encode('TrDMProject.EmbeddedMasterDataLibraries.SymbolLibs');
     let start = -1;
@@ -251,7 +251,7 @@ export class EplanSymbolLibrary {
       for (let j = 0; j < key.length; j++) if (data[i + j] !== key[j]) continue outer;
       start = i + key.length; break;
     }
-    if (start < 0) throw new Error('Keine Zuordnung der eingebetteten EPLAN-Symbolbibliotheken gefunden.');
+    if (start < 0) throw new Error('Keine Zuordnung der eingebetteten Symbolbibliotheken gefunden.');
     let names: string[] | undefined;
     for (let i = start; i + 11 < Math.min(data.length, start + 1024); i++) {
       if (data[i] !== 0x95 || data[i + 1] !== 3 || data[i + 2] !== 0x92) continue;
@@ -260,7 +260,7 @@ export class EplanSymbolLibrary {
       if (length < 4 || count > 1024 || i + 7 + length > data.length) continue;
       names = new TextDecoder().decode(data.subarray(i + 11, i + 7 + length)).split('\0').slice(0, count); break;
     }
-    if (!names) throw new Error('Die EPLAN-Bibliothekszuordnung ist nicht lesbar.');
+    if (!names) throw new Error('Die Bibliothekszuordnung ist nicht lesbar.');
     return new EplanSymbolLibrary(zip, root, names, await readEplanLayers(zip, root));
   }
 

@@ -1,5 +1,6 @@
 import { cableDrawing } from '../model/CableDefinition';
 import { coverPageTemplate, coverPageTextRuns, coverPageLogo } from '../model/CoverPage';
+import { prepareProjectPresentation } from '../model/PresentationNaming';
 import { defaultPlotFrame, frameTextCell, frameTextValue, fitFrameText } from '../model/PlotFrame';
 import { interruptionLabelPosition, isInterruptionSymbol } from '../model/ConnectionSymbols';
 import { rotatedLocalPoint } from '../model/SymbolGeometry';
@@ -36,6 +37,8 @@ export interface PdfExportOptions {
 
 export class PdfExporter {
   public static async exportToPdf(project: Project, options: PdfExportOptions): Promise<Blob> {
+    project=structuredClone(project);
+    prepareProjectPresentation(project);
     const isA3 = options.paperFormat === 'a3';
     const pageWidthMm = isA3 ? 420 : 297;
     const pageHeightMm = isA3 ? 297 : 210;

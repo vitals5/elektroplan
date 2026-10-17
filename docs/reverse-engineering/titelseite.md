@@ -1,4 +1,4 @@
-# EPLAN P8: Titelseite F26_001
+# Projektarchiv: Titelseite F26_001
 
 Untersuchung am 17.10.2026 mit dem [REA-Workflow](https://github.com/morluto/rea/blob/main/.agents/skills/reverse-engineer-anything/SKILL.md).
 Das vorhandene Containerinventar wird weiterverwendet, keine erneute identische
@@ -6,11 +6,11 @@ Analyse: Evidence `ev_de4dc0fb509a8c5e9b4e0f8cea75543cdb07faa07664ed13c624290355
 ZIP-SHA256 `6fdf42f60f4728528b87ebfed9fef7b610122d8563f6801a1a0d6e46cd81d028`.
 Dieses Inventar belegt die Archivmitglieder. Die folgenden Formatfelder wurden
 mit begrenzten Byte-Proben und dem unabhängigen PDF-Export, Seite 1, abgeglichen;
-sie sind keine vom REA-Provider behauptete EPLAN-Semantik. EPLAN wurde nicht ausgeführt.
+sie sind keine vom REA-Provider behauptete Quellsystem-Semantik. Quellsystem wurde nicht ausgeführt.
 
 ## Ressourcen und Koordinaten
 
-`EPLAN-Haus.edb/Page.eod/eox`, Objekt 1, referenziert über Property `2B07`
+`<Projektstamm>/Page.eod/eox`, Objekt 1, referenziert über Property `2B07`
 (UTF-8-String nach vier Bytes) die Vorlage `F26_001`; `EFE5` wiederholt den Namen.
 `Form.eod/eox` enthält sie als indexiertes Objekt 101, Typ 51, Slotgröße 1297.
 Das Normblatt FN1_001 ist dagegen Objekt 106, Typ 21. Der bisherige Normblattparser
@@ -48,12 +48,13 @@ Sie werden als gefüllte Polygone übernommen. Die PDF-Papierhöhe ist etwa
 297,176 mm; Koordinatenvergleiche berücksichtigen den oberen Rand von 0,176 mm.
 
 Bild 152001 speichert `F0D3=(64,232.267605633803)` und
-`F0D4=(93,272.653605633803)` sowie `F0E7=$(MD_IMG)\EPLAN.jpg`.
+`F0D4=(93,272.653605633803)` sowie `F0E7=$(MD_IMG)\<Quelllogo>.jpg`.
 Die eindeutige eingebettete Datei ist
-`EPLAN-Haus.edb/Images/bc146770/EPLAN.jpg`, JPEG, 1229 × 1718 Pixel.
-Der Import übernimmt sie als Data-URL, Position (64,24.346394366197) in
-y-abwärts gerichteten Vorlagen-mm, Größe 29 × 40,386 mm. Es wird kein Bild aus
-dem PDF extrahiert und kein externer Bildpfad aufgerufen.
+`<Projektstamm>/Images/<Bildverzeichnis>/<Quelllogo>.jpg`, JPEG, 1229 × 1718 Pixel.
+Der Ressourcenleser belegt diese Data-URL und die Position (64,24.346394366197)
+in y-abwärts gerichteten Vorlagen-mm, Größe 29 × 40,386 mm. Die neutrale
+Darstellung entfernt dieses mitgelieferte Herstellerlogo vor der Verwendung.
+Es wird kein Bild aus dem PDF extrahiert und kein externer Bildpfad aufgerufen.
 
 ## Propertybindungen
 
@@ -67,7 +68,7 @@ Die Schlüssel behalten Index und Property-ID (`property:index`).
 | 10014:0 | Kommission | 116,162 |
 | 10015:0 | Hersteller / Firma: Viktor Steckler | 116,148 und 116,264 |
 | 10901:1 | Pfad | 116,132 |
-| 10000:0 | Projektname, im PDF EPLAN-Haus | 116,124 |
+| 10000:0 | Projektname, im PDF Haus | 116,124 |
 | 10030:0 | Fabrikat | 116,116 |
 | 10031:0 | Typ | 116,108 |
 | 10032:0 | Installationsort | 116,100 |
@@ -93,13 +94,23 @@ ist aber keine aktuelle Blattzählung.
 
 ## Grenzen und Prüfung
 
-Die beobachteten Feld- und Slotlayouts sind weiterhin auf diese P8-Datenbank
+Die beobachteten Feld- und Slotlayouts sind weiterhin auf diese Quellprojekt-Datenbank
 begrenzt. Die genaue Semantik der vier leeren Kopfadressfelder und alle übrigen
 Berichtsformtypen sind nicht rekonstruiert. Schriftmetriken bleiben eine
-Browser-/PDF-Näherung von Tahoma. Eine pixelidentische EPLAN-Ausgabe oder ein
+Browser-/PDF-Näherung von Tahoma. Eine pixelidentische Quellsystem-Ausgabe oder ein
 proprietärer Datenbank-Rückexport wird nicht behauptet.
 
-`src/packages/EplanCoverPage.test.ts` prüft am echten geteilten Quellarchiv die
+Der Integrationstest für Titelseiten prüft am echten geteilten Quellarchiv die
 Vorlage, Feldbindungen, Datumswerte, Ankerpositionen, gefüllte Grafik und die
 eingebettete Bildquelle. Mehrdeutige Bildnamen erzeugen eine Diagnose statt
 einer willkürlichen Dateiauswahl.
+
+## Neutrale Darstellung
+
+Die Oberfläche verwendet neutrale Begriffe wie „Titelblatt“ und „Projektbibliotheksimport“.
+Das bisher im Quellprojekt enthaltene Herstellerlogo wird aus neuen und älteren
+Beispielimporten entfernt und nicht im Editor oder PDF angezeigt. Eigene Logos
+bleiben nutzbar; die Erkennung vergleicht Bildinhalt und Länge, damit ein eigenes
+Ersatzbild mit altem Dateinamen erhalten bleibt. Auch der Beispiel-Projektname
+wird neutral übernommen. Technische Herkunftskennungen bleiben für vorhandene
+Projektdateien kompatibel. Quellpfade sind in dieser Dokumentation neutral bezeichnet.

@@ -1,6 +1,7 @@
 import { Page, PageImage, Project } from '../model/types';
 import { CoverPageData, coverPageFields, coverPageLogo, coverPageSvg } from '../model/CoverPage';
 import { escapeSvg } from '../model/ImportedDrawing';
+import { isBundledSupplierLogo } from '../model/PresentationNaming';
 
 export interface CoverPageDialogCallbacks {
   onSave: (cover: CoverPageData) => void;
@@ -175,7 +176,9 @@ export class CoverPageDialog {
       });
       if (!modal.isConnected || request !== this.logoRequest) return;
       const old = this.effectiveLogo();
-      this.draft.logo = { ...(old ?? { id: 'cover-logo', x: 64, y: 24.346394, width: 29, height: 40.386 }), dataUrl };
+      const logo = { ...(old ?? { id: 'cover-logo', x: 64, y: 24.346394, width: 29, height: 40.386 }), dataUrl, caption:file.name };
+      if(isBundledSupplierLogo(logo))throw new Error('Bitte ein eigenes Firmenlogo verwenden.');
+      this.draft.logo = logo;
       this.setLogoError(modal, '');
       this.updateLogoPosition(modal);
       this.updatePreview(modal);
