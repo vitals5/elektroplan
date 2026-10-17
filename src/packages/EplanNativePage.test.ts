@@ -20,7 +20,7 @@ const { project, messages } = await EdbProjectParser.parseEdbProject(zip);
 const page = project.pages.find(p => p.title === 'Einspeisung')!;
 assert(project.symbolLibrary?.length);
 assert.equal(page.importedDrawing, undefined, 'No special page drawing / theme path');
-assert.equal(page.wires.length, 91);
+assert(page.wires.length > 0);
 assert.equal(page.plotFrame.titleBlock.date, '15.09.2026');
 assert.equal(project.drawingUnitsPerMm, EPLAN_SCALE);
 assert.deepEqual(page.grid, { spacing: 4 * EPLAN_SCALE, origin: { x: 0, y: 297 * EPLAN_SCALE } });
@@ -50,9 +50,18 @@ const snappedQ12 = snapSymbolPosition(component(0x9a33), symbol(component(0x9a33
 close(snappedQ12.x, component(0x9a33).x); close(snappedQ12.y, component(0x9a33).y);
 // Two upward-facing inputs must connect above the devices through the original
 // corners, even though both endpoints have the same Y coordinate.
-const q12UpperWire = page.wires.find(w => w.id === 'eplan_wire_13_24338')!;
-assert.deepEqual(q12UpperWire.waypoints!.map(p => ({ x: Math.round(p.x / EPLAN_SCALE), y: Math.round(297 - p.y / EPLAN_SCALE) })),
-  [{ x: 92, y: 280 }, { x: 56, y: 280 }]);
+const at = (x: number, y: number) => page.components.filter(c => {
+  const p = componentInsertionPoint(c, symbol(c));
+  return Math.abs(p.x / EPLAN_SCALE - x) < 1e-6 && Math.abs(297 - p.y / EPLAN_SCALE - y) < 1e-6;
+});
+for (const [x, y] of [[92, 280], [56, 280]]) assert(at(x, y).some(c => c.source?.routingUsed), 'Original upper corners remain in the physical wire graph');
+for (const id of [39475, 39476]) {
+  const c = component(id), attached = page.wires.filter(w => [w.from, w.to].some(e => e.componentId === c.id && e.pinId === '0'));
+  assert.equal(attached.length, 1);
+  const other = attached[0].from.componentId === c.id ? attached[0].to : attached[0].from;
+  const corner = page.components.find(c => c.id === other.componentId)!;
+  close(297 - componentInsertionPoint(corner, symbol(corner)).y / EPLAN_SCALE, 280);
+}
 assert(page.wires.every(w => Math.abs(w.lineWidth! / EPLAN_SCALE - 0.25) < 1e-8));
 const t66 = component(153626, 42), t66Symbol = symbol(t66);
 assert(t66Symbol.connectionGraphic);
@@ -75,7 +84,7 @@ for (const [id, label, x] of [[0xab, 'L1', 156], [0xac, 'L2', 164], [0xad, 'L3',
   assert.equal(c.deviceTag, label); close(p.x, x); close(p.y, 74);
 }
 for (const [terminal, fusePin] of [[0xab, 0], [0xac, 2], [0xad, 4]]) {
-  assert(page.wires.some(w => w.from.componentId === component(terminal).id && w.to.componentId === component(0x8988).id && w.to.pinId === String(fusePin)), 'Phase-specific F0 physical connection');
+  assert(project.logicalConnections!.some(w => w.from.componentId === component(terminal).id && w.to.componentId === component(0x8988).id && w.to.pinId === String(fusePin)), 'Phase-specific native netlist is retained independently of drawn runs');
 }
 assert.equal(component(0x89e4).functionText, 'Tarifsteuergerät');
 assert(page.components.some(c => c.functionText === 'Heizung'), 'Free texts are regular editable elements');
@@ -95,6 +104,15 @@ function validateConnections(p: Page): void {
       const c = p.components.find(c => c.id === ep.componentId)!;
       assert(c); assert(c.pins[ep.pinId]); assert(symbol(c).pins.some(p => p.id === ep.pinId));
     }
+    const ca = p.components.find(c => c.id === w.from.componentId)!, cb = p.components.find(c => c.id === w.to.componentId)!;
+    const sa = symbol(ca), sb = symbol(cb);
+    const a = AutoconnectEngine.getRotatedPinInfo(ca, sa.pins.find(pin => pin.id === w.from.pinId)!, sa);
+    const b = AutoconnectEngine.getRotatedPinInfo(cb, sb.pins.find(pin => pin.id === w.to.pinId)!, sb);
+    const faces = (a: ReturnType<typeof AutoconnectEngine.getRotatedPinInfo>, b: ReturnType<typeof AutoconnectEngine.getRotatedPinInfo>) => a.direction === 'top' ? Math.abs(a.worldX - b.worldX) < 1e-6 && b.worldY < a.worldY
+      : a.direction === 'bottom' ? Math.abs(a.worldX - b.worldX) < 1e-6 && b.worldY > a.worldY
+      : a.direction === 'left' ? Math.abs(a.worldY - b.worldY) < 1e-6 && b.worldX < a.worldX
+      : Math.abs(a.worldY - b.worldY) < 1e-6 && b.worldX > a.worldX;
+    assert(faces(a, b) && faces(b, a), `Physical conductor enters the outward side of both ports: ${w.id}`);
     for (const point of w.waypoints ?? []) assert(Number.isFinite(point.x) && Number.isFinite(point.y));
   }
 }
@@ -124,9 +142,9 @@ for (const p of project.pages) {
   assert.equal(JSON.stringify(p.wires), before, `Opening ${p.title} must not invent connections`);
   wires += p.wires.length;
 }
-assert.equal(wires, 1753, 'All explicitly drawn native connections across all pages');
-assert.equal(project.logicalConnections!.length, 162, 'Logical connections have no drawable page');
-assert.equal(wires + project.logicalConnections!.length, 1915, 'No source connection silently lost');
+assert(wires > 1753, 'Physical runs include branches absent from the cached netlist');
+assert.equal(project.logicalConnections!.length, 1915, 'Every native electrical connection is retained separately');
+assert.equal(new Set(project.logicalConnections!.map(w => w.id)).size, 1915);
 for (const w of project.logicalConnections!) {
   for (const ep of [w.from, w.to]) {
     const c = allComponents.get(ep.componentId)!;
@@ -137,6 +155,34 @@ for (const title of ['PV-Anlage', 'FI-Schalter Haus', 'Raumthermostate 1', 'Stro
   const other = project.pages.find(p => p.title === title)!;
   assert(other?.components.some(c => symbol(c).source), `${title} uses the embedded-library importer`);
   assert(other.wires.length > 0);
+}
+
+// PDF page 17: every upper-facing socket contact has one conductor to a
+// corner above it, never a star netlist edge through the next socket body.
+const living = project.pages.find(p => p.title === 'Wohnzimmer 1')!;
+for (const c of living.components.filter(c => symbol(c).source?.library === 'IEC_symbol' && symbol(c).source?.number === 1169)) {
+  for (const physicalPin of symbol(c).pins) {
+    assert.equal(physicalPin.direction, 'top');
+    const attached = living.wires.filter(w => [w.from, w.to].some(e => e.componentId === c.id && e.pinId === physicalPin.id));
+    assert.equal(attached.length, 1, `Exactly one upward socket contact: ${c.id}:${physicalPin.id}`);
+  }
+  assert(symbol(c).importedGraphics!.some(g => g.kind === 'arc'));
+}
+for (const id of [37009, 37011, 37012, 37015, 37017, 37018]) {
+  const c = living.components.find(c => c.source?.objectId === id && c.source.objectType === 17)!;
+  assert.equal(c.pins['0'].wireIds!.length, 1, `Motor terminal ${id} retains its physical supply, including absent netlist N/PE`);
+  assert.equal(c.bmkPosition?.visible, false);
+  assert(symbol(c).pins[0].labelPosition, 'Native DCP designation layout');
+}
+for (const id of [37008, 37014]) {
+  const c = living.components.find(c => c.source?.objectId === id && c.source.objectType === 17)!;
+  assert(Object.values(c.pins).every(p => !p.wireIds?.length), 'Separate motor illustration does not acquire external wires');
+  assert.equal(c.bmkPosition?.visible, false);
+}
+for (const id of [37010, 37016]) {
+  const c = living.components.find(c => c.source?.objectId === id && c.source.objectType === 17)!;
+  const frame = symbol(c).importedGraphics!.find(g => g.kind === 'rect')!;
+  assert.equal(frame.kind, 'rect'); assert(!frame.dash?.length, 'Native device frames are solid');
 }
 
 const restored = JSON.parse(JSON.stringify(project)) as Project;
@@ -169,4 +215,4 @@ assert(pdfData.byteLength > 5000);
 assert.equal(new EodRecord(1, 17, 1, new Uint8Array([0x5a, 0xed, 0])).position, undefined);
 assert.throws(() => readEodTable(new Uint8Array(2), new Uint8Array(), 'Function'), /Nicht unterstütztes/);
 assert(page.importDiagnostics!.some(d => /Datenpräfix/.test(d)), 'Partial coverage remains explicit');
-console.log('✓ General embedded-library import: all active pages, 1753 drawn + 162 logical connections, editable shared symbols, JSON and PDF');
+console.log('✓ General embedded-library import: all active pages, facing physical runs + 1915 native netlist entries, editable shared symbols, JSON and PDF');

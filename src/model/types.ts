@@ -202,7 +202,7 @@ export interface Project {
   drawingUnitsPerMm?: number;
   /** Shared project master data. Placements reference these definitions by symbolId. */
   symbolLibrary?: SymbolDefinition[];
-  /** Logical net connections without a drawable source page (may span pages). */
+  /** Native electrical endpoint netlist, separate from editable drawn runs (may span pages). */
   logicalConnections?: Wire[];
   activePageId: string;
 }

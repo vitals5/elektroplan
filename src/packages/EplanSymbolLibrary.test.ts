@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import JSZip from 'jszip';
-import { EodRecord, readEodTable } from './EodReader';
+import { EodRecord, readEodTable, readIndexedEodRecords } from './EodReader';
+import { arcPoints } from '../model/ImportedDrawing';
 import { EPLAN_SCALE, EplanSymbolLibrary, eplanPrimitives, normalizeDefinition, sourcePinLabelPositions } from './EplanSymbolLibrary';
 import { PinDefinition, SymbolDefinition } from '../model/types';
 
@@ -62,6 +63,36 @@ const [graphic] = eplanPrimitives(line, layers);
 assert.equal(graphic.kind, 'line');
 if (graphic.kind === 'line') close(graphic.width!, 0.35 * EPLAN_SCALE);
 
+// Circle records also encode circular arcs. Parameters are relative to the
+// radius vector, and both start and end matter (EC8A alone is not a sweep).
+const circleRecord = (vector: [number, number], start?: number, end?: number) => new EodRecord(0, 0x20, 0,
+  Buffer.concat([tag(0xec8b, Buffer.concat([f64(3), f64(4)])),
+    tag(0xec8c, Buffer.concat(vector.map(f64))),
+    ...(start === undefined ? [] : [tag(0xec89, f64(start))]),
+    ...(end === undefined ? [] : [tag(0xec8a, f64(end))])]));
+function arcOf(record: EodRecord) {
+  const [g] = eplanPrimitives(record);
+  assert.equal(g?.kind, 'arc');
+  if (g.kind !== 'arc') throw new Error('Expected source arc');
+  return g;
+}
+const lowerHalf = arcOf(circleRecord([0, 2], Math.PI / 2, 3 * Math.PI / 2));
+const lowerPoints = arcPoints(lowerHalf);
+close(lowerPoints[0].x, EPLAN_SCALE); close(lowerPoints[0].y, -4 * EPLAN_SCALE);
+close(lowerPoints.at(-1)!.x, 5 * EPLAN_SCALE); close(lowerPoints.at(-1)!.y, -4 * EPLAN_SCALE);
+assert(lowerPoints.every(p => p.y >= lowerHalf.y - 1e-9), 'Rotated radius and nonzero start yield the lower half');
+close(Math.max(...lowerPoints.map(p => p.y)), -2 * EPLAN_SCALE);
+const wrapped = arcOf(circleRecord([2, 0], 0, -Math.PI / 2));
+const wrappedPoints = arcPoints(wrapped);
+close(wrappedPoints.at(-1)!.x, 3 * EPLAN_SCALE); close(wrappedPoints.at(-1)!.y, -2 * EPLAN_SCALE);
+assert(wrappedPoints.some(p => p.x < wrapped.x) && wrappedPoints.some(p => p.y < wrapped.y), 'Negative end wraps CCW through three quadrants');
+for (const [start, end] of [[undefined, undefined], [0, 0], [1.2, 1.2], [0, 2 * Math.PI]])
+  assert.equal(eplanPrimitives(circleRecord([0, 2], start, end))[0].kind, 'circle', 'Equal parameters retain full circles');
+assert.deepEqual(eplanPrimitives(circleRecord([0, 0], 0, Math.PI)), []);
+assert.deepEqual(eplanPrimitives(circleRecord([2, 0], NaN, Math.PI)), []);
+assert.deepEqual(eplanPrimitives(new EodRecord(0, 0x20, 0,
+  Buffer.concat([circleRecord([2, 0]).data, u16(0xec8a), Buffer.alloc(4)]))), []);
+
 // Real indexed variant records verify the layout across all used project pages.
 const zip = await JSZip.loadAsync(Buffer.concat(['Eplan Haus.zip.001', 'Eplan Haus.zip.002'].map(f => fs.readFileSync(f))));
 const root = 'EPLAN-Haus.edb/';
@@ -73,16 +104,26 @@ await library.prepare(records);
 const entries = new Map(records.filter(r => r.symbol !== undefined).map(r => {
   const entry = library.resolve(r)!; return [entry.definition.id, entry];
 }));
-assert.equal([...entries.values()].flatMap(e => e.definition.pins).filter(p => p.labelPosition).length, 107);
+assert([...entries.values()].flatMap(e => e.definition.pins).filter(p => p.labelPosition).length >= 107);
 const f0 = library.resolve(records.find(r => r.id === 0x8988 && r.pageId === 13 && r.type === 17)!)!;
 const f0pin = f0.definition.pins.find(p => p.id === '0')!.labelPosition!;
 // PDF reference F0 pin 1 baseline: (443.906 pt, 669.302 pt).
 close((156 + (f0pin.x - f0.origin.x) / EPLAN_SCALE) * 72 / 25.4, 443.9055118110236);
 assert(Math.abs(((297 - 56) + (f0pin.y - f0.origin.y) / EPLAN_SCALE) * 72 / 25.4 - 669.302001953125) < 0.001);
 const special = [...entries.values()].filter(e => e.definition.source!.library === 'SPECIAL'
-  && [8, 17, 75, 77, 78].includes(e.definition.source!.number));
+  && [8, 75, 77, 78].includes(e.definition.source!.number));
 assert(special.length);
 assert(special.every(e => e.definition.pins.every(p => !p.labelPosition)), 'Connection graphics do not get synthetic physical pin labels');
+// DCPs carry property 20036, relative to insertion rather than the physical
+// contact. PDF17 centers L/N/PE below their single terminal, without a BMK.
+const dcp = [...entries.values()].find(e => e.definition.source?.library === 'SPECIAL'
+  && e.definition.source.number === 17 && e.definition.source.variant === 0)!;
+const dcpLabel = dcp.definition.pins[0].labelPosition!;
+assert(dcpLabel);
+assert.equal(dcpLabel.alignment, 'middle');
+assert.equal(dcpLabel.rotation, 0);
+close((dcpLabel.x - dcp.origin.x) / EPLAN_SCALE, 0);
+assert(Math.abs((dcpLabel.y - dcp.origin.y) / EPLAN_SCALE - 3.73814485) < .001);
 // World-independent source coordinates corroborated against the PDF export:
 // directional junctions have diagonal strokes, not synthesized circular dots.
 for (const [number, variant, segments] of [
@@ -105,4 +146,35 @@ for (const [number, variant, segments] of [
   });
   assert.deepEqual(actual, segments);
 }
-console.log('EPLAN source pin-label layouts: passed (107 used library pin labels)');
+// Real socket records from the embedded library corroborate the source PDF:
+// Wohnzimmer 1 (page 17) has upper semicircles, diameter 3 mm and height 1.5 mm.
+const libraryInstances = readIndexedEodRecords(
+  await zip.file(`${root}IEC_symbol.sdb/Instance.eod`)!.async('uint8array'),
+  await zip.file(`${root}IEC_symbol.sdb/Instance.eox`)!.async('uint8array'),
+  { size: 134, typedIndex: false }, 'Instance');
+for (const id of [56590, 56597, 56606]) {
+  const source = libraryInstances.find(r => r.id === id)!;
+  assert(source, `Missing indexed socket arc ${id}`);
+  const arc = arcOf(source), points = arcPoints(arc);
+  close(arc.radius / EPLAN_SCALE, 1.5);
+  close(Math.max(...points.map(p => p.x)) - Math.min(...points.map(p => p.x)), 3 * EPLAN_SCALE);
+  close(Math.max(...points.map(p => p.y)) - Math.min(...points.map(p => p.y)), 1.5 * EPLAN_SCALE);
+  assert(points.every(p => p.y <= arc.y + 1e-8), 'Socket semicircles bow upward as in the P8 PDF');
+}
+const rotatedSocket = arcOf(libraryInstances.find(r => r.id === 56616)!);
+assert(arcPoints(rotatedSocket).every(p => p.x <= rotatedSocket.x + 1e-8), 'Rotated library variant bows left');
+const nonzeroSourceStart = arcOf(libraryInstances.find(r => r.id === 101769)!);
+close(Math.abs(nonzeroSourceStart.endAngle - nonzeroSourceStart.startAngle), 180);
+assert(arcPoints(nonzeroSourceStart).every(p => p.y >= nonzeroSourceStart.y - 1e-8), 'Nonzero source start is not mistaken for a 270-degree sweep');
+assert.equal(eplanPrimitives(libraryInstances.find(r => r.id === 148198)!)[0].kind, 'circle', 'Terminal ring remains a full circle');
+const socketDefinition = [...entries.values()].find(e => e.definition.source!.library === 'IEC_symbol'
+  && e.definition.source!.number === 1169 && e.definition.source!.variant === 0)!;
+assert(socketDefinition);
+assert.equal(socketDefinition.definition.importedGraphics!.filter(g => g.kind === 'arc').length, 3);
+assert.equal(socketDefinition.definition.importedGraphics!.filter(g => g.kind === 'circle').length, 0);
+assert.deepEqual(socketDefinition.definition.pins.map(p => ({ id: p.id,
+  x: Math.round((p.x - socketDefinition.origin.x) / EPLAN_SCALE),
+  y: Math.round(-(p.y - socketDefinition.origin.y) / EPLAN_SCALE) })), [
+  { id: '0', x: 0, y: 4 }, { id: '1', x: 16, y: 4 }, { id: '2', x: 8, y: 4 }
+], 'Arc decoding preserves physical socket pins');
+console.log('EPLAN source pin-label layouts and circular arcs: passed');

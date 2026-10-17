@@ -101,10 +101,13 @@ auflösen: 2.215 Function-, 1.681 Instance-, 302 IPoint- und 8 Potential-Objekte
 Alle 3.830 Quell-/Zielanschlüsse der 1.915 Verbindungsdatensätze existieren in
 der jeweiligen Bibliotheksvariante.
 
-- 1.753 Verbindungen besitzen eine gezeichnete Seite und werden als Leitungen
-  importiert; davon 91 auf „Einspeisung“.
-- 162 Datensätze ohne gezeichnete Seite bleiben als `logicalConnections`
-  erhalten. Sie dürfen keine zusätzlichen sichtbaren Linien erzeugen.
+- Die 1.915 Datensätze bilden eine elektrische Endpunkt-Netzliste. 1.753 tragen
+  eine Seitenzuordnung, 162 keine. Alle bleiben in `logicalConnections` erhalten.
+  Sie sind keine Liste der sichtbaren Leitersegmente: Bei Wohnzimmer-Motoren
+  fehlen beispielsweise N-/PE-Zeilen, obwohl das PDF diese Leiter zeigt.
+- `page.wires` enthält deshalb die aus gerichteten Bibliotheksanschlüssen und
+  Quell-Routingknoten rekonstruierten, editierbaren Leiterabschnitte. Einseitige
+  Kontakte dürfen keine direkte Sternverdrahtung durch nachfolgende Geräte erhalten.
 - Der indexierte Page-Bestand enthält 48 aktive Seiten: die 45 Seiten des
   Referenzumfangs sowie Inhaltsverzeichnis und zwei Klemmenberichte. Die vier
   zuvor durch rohe Markersuche wiedergefundenen gelöschten Steckerberichte
@@ -206,6 +209,55 @@ alle physischen Pins der importierten Bibliotheken, alle Standardbibliotheks-Pin
 vier Drehstellungen, genaue Autoconnect-Achsen und Makro-Wegpunkte. Der
 Browser-Test prüft Import, Drehen und Verschieben von Q12, neue P8- und
 Standardplatzierungen, eine neue Leitung, Rasterwechsel und erneutes JSON-Laden.
+
+## Wohnzimmer 1: Anschlussrichtungen und echte Leiterabschnitte
+
+Die Untersuchung verwendet dasselbe REA-Archiv `ev_de4dc0fb509a8c5e9b4e0f8cea75543cdb07faa07664ed13c6242903550e644b`
+(SHA256 `6fdf42f60f4728528b87ebfed9fef7b610122d8563f6801a1a0d6e46cd81d028`)
+und den erneut bereitgestellten PDF-Export, Seite 17. Quellrecord-Probes und
+PDF-Vektoren wurden unabhängig auf Anschlussbeteiligung, Bögen und Beschriftungen geprüft.
+
+- IEC1169:0 hat drei nach oben gerichtete Ports. Die sichtbaren Leiter laufen
+  über die Winkel und T-Stücke seitlich der Steckdosen. Direkte Sternkanten
+  vom unteren zum oberen Kontakt gehören zur elektrischen Netzliste.
+- DCP 37009/37011 und 37015/37017 besitzen keine Connection-Zeilen, aber das PDF
+  zeigt ihre N-/PE-Leiter. Die physische Rekonstruktion findet diese über die
+  benachbarten, gegenüber gerichteten Quellports. Ein gleich gerichteter Port
+  blockiert die Achse; eine bloße Kreuzung verbindet keine Netze.
+- Automatische Routingreste ohne zwei unterstützte Richtungen werden vor der
+  Nachbarschaftssuche entfernt. So blockiert der alte Winkel 627 bei (56,256)
+  nicht die tatsächliche Q12-Zuführung über (56,280). Die Originalobjekte bleiben
+  als nichtdruckende Helfer im Modell. Abgetrennte Routinggruppen zeichnen keine Leiter.
+- Alle 1.915 Quellverbindungen bleiben separat erhalten. Die Typ 130-Sammelgrafik
+  verbindet keine unterschiedlichen Pole zur Potentialübertragung. Farben und
+  Querschnitte werden nur bei eindeutigen Quellenwerten weitergegeben.
+- Ein Motorbild mit explizit leeren Pinstrings, ohne Netzlisteneintrag und mit
+  gesonderten DCPs und Gerätebox desselben strukturierten Geräts erhält keine
+  erfundenen äußeren Leiter an seinen Bildpins. Die Bibliothekspins bleiben erhalten.
+- SPECIAL8-Unterbrechungspunkte besitzen keinen generell unsichtbaren Pin:
+  dieselbe Variante verwendet im Projekt beide Seiten. Eine Quellverbindung
+  legt bei vorhandener Beteiligung den genutzten Instanzpin fest.
+- EC89/EC8A sind Anfangs-/Endparameter relativ zum Radiusvektor EC8C. Dadurch
+  werden Steckdosen als obere Halbkreise mit 3 mm Durchmesser statt als Vollkreise
+  importiert. Drehung und Spiegelung der Varianten bleiben erhalten.
+- Die Motorrahmen enthalten Inline-Rechtecke 0x59 mit Ebene 305 und solidem Stil 0.
+  Diese Kontur ersetzt die zuvor erfundene Strichelung. Function.EB23=3 unterdrückt
+  das BMK, bestätigt an Q12, Motoren, Spulen, DCPs und Wiederholklemmen.
+- DCP-Texte nutzen Property 20036, Anordnung 1, relativ zum Einfügepunkt. Sie zeigen
+  L/N/PE zentriert unter dem Anschluss; Property 20028 bleibt pinrelativ. Die
+  Tahoma-Baseline wurde gegen den PDF-Text von N bei (220,160) abgeglichen.
+
+Alle 193 rekonstruierten Leiterabschnitte von Wohnzimmer 1 wurden außerhalb der
+kleinen Quellglyphen an mehreren Punkten gegen die PDF-Vektorlinien geprüft:
+keine Abweichung über 0,08 mm. Auch die 132 Leiterabschnitte der Einspeisung
+bestehen diesen punktweisen Vergleich mit PDF-Seite 2. Das belegt diese
+Leitergeometrie, keine vollständige
+Pixelgleichheit von Farben, Schriften, Texten oder allen anderen Seiten.
+Regressionen prüfen außerdem alle importierten Leiter auf beidseitig passende
+Richtungen, alle Quelldaten-Endpunkte, gezielt fehlende Motorleiter sowie
+kollineare und gedrehte Pins beim normalen Editieren. Der Browser prüft echten
+Split-Archivimport, dunklen Editor, Steckdosenbögen, L/N/PE und Bearbeiten,
+Drehen, Verschieben sowie JSON-Wiederladen.
 
 ## Verbleibende Grenzen
 

@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { DrawingPrimitive, Page, PinDefinition, PlacedComponent, Project, SymbolDefinition, Wire } from '../model/types';
+import { NativePort, physicalConnections } from './EplanPhysicalConnections';
 import { EodRecord, eplanText, readEodTable, EOD_LAYOUTS } from './EodReader';
 import { EplanSymbolLibrary, EPLAN_SCALE as SCALE, LibraryEntry, Point,
   eplanPrimitives, labelPosition, normalizeDefinition, propertyPositions, translatePrimitives } from './EplanSymbolLibrary';
@@ -55,7 +56,7 @@ export class EplanNativeProject {
     const components = new Map(project.pages.flatMap(p => p.components).filter(c => c.source)
       .map(c => [`${c.source!.objectType}:${c.source!.objectId}`, c]));
     project.logicalConnections = [];
-    for (const r of this.tables.Connection.filter(c => !c.pageId)) {
+    for (const r of this.tables.Connection) {
       const from = components.get(`${r.number(0xeb2b)}:${r.number(0xeb2b, 4, 4)}`);
       const to = components.get(`${r.number(0xeb2e)}:${r.number(0xeb2e, 4, 4)}`);
       const fromPin = String(r.number(0xeb2c) ?? 0), toPin = String(r.number(0xeb2f) ?? 0);
@@ -66,7 +67,7 @@ export class EplanNativeProject {
         from: { componentId: from.id, pinId: fromPin }, to: { componentId: to.id, pinId: toPin },
         potential: 'Signal', color: r.string(0x791c, 4) || undefined, crossSection: r.string(0x791a, 4) || undefined });
     }
-    this.messages.push(`${project.logicalConnections.length} logische Verbindungen ohne gezeichnete Seite separat übernommen.`);
+    this.messages.push(`${project.logicalConnections.length} elektrische Quellverbindungen separat von den sichtbaren Leitungsabschnitten übernommen.`);
   }
 
   static async create(zip: JSZip, root: string): Promise<EplanNativeProject | undefined> {
@@ -110,13 +111,20 @@ export class EplanNativeProject {
     if (!a || !b || entry.definition.pins.length) return entry;
     const box = { kind: 'rect' as const, x: Math.min(a.x, b.x) * SCALE, y: -Math.max(a.y, b.y) * SCALE,
       width: Math.abs(b.x - a.x) * SCALE, height: Math.abs(b.y - a.y) * SCALE,
-      color: 'currentColor', dash: record.type === 0x58 ? [6, 2, 1, 2] : [5, 4] };
-    const key = `${entry.definition.id}:${JSON.stringify(box)}`;
+      color: 'currentColor', lineWidth: (this.library.layers.get(305)?.lineWidth ?? 0.25) * SCALE,
+      ...(record.type === 0x58 ? { dash: [6, 2, 1, 2] } : {}) };
+    let inline = record.find(0xea65);
+    while (inline >= 0 && new EodRecord(0, 0, 0, record.data.subarray(inline)).number(0xea65) !== 0x59)
+      inline = record.find(0xea65, inline + 2);
+    const nativeBox = inline >= 0
+      ? eplanPrimitives(new EodRecord(record.id, 0x59, record.row, record.data.subarray(inline)), this.library.layers) : [];
+    const graphics = nativeBox.length ? nativeBox : [box];
+    const key = `${entry.definition.id}:${JSON.stringify(graphics)}`;
     let sized = this.graphics.get(key);
     if (!sized) {
       sized = normalizeDefinition({ ...entry.definition, id: `${entry.definition.id}:size:${a.x},${a.y},${b.x},${b.y}`,
         name: `${entry.definition.name} (${Math.abs(b.x - a.x)} × ${Math.abs(b.y - a.y)} mm)`,
-        pins: [], importedGraphics: [box] }, entry.labels);
+        pins: [], importedGraphics: graphics }, entry.labels);
       this.graphics.set(key, sized);
     }
     return sized;
@@ -153,6 +161,7 @@ export class EplanNativeProject {
       };
       const overrides = propertyPositions(r.data);
       comp.bmkPosition = labelPosition(entry, 20010, overrides);
+      if (r.type === 17 && r.number(0xeb23, 4) === 3) comp.bmkPosition.visible = false;
       comp.functionTextPosition = labelPosition(entry, 20011, overrides);
       comp.technicalDataPosition = labelPosition(entry, 20027, overrides);
       if (r.type === 0x46) {
@@ -209,42 +218,63 @@ export class EplanNativeProject {
         comp.bmkPosition = { visible: false }; comp.functionTextPosition = { visible: false }; comp.technicalDataPosition = { visible: false };
       }
     }
-    const corners = records.filter(r => r.type === 0x2a).flatMap(r => r.position ? [r.position] : []);
-    const wires: Wire[] = [];
-    const sourceSegments: [Point, Point][] = [];
+    const netlist: Wire[] = [];
+    const referencedPins = new Set<string>();
     for (const r of connections) {
       const fromKey = `${r.number(0xeb2b)}:${r.number(0xeb2b, 4, 4)}`, toKey = `${r.number(0xeb2e)}:${r.number(0xeb2e, 4, 4)}`;
-      const fromPin = r.number(0xeb2c) ?? 0, toPin = r.number(0xeb2f) ?? 0;
-      const a = points.get(`${fromKey}:${fromPin}`), b = points.get(`${toKey}:${toPin}`);
+      const fromPin = String(r.number(0xeb2c) ?? 0), toPin = String(r.number(0xeb2f) ?? 0);
       const from = objects.get(fromKey), to = objects.get(toKey);
-      if (!a || !b || !from || !to) {
-        diagnostics.push(`Verbindung ${r.id}: Bibliotheksanschluss ${!a ? fromKey + ':' + fromPin : toKey + ':' + toPin} fehlt.`);
-        continue;
+      if (!from?.pins[fromPin] || !to?.pins[toPin]) {
+        diagnostics.push(`Verbindung ${r.id}: Bibliotheksanschluss fehlt.`); continue;
       }
-      const route = this.route(a, b, corners);
-      const routePoints = [a.point, ...route, b.point];
-      for (let i = 1; i < routePoints.length; i++) sourceSegments.push([routePoints[i - 1], routePoints[i]]);
-      const wire: Wire = { id: `eplan_wire_${pageId}_${r.id}`, from: { componentId: from.id, pinId: String(fromPin) },
-        to: { componentId: to.id, pinId: String(toPin) }, potential: 'Signal',
-        lineWidth: (this.library.layers.get(311)?.lineWidth ?? 0.25) * SCALE,
-        color: r.string(0x791c, 4) || undefined, crossSection: r.string(0x791a, 4) || undefined,
-        waypoints: route.map(canvas) };
-      wires.push(wire);
-      from.pins[String(fromPin)].wireIds!.push(wire.id); to.pins[String(toPin)].wireIds!.push(wire.id);
+      referencedPins.add(`${fromKey}:${fromPin}`); referencedPins.add(`${toKey}:${toPin}`);
+      netlist.push({ id: `eplan_net_${r.id}`, from: { componentId: from.id, pinId: fromPin },
+        to: { componentId: to.id, pinId: toPin }, potential: 'Signal',
+        color: r.string(0x791c, 4) || undefined, crossSection: r.string(0x791a, 4) || undefined });
     }
-    // P8 retains automatic routing records that are not on any drawn source
-    // connection. They are not printed; keep them in the editable model rather
-    // than painting dangling corners from this unused routing cache.
-    for (const r of records.filter(r => r.type === 0x2a && r.position)) {
+    const definitions = new Map(this.library.definitions.map(d => [d.id, d]));
+    const routing = records.filter(r => r.type === 0x2a && objects.has(identity(r)));
+    const atSameAnchor = (a: EodRecord, b: EodRecord) => a.position && b.position
+      && Math.hypot(a.position.x - b.position.x, a.position.y - b.position.y) < 1e-6;
+    const directions = (r: EodRecord) => definitions.get(objects.get(identity(r))!.symbolId)!.pins.map(p => p.direction).sort().join(',');
+    const sameDevice = (a: EodRecord, b: EodRecord) => a.bmk === b.bmk
+      && (a.string(0x044c, 4) || page.higherLevel) === (b.string(0x044c, 4) || page.higherLevel)
+      && (a.string(0x04b0, 4) || page.location) === (b.string(0x04b0, 4) || page.location);
+    const ports: NativePort[] = [];
+    for (const r of records) {
       const comp = objects.get(identity(r));
-      if (!comp?.source) continue;
-      const p = r.position!;
-      comp.source.routingUsed = sourceSegments.some(([a, b]) => {
-        const dx = b.x - a.x, dy = b.y - a.y, length = dx * dx + dy * dy;
-        if (length < 1e-12) return false;
-        const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / length;
-        return t >= -1e-8 && t <= 1 + 1e-8 && Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < 1e-6;
-      });
+      if (!comp) continue;
+      const definition = definitions.get(comp.symbolId)!;
+      // A functional distributor may have an explicit directional glyph in the
+      // source at the same anchor. Its duplicate ports must not create edges.
+      if (r.type === 17 && r.number(0xefc5) === 1400 && routing.some(n => atSameAnchor(r, n) && directions(r) === directions(n))) continue;
+      // An unconnected illustration inside a device box is not an additional
+      // external device. Its separate DCP functions carry the actual terminals.
+      const illustration = r.type === 17 && !referenced.has(identity(r)) && r.pins.length > 0 && r.pins.every(p => !p)
+        && records.some(other => other.type === 17 && sameDevice(other, r) && other.number(0xefc5) === 1302)
+        && records.some(other => other.type === 17 && sameDevice(other, r) && other.number(0xefc5) === 1303);
+      if (illustration) continue;
+      for (const pin of definition.pins) {
+        const key = `${identity(r)}:${pin.id}`, endpoint = points.get(key);
+        if (!endpoint) continue;
+        // Both coincident interruption-point pins are valid in the format.
+        // When a source edge selects one, do not infer an extra opposite side.
+        if (r.type === 0x46 && referenced.has(identity(r)) && !referencedPins.has(key)) continue;
+        const label = (comp.pins[pin.id].customLabel ?? pin.name).toUpperCase();
+        const potential = (['PE', 'PEN', 'N', 'L1', 'L2', 'L3'] as Wire['potential'][]).find(p => p === label);
+        ports.push({ key, endpoint: { componentId: comp.id, pinId: pin.id }, ...endpoint,
+          // Composite bundle (type 130) ink crosses separate conductors.
+          // Its graphical bus must never short the represented poles together.
+          ...(definition.connectionGraphic && r.type !== 0x82 ? { junction: comp.id } : {}),
+          routing: r.type === 0x2a, potential });
+      }
+    }
+    const wires = physicalConnections(ports, netlist, pageId, (this.library.layers.get(311)?.lineWidth ?? 0.25) * SCALE);
+    for (const wire of wires) for (const ep of [wire.from, wire.to])
+      components.find(c => c.id === ep.componentId)!.pins[ep.pinId].wireIds!.push(wire.id);
+    for (const r of routing) {
+      const comp = objects.get(identity(r))!;
+      comp.source!.routingUsed = wires.some(w => w.from.componentId === comp.id || w.to.componentId === comp.id);
     }
     for (const key of referenced) if (!objects.has(key)) diagnostics.push(`Referenziertes Objekt ${key} fehlt.`);
     const partial = records.filter(r => r.partial);
@@ -262,39 +292,5 @@ export class EplanNativeProject {
     page.connectionMode = 'explicit';
     page.importDiagnostics = diagnostics;
     delete page.importedDrawing;
-  }
-
-  /** Route explicit source connections; geometric nodes never create new net edges. */
-  private route(a: Endpoint, b: Endpoint, corners: Point[]): Point[] {
-    const nodes = [a.point, b.point, ...corners];
-    const distance = nodes.map(() => Infinity), previous = nodes.map(() => -1), visited = new Set<number>();
-    distance[0] = 0;
-    const faces = (p: Point, q: Point, direction: PinDefinition['direction']) =>
-      (direction === 'top' && q.y > p.y && q.x === p.x) || (direction === 'bottom' && q.y < p.y && q.x === p.x) ||
-      (direction === 'left' && q.x < p.x && q.y === p.y) || (direction === 'right' && q.x > p.x && q.y === p.y);
-    // Aligned pins may face the same way, e.g. both Q12 inputs point up. Their
-    // connection must still travel through the source corners above the device.
-    if (faces(a.point, b.point, a.direction) && faces(b.point, a.point, b.direction)) return [];
-    for (let step = 0; step < nodes.length; step++) {
-      let u = -1;
-      for (let i = 0; i < nodes.length; i++) if (!visited.has(i) && (u < 0 || distance[i] < distance[u])) u = i;
-      if (u < 0 || !Number.isFinite(distance[u]) || u === 1) break;
-      visited.add(u);
-      for (let v = 0; v < nodes.length; v++) {
-        if (v === u || visited.has(v)) continue;
-        const p = nodes[u], q = nodes[v];
-        if (p.x !== q.x && p.y !== q.y) continue;
-        if (u === 0 && !faces(p, q, a.direction) || v === 1 && !faces(q, p, b.direction)) continue;
-        const d = distance[u] + Math.abs(p.x - q.x) + Math.abs(p.y - q.y) + 0.01;
-        if (d < distance[v]) { distance[v] = d; previous[v] = u; }
-      }
-    }
-    if (Number.isFinite(distance[1])) {
-      const path: Point[] = [];
-      for (let i = 1; i >= 0; i = previous[i]) path.unshift(nodes[i]);
-      return path.slice(1, -1);
-    }
-    return [a.direction === 'top' || a.direction === 'bottom'
-      ? { x: a.point.x, y: b.point.y } : { x: b.point.x, y: a.point.y }];
   }
 }

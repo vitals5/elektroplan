@@ -27,12 +27,31 @@ export function eplanPrimitives(record: EodRecord, layers?: ReadonlyMap<number, 
     return [{ kind: 'line', x1: a.x, y1: a.y, x2: b.x, y2: b.y, color, width }];
   }
   if (record.type === 0x20) {
-    const center = at(record.point(0xec8b) ?? zero), radius = record.point(0xec8c);
+    const center = at(record.point(0xec8b) ?? zero), radiusVector = record.point(0xec8c);
+    if (!radiusVector) return [];
+    const radius = Math.hypot(radiusVector.x, radiusVector.y) * s;
     if (!radius) return [];
+    const start = record.double(0xec89), end = record.double(0xec8a);
+    // An omitted parameter defaults to zero; a present but incomplete or
+    // non-finite value must not turn a damaged arc into a fabricated circle.
+    if ((record.find(0xec89) >= 0 && start === undefined)
+      || (record.find(0xec8a) >= 0 && end === undefined)) return [];
+    const turn = 2 * Math.PI;
+    const sweep = (((end ?? 0) - (start ?? 0)) % turn + turn) % turn;
+    if (sweep > 1e-10 && turn - sweep > 1e-10) {
+      // EC89/EC8A are start/end parameters in the radius-vector basis,
+      // not an absolute heading and a sweep. Variant rotation is already in
+      // EC8C. Positive source turns are CCW in y-up coordinates; reflecting
+      // y requires negating both angles and retaining the negative sweep.
+      const startAngle = -(Math.atan2(radiusVector.y, radiusVector.x) + (start ?? 0)) * 180 / Math.PI;
+      return [{ kind: 'arc', ...center, radius, startAngle, endAngle: startAngle - sweep * 180 / Math.PI,
+        counterClockwise: true, color, width }];
+    }
     const fill = record.number(0xec8e, 1) === 1 ? color : undefined;
-    // Filled P8 markers use a hairline contour (0.02 mm in the reference PDF),
-    // rather than expanding the dot by the layer's ordinary outline width.
-    return [{ kind: 'circle', ...center, radius: Math.hypot(radius.x, radius.y) * s, color, fill, width: fill ? 0.02 * s : width }];
+    // Equal start/end parameters encode a full circle. Filled P8 markers use
+    // a hairline contour (0.02 mm in the reference PDF), rather than expanding
+    // the dot by the layer's ordinary outline width.
+    return [{ kind: 'circle', ...center, radius, color, fill, width: fill ? 0.02 * s : width }];
   }
   if (record.type === 0x59) {
     const a = at(record.point(0xf0d3) ?? zero), b = at(record.point(0xf0d4) ?? zero);
@@ -154,14 +173,17 @@ function completePropertyPlacements(data: Uint8Array): EodRecord[] {
 /** Pin designations remain editable instance strings; only their source layout is shared. */
 export function sourcePinLabelPositions(data: Uint8Array, pins: PinDefinition[],
   layers: ReadonlyMap<number, EplanLayerStyle>, diagnostic?: (message: string) => void): PinDefinition[] {
-  const placements = completePropertyPlacements(data).filter(r => r.number(0xed63) === 20028
+  const placements = completePropertyPlacements(data).filter(r => [20028, 20036].includes(r.number(0xed63) ?? -1)
     && r.number(0xea67) === 0x2d);
   return pins.map(pin => {
     const index = Number(pin.id) + 1;
     const unresolved = (reason: string) => { diagnostic?.(`Anschlussbeschriftung ${index}: ${reason}`); return pin; };
     // The supplied project prints the horizontal designation arrangement.
     // The vertical EE19=1 object is an alternative, not a second label.
-    const placement = placements.find(r => r.number(0xed64) === index && r.number(0xee19, 1) === 2);
+    const placement = placements.find(r => (r.number(0xed63) === 20036
+      ? pins.length === 1 && r.number(0xee18, 1) === 1 && r.number(0xee26, 1) === 2
+      : r.number(0xed64) === index)
+      && r.number(0xee19, 1) === 2);
     if (!placement) return pin;
     const point = placement.point(0xec55);
     if (!point) return pin;
@@ -171,28 +193,31 @@ export function sourcePinLabelPositions(data: Uint8Array, pins: PinDefinition[],
     const size = explicitSize ?? layer?.fontSize;
     if (size === undefined || size <= 0 || size >= 1000)
       return unresolved(`Textgröße der Quellebene ${placement.number(0xebfb) ?? '?'} fehlt oder ist ungültig.`);
+    const dcp = placement.number(0xed63) === 20036;
     const explicitAngle = placement.double(0xee22);
     if (placement.find(0xee22) >= 0 && explicitAngle === undefined) return pin;
     // -16002 is the P8 automatic/unset text-angle sentinel, not radians.
-    const angle = explicitAngle === -16002 ? layer?.angle ?? 0 : explicitAngle ?? layer?.angle ?? 0;
+    const angle = dcp ? (explicitAngle === -16002 ? 0 : explicitAngle ?? 0)
+      : explicitAngle === -16002 ? layer?.angle ?? 0 : explicitAngle ?? layer?.angle ?? 0;
     const degrees = -angle * 180 / Math.PI;
     const quarterTurns = Math.round(degrees / 90);
     if (Math.abs(degrees - quarterTurns * 90) > 1e-6) return unresolved('Textwinkel wird noch nicht unterstützt.');
     const alignment = placement.number(0xec57);
     // The sample's horizontal labels use bottom-left (20) and top-left (4).
+    // DCP arrangement 1/EE26=2 defaults to centered top alignment.
     // Other source alignments are deliberately not guessed.
-    if (alignment !== 4 && alignment !== 20) return unresolved(`Textausrichtung ${alignment ?? '?'} wird noch nicht unterstützt.`);
+    if (alignment !== 4 && alignment !== 20 && !(dcp && alignment === undefined)) return unresolved(`Textausrichtung ${alignment ?? '?'} wird noch nicht unterstützt.`);
     // P8 specifies nominal text height, while the PDF uses Tahoma em size.
     // Both 1.8 mm pin labels (6.33713 pt) and 2.5 mm BMKs (8.80157 pt)
     // in the supplied export verify the same 1.242 conversion.
     const fontSize = size * EPLAN_SCALE * 1.242;
     // Source insertion points anchor the P8 text box. Convert its verified
     // top/bottom alignment to the baseline used by the SVG/PDF renderers.
-    const baseline = fontSize * (alignment === 20 ? -0.12753948 : 1.08014513);
+    const baseline = fontSize * (dcp && alignment === undefined ? 1.001139 : alignment === 20 ? -0.12753948 : 1.08014513);
     const radians = quarterTurns * Math.PI / 2;
-    return { ...pin, labelPosition: { x: pin.x + point.x * EPLAN_SCALE - Math.sin(radians) * baseline,
-      y: pin.y - point.y * EPLAN_SCALE + Math.cos(radians) * baseline,
-      fontSize, alignment: 'start', rotation: (((quarterTurns % 4) + 4) % 4 * 90) as 0 | 90 | 180 | 270,
+    return { ...pin, labelPosition: { x: (dcp ? 0 : pin.x) + point.x * EPLAN_SCALE - Math.sin(radians) * baseline,
+      y: (dcp ? 0 : pin.y) - point.y * EPLAN_SCALE + Math.cos(radians) * baseline,
+      fontSize, alignment: dcp && alignment === undefined ? 'middle' : 'start', rotation: (((quarterTurns % 4) + 4) % 4 * 90) as 0 | 90 | 180 | 270,
       ...(layer?.visible !== undefined ? { visible: layer.visible } : {}) } };
   });
 }
