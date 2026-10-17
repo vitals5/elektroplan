@@ -7,6 +7,7 @@
 // - Appended report pages: Klemmenplan and Stückliste (BOM)
 
 import { wirePolyline, wirePinDirection } from '../model/WireRouting';
+import { gridForPage } from '../model/DrawingGrid';
 import { connectionCutouts, connectionGraphicWires, isConnectionGraphic, supersededConnectionGraphics, visibleWireSegments } from '../model/ConnectionGraphics';
 import { arcPoints, rotateDrawing } from '../model/ImportedDrawing';
 import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
@@ -363,7 +364,7 @@ export class PdfExporter {
       doc.setDrawColor(rgb.r, rgb.g, rgb.b);
       doc.setFillColor(rgb.r, rgb.g, rgb.b);
       const points = wirePolyline(p1, p2, wire.waypoints, wirePinDirection(page, project, wire.from), wirePinDirection(page, project, wire.to),
-        page.components.find(c => c.id === wire.from.componentId)?.symbolId === 'potential_rail_source');
+        page.components.find(c => c.id === wire.from.componentId)?.symbolId === 'potential_rail_source', gridForPage(page));
       for (const [a, b] of visibleWireSegments(points, cutouts)) doc.line(a.x * sx, a.y * sy, b.x * sx, b.y * sy);
     }
   }
@@ -568,7 +569,7 @@ export class PdfExporter {
         break;
       }
       case 'circuit_breaker_3p': {
-        const poleOffsets = [12, 31, 51];
+        const poleOffsets = [12, 36, 60];
         for (let p = 0; p < 3; p++) {
           const px = x + w * (poleOffsets[p] / 72);
           doc.line(px, y, px, y + h * 0.28);
@@ -577,12 +578,12 @@ export class PdfExporter {
           doc.rect(px - 1.2, y + h * 0.68, 2.4, 2.0);
         }
         doc.setLineDashPattern([1, 1], 0);
-        doc.line(x + w * (12 / 72), y + h * 0.44, x + w * (51 / 72), y + h * 0.44);
+        doc.line(x + w * (12 / 72), y + h * 0.44, x + w * (60 / 72), y + h * 0.44);
         doc.setLineDashPattern([], 0);
         break;
       }
       case 'fuse_switch_3p': {
-        const poleOffsets = [12, 31, 51];
+        const poleOffsets = [12, 36, 60];
         for (let p = 0; p < 3; p++) {
           const px = x + w * (poleOffsets[p] / 72);
           doc.line(px, y, px, y + h * 0.15);
@@ -592,13 +593,13 @@ export class PdfExporter {
           doc.line(px, y + h * 0.75, px, y + h);
         }
         doc.setLineDashPattern([1, 1], 0);
-        doc.line(x + w * (12 / 72), y + h * 0.6, x + w * (51 / 72), y + h * 0.6);
+        doc.line(x + w * (12 / 72), y + h * 0.6, x + w * (60 / 72), y + h * 0.6);
         doc.setLineDashPattern([], 0);
         break;
       }
       case 'main_switch_4p':
       case 'changeover_switch_4p': {
-        const poleOffsets = [12, 31, 51, 70];
+        const poleOffsets = [12, 36, 60, 84];
         for (let p = 0; p < 4; p++) {
           const px = x + w * (poleOffsets[p] / 96);
           doc.line(px, y, px, y + h * 0.3);
@@ -606,7 +607,7 @@ export class PdfExporter {
           doc.line(px, y + h * 0.68, px, y + h);
         }
         doc.setLineDashPattern([1, 1], 0);
-        doc.line(x + w * (12 / 96), y + h * 0.48, x + w * (70 / 96), y + h * 0.48);
+        doc.line(x + w * (12 / 96), y + h * 0.48, x + w * (84 / 96), y + h * 0.48);
         doc.setLineDashPattern([], 0);
         break;
       }
@@ -616,9 +617,9 @@ export class PdfExporter {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8);
         doc.text('kWh', x + w * 0.5, y + h * 0.35, { align: 'center' });
-        const poleOffsets = [12, 31, 51, 70];
+        const poleOffsets = [12, 36, 60, 84];
         for (let p = 0; p < 4; p++) {
-          const px = x + w * (poleOffsets[p] / 84);
+          const px = x + w * (poleOffsets[p] / 96);
           doc.line(px, y, px, y + h * 0.15);
           doc.line(px, y + h * 0.85, px, y + h);
         }

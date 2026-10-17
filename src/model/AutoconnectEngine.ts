@@ -4,6 +4,7 @@
 
 import { PlacedComponent, PinDefinition, SymbolDefinition, Wire, Page } from './types';
 import { getSymbolForComponent } from './symbols';
+import { rotatedLocalPoint } from './SymbolGeometry';
 
 export interface RotatedPinInfo {
   componentId: string;
@@ -33,7 +34,6 @@ export interface AutoconnectPreviewSegment {
 
 export class AutoconnectEngine {
   private static readonly MAX_AUTOCONNECT_DISTANCE = 800; // max distance in px along grid line
-  private static readonly MIN_AUTOCONNECT_DISTANCE = 8;   // min distance to avoid same-point self-loops
 
   /**
    * Calculates world coordinates and effective rotated direction of a pin.
@@ -45,36 +45,11 @@ export class AutoconnectEngine {
     sym: SymbolDefinition
   ): RotatedPinInfo {
     const rot = comp.rotation || 0;
-    let rx = pinDef.x;
-    let ry = pinDef.y;
-    let dir = pinDef.direction;
-
-    if (rot !== 0) {
-      const rad = (rot * Math.PI) / 180;
-      const cx = sym.width / 2;
-      const cy = sym.height / 2;
-      const dx = pinDef.x - cx;
-      const dy = pinDef.y - cy;
-      rx = cx + (dx * Math.cos(rad) - dy * Math.sin(rad));
-      ry = cy + (dx * Math.sin(rad) + dy * Math.cos(rad));
-
-      // Direction rotation (90° clockwise maps top -> right -> bottom -> left -> top)
-      const dirs: ('top' | 'right' | 'bottom' | 'left')[] = ['top', 'right', 'bottom', 'left'];
-      const idx = dirs.indexOf(pinDef.direction);
-      if (idx !== -1) {
-        const steps = Math.round(rot / 90) % 4;
-        dir = dirs[(idx + steps) % 4];
-      }
-    }
-
-    return {
-      componentId: comp.id,
-      pinId: pinDef.id,
-      pinName: pinDef.name,
-      worldX: sym.source || comp.importedSymbol ? comp.x + rx : Math.round(comp.x + rx),
-      worldY: sym.source || comp.importedSymbol ? comp.y + ry : Math.round(comp.y + ry),
-      direction: dir
-    };
+    const local = rotatedLocalPoint(pinDef, sym, rot);
+    const dirs: PinDefinition['direction'][] = ['top', 'right', 'bottom', 'left'];
+    return { componentId: comp.id, pinId: pinDef.id, pinName: pinDef.name,
+      worldX: comp.x + local.x, worldY: comp.y + local.y,
+      direction: dirs[(dirs.indexOf(pinDef.direction) + Math.round(rot / 90) + 4) % 4] };
   }
 
   /**
@@ -127,14 +102,14 @@ export class AutoconnectEngine {
    * - Vertical: pin1.x === pin2.x (with tolerance <= 2px), pin1 points 'bottom', pin2 points 'top', no intermediate pins
    * - Horizontal: pin1.y === pin2.y (with tolerance <= 2px), pin1 points 'right', pin2 points 'left', no intermediate pins
    */
-  public static findAutoconnectPairs(components: PlacedComponent[]): AutoconnectPair[] {
+  public static findAutoconnectPairs(components: PlacedComponent[], tolerance = 2, minimumDistance = 8): AutoconnectPair[] {
     const allPins = this.getAllPins(components);
     const pairs: AutoconnectPair[] = [];
 
     // Group pins by X (for vertical connections) with tolerance <= 2px
-    const verticalClusters = this.clusterPins(allPins, p => p.worldX, 2);
+    const verticalClusters = this.clusterPins(allPins, p => p.worldX, tolerance);
     // Group pins by Y (for horizontal connections) with tolerance <= 2px
-    const horizontalClusters = this.clusterPins(allPins, p => p.worldY, 2);
+    const horizontalClusters = this.clusterPins(allPins, p => p.worldY, tolerance);
 
     // 1. Vertical Autoconnect: same column
     for (const pins of verticalClusters) {
@@ -149,7 +124,7 @@ export class AutoconnectEngine {
         if (topPin.componentId === bottomPin.componentId) continue;
 
         const distance = bottomPin.worldY - topPin.worldY;
-        if (distance >= this.MIN_AUTOCONNECT_DISTANCE && distance <= this.MAX_AUTOCONNECT_DISTANCE) {
+        if (distance >= minimumDistance && distance <= this.MAX_AUTOCONNECT_DISTANCE) {
           // Top pin must face downwards ('bottom') and bottom pin must face upwards ('top')
           if (topPin.direction === 'bottom' && bottomPin.direction === 'top') {
             pairs.push({
@@ -176,7 +151,7 @@ export class AutoconnectEngine {
         if (leftPin.componentId === rightPin.componentId) continue;
 
         const distance = rightPin.worldX - leftPin.worldX;
-        if (distance >= this.MIN_AUTOCONNECT_DISTANCE && distance <= this.MAX_AUTOCONNECT_DISTANCE) {
+        if (distance >= minimumDistance && distance <= this.MAX_AUTOCONNECT_DISTANCE) {
           // Left pin must face rightwards ('right') and right pin must face leftwards ('left')
           if (leftPin.direction === 'right' && rightPin.direction === 'left') {
             pairs.push({
@@ -213,7 +188,7 @@ export class AutoconnectEngine {
       manualWireSet.add(k2);
     }
 
-    const pairs = this.findAutoconnectPairs(page.components);
+    const pairs = this.findAutoconnectPairs(page.components, page.grid ? 1e-6 : 2, page.grid ? page.grid.spacing / 4 : 8);
     const importedIds = new Set(page.connectionMode === 'explicit' ? page.components.filter(c => c.source?.format === 'EPLAN_P8').map(c => c.id) : []);
     const newAutoWires: Wire[] = [];
 
@@ -259,6 +234,7 @@ export class AutoconnectEngine {
           potential: potentialInfo.potential,
           color: potentialInfo.color,
           crossSection: '1.5mm²',
+          ...(page.grid ? { lineWidth: page.grid.spacing / 16 } : {}),
           isAutoconnect: true
         });
       }
@@ -272,8 +248,11 @@ export class AutoconnectEngine {
    */
   public static getAutoconnectPreview(
     existingComponents: PlacedComponent[],
-    activeComp: PlacedComponent
+    activeComp: PlacedComponent,
+    page?: Page
   ): AutoconnectPreviewSegment[] {
+    const tolerance = page?.grid ? 1e-6 : 2;
+    const minimumDistance = page?.grid ? page.grid.spacing / 4 : 8;
     const sym = getSymbolForComponent(activeComp);
     if (!sym) return [];
 
@@ -289,7 +268,7 @@ export class AutoconnectEngine {
         // Look for matching pins on same X
         // Look for matching pins on same X (tolerance <= 2px)
         const candidates = otherPins
-          .filter(p => Math.abs(p.worldX - aPin.worldX) <= 2)
+          .filter(p => Math.abs(p.worldX - aPin.worldX) <= tolerance)
           .sort((a, b) => a.worldY - b.worldY);
 
         if (aPin.direction === 'top') {
@@ -298,7 +277,7 @@ export class AutoconnectEngine {
           if (above.length > 0) {
             const nearest = above[above.length - 1]; // closest above
             const dist = aPin.worldY - nearest.worldY;
-            if (dist >= this.MIN_AUTOCONNECT_DISTANCE && dist <= this.MAX_AUTOCONNECT_DISTANCE) {
+            if (dist >= minimumDistance && dist <= this.MAX_AUTOCONNECT_DISTANCE) {
               previews.push({
                 x1: aPin.worldX,
                 y1: aPin.worldY,
@@ -316,7 +295,7 @@ export class AutoconnectEngine {
           if (below.length > 0) {
             const nearest = below[0]; // closest below
             const dist = nearest.worldY - aPin.worldY;
-            if (dist >= this.MIN_AUTOCONNECT_DISTANCE && dist <= this.MAX_AUTOCONNECT_DISTANCE) {
+            if (dist >= minimumDistance && dist <= this.MAX_AUTOCONNECT_DISTANCE) {
               previews.push({
                 x1: aPin.worldX,
                 y1: aPin.worldY,
@@ -332,7 +311,7 @@ export class AutoconnectEngine {
       } else if (aPin.direction === 'left' || aPin.direction === 'right') {
         // Look for matching pins on same Y (tolerance <= 2px)
         const candidates = otherPins
-          .filter(p => Math.abs(p.worldY - aPin.worldY) <= 2)
+          .filter(p => Math.abs(p.worldY - aPin.worldY) <= tolerance)
           .sort((a, b) => a.worldX - b.worldX);
 
         if (aPin.direction === 'left') {
@@ -341,7 +320,7 @@ export class AutoconnectEngine {
           if (leftOf.length > 0) {
             const nearest = leftOf[leftOf.length - 1]; // closest left
             const dist = aPin.worldX - nearest.worldX;
-            if (dist >= this.MIN_AUTOCONNECT_DISTANCE && dist <= this.MAX_AUTOCONNECT_DISTANCE) {
+            if (dist >= minimumDistance && dist <= this.MAX_AUTOCONNECT_DISTANCE) {
               previews.push({
                 x1: aPin.worldX,
                 y1: aPin.worldY,
@@ -359,7 +338,7 @@ export class AutoconnectEngine {
           if (rightOf.length > 0) {
             const nearest = rightOf[0]; // closest right
             const dist = nearest.worldX - aPin.worldX;
-            if (dist >= this.MIN_AUTOCONNECT_DISTANCE && dist <= this.MAX_AUTOCONNECT_DISTANCE) {
+            if (dist >= minimumDistance && dist <= this.MAX_AUTOCONNECT_DISTANCE) {
               previews.push({
                 x1: aPin.worldX,
                 y1: aPin.worldY,

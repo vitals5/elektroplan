@@ -5,14 +5,16 @@ import { wirePolyline, wirePinDirection } from '../model/WireRouting';
 import { connectionCutouts, connectionGraphicWires, isConnectionGraphic, supersededConnectionGraphics, visibleWireSegments } from '../model/ConnectionGraphics';
 import { drawingToSvg, escapeSvg } from '../model/ImportedDrawing';
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
-import { getSymbolById, getSymbolForComponent } from '../model/symbols';
+import { getSymbolById, getSymbolForComponent, getDrawingUnitsPerMm } from '../model/symbols';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
 import { AutoconnectEngine, AutoconnectPreviewSegment } from '../model/AutoconnectEngine';
 import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
 import { WindowMacro, MacroManager } from '../model/MacroManager';
+import { componentInsertionPoint, positionAtInsertionPoint } from '../model/SymbolGeometry';
+import { gridForPage, gridStep, snapCoordinate, snapSymbolPosition, GridResolution } from '../model/DrawingGrid';
+export type { GridResolution } from '../model/DrawingGrid';
 
 export type EditorMode = 'select' | 'wire' | 'place_symbol' | 'place_macro' | 'pan';
-export type GridResolution = 'full' | 'half' | 'fine' | 'off';
 
 export interface CadCanvasCallbacks {
   onSelectComponent: (component: PlacedComponent | null) => void;
@@ -42,8 +44,8 @@ export class CadCanvas {
   // Editor State
   public mode: EditorMode = 'select';
   public gridSnap: boolean = true;
-  public gridSize: number = 8; // 8px per base raster unit (DIN EN 60617)
-  public gridResolution: GridResolution = 'full'; // 'full' (8px), 'half' (4px), 'fine' (2px), 'off' (1px)
+  public gridSize: number = 8; // Legacy fallback; imported pages own their physical grid.
+  public gridResolution: GridResolution = 'full';
   public autoconnectEnabled: boolean = true;
   public activeSymbolToPlace: string | null = null;
   public activeMacroToPlace: WindowMacro | null = null;
@@ -142,8 +144,7 @@ export class CadCanvas {
   }
 
   public placeMacroAt(worldX: number, worldY: number, macro: WindowMacro): PlacedComponent[] {
-    const snappedX = this.snap(worldX);
-    const snappedY = this.snap(worldY);
+    const { x: snappedX, y: snappedY } = this.macroPlacementPosition(worldX, worldY, macro);
     const res = MacroManager.instantiateWindowMacro(macro, snappedX, snappedY, this.activePage.components, this.project);
 
     this.activePage.components.push(...res.components);
@@ -201,7 +202,10 @@ export class CadCanvas {
     if (!this.selectedComponentId) return;
     const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
     if (comp) {
+      const symbol = getSymbolForComponent(comp, this.project);
+      const insertion = symbol && componentInsertionPoint(comp, symbol);
       comp.rotation = (((comp.rotation || 0) + delta + 360) % 360) as any;
+      if (symbol && insertion) Object.assign(comp, positionAtInsertionPoint(insertion, symbol, comp.rotation));
       AutoconnectEngine.clearSuppressedForComponent(this.activePage, comp.id);
       if (this.autoconnectEnabled) {
         AutoconnectEngine.updatePageAutoconnections(this.activePage);
@@ -225,8 +229,8 @@ export class CadCanvas {
       ...JSON.parse(JSON.stringify(comp)),
       id: 'comp_' + Math.random().toString(36).substring(2, 9),
       bmk: newBmk,
-      x: comp.x + this.gridSize * 4,
-      y: comp.y + this.gridSize * 4,
+      x: comp.x + gridForPage(this.activePage, this.gridSize).spacing * 4,
+      y: comp.y + gridForPage(this.activePage, this.gridSize).spacing * 4,
     };
     delete newComp.source;
     for (const pin of Object.values(newComp.pins)) pin.wireIds = [];
@@ -281,29 +285,15 @@ export class CadCanvas {
   }
 
   public getEffectiveGridSize(isModifierActive: boolean = false): number {
-    if (!this.gridSnap || this.gridResolution === 'off') return 1;
-    if (isModifierActive) {
-      // Holding Shift/Alt temporarily drops to half or fine raster
-      return this.gridResolution === 'full' ? 4 : 2;
-    }
-    switch (this.gridResolution) {
-      case 'half': return 4;
-      case 'fine': return 2;
-      case 'full':
-      default:
-        return 8;
-    }
+    return gridStep(gridForPage(this.activePage, this.gridSize).spacing,
+      this.gridSnap ? this.gridResolution : 'off', isModifierActive);
   }
 
   public getGridLabel(): string {
     if (!this.gridSnap || this.gridResolution === 'off') return 'Aus';
-    switch (this.gridResolution) {
-      case 'half': return '½ (4px)';
-      case 'fine': return '¼ (2px)';
-      case 'full':
-      default:
-        return '1x (8px)';
-    }
+    const prefix = this.gridResolution === 'half' ? '½' : this.gridResolution === 'fine' ? '¼' : '1x';
+    const units = getDrawingUnitsPerMm(this.project);
+    return `${prefix} (${(this.getEffectiveGridSize() / units).toLocaleString('de-DE', { maximumFractionDigits: 3 })} mm)`;
   }
 
   public cycleGridResolution(): GridResolution {
@@ -328,10 +318,23 @@ export class CadCanvas {
     this.render();
   }
 
-  public snap(val: number, isModifierActive: boolean = false): number {
+  public snap(val: number, isModifierActive: boolean = false, axis: 'x' | 'y' = 'x'): number {
     const step = this.getEffectiveGridSize(isModifierActive);
-    if (step <= 1) return Math.round(val);
-    return Math.round(val / step) * step;
+    return snapCoordinate(val, step, gridForPage(this.activePage, this.gridSize).origin[axis]);
+  }
+
+  private placementPosition(x: number, y: number, symbol: NonNullable<ReturnType<typeof getSymbolById>>): { x: number; y: number } {
+    return positionAtInsertionPoint({ x: this.snap(x), y: this.snap(y, false, 'y') }, symbol, this.ghostRotation);
+  }
+
+  private macroPlacementPosition(x: number, y: number, macro: WindowMacro): { x: number; y: number } {
+    const factor = MacroManager.getMacroScale(macro, this.project);
+    const first = macro.components[0];
+    const symbol = first && getSymbolForComponent(first, { ...this.project,
+      symbolLibrary: [...(this.project.symbolLibrary ?? []), ...(macro.symbolLibrary ?? [])] });
+    const handle = macro.handlePoint ? { x: macro.handlePoint.x * factor, y: macro.handlePoint.y * factor }
+      : first && symbol ? componentInsertionPoint({ ...first, x: first.x * factor, y: first.y * factor }, symbol) : { x: 0, y: 0 };
+    return { x: this.snap(x) - handle.x, y: this.snap(y, false, 'y') - handle.y };
   }
 
 
@@ -569,10 +572,9 @@ export class CadCanvas {
       technicalCharacteristics: sym.technicalCharacteristics || '',
       articleNumber: sym.articleNumber || '',
       manufacturer: sym.manufacturer || '',
-      x: this.snap(worldX),
-      y: this.snap(worldY),
+      ...this.placementPosition(worldX, worldY, sym),
       rotation: this.ghostRotation || 0,
-      pins: {}
+      pins: Object.fromEntries(sym.pins.map(pin => [pin.id, { customLabel: pin.name, wireIds: [] }]))
     };
 
     this.activePage.components.push(newComp);
@@ -599,7 +601,8 @@ export class CadCanvas {
           to: clickedPin,
           potential: 'L1',
           color: 'BK',
-          crossSection: '1.5mm²'
+          crossSection: '1.5mm²',
+          ...(this.activePage.grid ? { lineWidth: this.activePage.grid.spacing / 16 } : {})
         };
         this.activePage.wires.push(wire);
         this.wireStart = null;
@@ -705,8 +708,8 @@ export class CadCanvas {
         const rawX = world.x - this.dragOffset.x;
         const rawY = world.y - this.dragOffset.y;
         const isModifier = e.shiftKey || e.altKey;
-        comp.x = this.snap(rawX, isModifier);
-        comp.y = this.snap(rawY, isModifier);
+        if (sym) Object.assign(comp, snapSymbolPosition({ x: rawX, y: rawY }, sym, comp.rotation,
+          gridForPage(this.activePage, this.gridSize), this.getEffectiveGridSize(isModifier)));
         const el = this.svg.getElementById(comp.id);
         if (el && sym) {
           el.setAttribute('transform', `translate(${comp.x}, ${comp.y}) rotate(${comp.rotation || 0}, ${sym.width / 2}, ${sym.height / 2})`);
@@ -909,8 +912,8 @@ export class CadCanvas {
           const sym = getSymbolForComponent(comp, this.project);
           const rawX = world.x - this.dragOffset.x;
           const rawY = world.y - this.dragOffset.y;
-          comp.x = this.snap(rawX, false);
-          comp.y = this.snap(rawY, false);
+          if (sym) Object.assign(comp, snapSymbolPosition({ x: rawX, y: rawY }, sym, comp.rotation,
+            gridForPage(this.activePage, this.gridSize), this.getEffectiveGridSize()));
           // Fast DOM update for smooth 60fps drag without replacing innerHTML:
           const el = this.svg.getElementById(comp.id);
           if (el && sym) {
@@ -967,7 +970,7 @@ export class CadCanvas {
     if (!from || !to) return [];
     return wirePolyline(from, to, wire.waypoints,
       wirePinDirection(this.activePage, this.project, wire.from), wirePinDirection(this.activePage, this.project, wire.to),
-      this.activePage.components.find(c => c.id === wire.from.componentId)?.symbolId === 'potential_rail_source');
+      this.activePage.components.find(c => c.id === wire.from.componentId)?.symbolId === 'potential_rail_source', gridForPage(this.activePage, this.gridSize));
   }
 
   private updateConnectedWiresFast(componentId: string): void {
@@ -1075,20 +1078,21 @@ export class CadCanvas {
     const pageHeight = this.activePage.plotFrame.height;
 
     const effGrid = this.getEffectiveGridSize();
-    const patternSize = effGrid <= 4 ? 4 : 8;
+    const grid = gridForPage(this.activePage, this.gridSize);
+    const patternSize = effGrid || grid.spacing;
     const dotRadius = patternSize <= 4 ? 0.6 : 0.75;
     const dotFill = this.gridSnap && this.gridResolution !== 'off' ? '#4a5568' : '#2d3748';
 
     this.svg.innerHTML = `
       <defs>
-        <pattern id="cadGrid" width="${patternSize}" height="${patternSize}" patternUnits="userSpaceOnUse">
-          <circle cx="1" cy="1" r="${dotRadius}" fill="${dotFill}"/>
+        <pattern id="cadGrid" x="${grid.origin.x}" y="${grid.origin.y}" width="${patternSize}" height="${patternSize}" patternUnits="userSpaceOnUse" overflow="visible">
+          <circle cx="0" cy="0" r="${dotRadius}" fill="${dotFill}"/>
         </pattern>
       </defs>
       <g id="viewportTransform" transform="translate(${this.panX}, ${this.panY}) scale(${this.scale})">
         <!-- Page Paper -->
         <rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="#1a202c" stroke="#2d3748" stroke-width="2"/>
-        <rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="url(#cadGrid)"/>
+        <rect x="0" y="0" width="${pageWidth}" height="${pageHeight}" fill="url(#cadGrid)" style="display: ${this.gridSnap && this.gridResolution !== 'off' ? 'block' : 'none'};"/>
         
         <!-- DIN A3 Normblatt Plot Frame -->
         ${this.renderPlotFrame(pageWidth, pageHeight)}
@@ -1388,16 +1392,15 @@ export class CadCanvas {
         symbolId: this.activeSymbolToPlace,
         bmk: '',
         functionText: '',
-        x: this.snap(this.currentMousePos.x),
-        y: this.snap(this.currentMousePos.y),
+        ...this.placementPosition(this.currentMousePos.x, this.currentMousePos.y, getSymbolById(this.activeSymbolToPlace, this.project)!),
         rotation: this.ghostRotation || 0,
         pins: {}
       };
-      previews = AutoconnectEngine.getAutoconnectPreview(this.activePage.components, tempComp);
+      previews = AutoconnectEngine.getAutoconnectPreview(this.activePage.components, tempComp, this.activePage);
     } else if (this.isDraggingComponent && this.selectedComponentId) {
       const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
       if (comp) {
-        previews = AutoconnectEngine.getAutoconnectPreview(this.activePage.components, comp);
+        previews = AutoconnectEngine.getAutoconnectPreview(this.activePage.components, comp, this.activePage);
       }
     }
 
@@ -1425,13 +1428,15 @@ export class CadCanvas {
     const startCoord = this.getPinCoordinates(this.wireStart.componentId, this.wireStart.pinId);
     if (!startCoord) return '';
 
-    const midY = (startCoord.y + this.currentMousePos.y) / 2;
-    const pathData = `M ${startCoord.x} ${startCoord.y} L ${startCoord.x} ${midY} L ${this.currentMousePos.x} ${midY} L ${this.currentMousePos.x} ${this.currentMousePos.y}`;
+    const targetPin = this.hoveredPin && this.getPinCoordinates(this.hoveredPin.componentId, this.hoveredPin.pinId);
+    const target = targetPin || { x: this.snap(this.currentMousePos.x), y: this.snap(this.currentMousePos.y, false, 'y') };
+    const points = wirePolyline(startCoord, target, [], undefined, undefined, false, gridForPage(this.activePage, this.gridSize));
+    const pathData = points.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ');
 
     return `
       <path d="${pathData}" fill="none" stroke="#63b3ed" stroke-width="2" stroke-dasharray="4,4"/>
       <circle cx="${startCoord.x}" cy="${startCoord.y}" r="4" fill="#63b3ed"/>
-      <circle cx="${this.currentMousePos.x}" cy="${this.currentMousePos.y}" r="3" fill="#63b3ed"/>
+      <circle cx="${target.x}" cy="${target.y}" r="3" fill="#63b3ed"/>
     `;
   }
 
@@ -1465,15 +1470,15 @@ export class CadCanvas {
   private renderGhostSymbol(): string {
     if (this.mode === 'place_macro' && this.activeMacroToPlace) {
       const macro = this.activeMacroToPlace;
-      const gx = this.snap(this.currentMousePos.x);
-      const gy = this.snap(this.currentMousePos.y);
+      const { x: gx, y: gy } = this.macroPlacementPosition(this.currentMousePos.x, this.currentMousePos.y, macro);
+      const factor = MacroManager.getMacroScale(macro, this.project);
 
       let componentsGhost = '';
       for (const c of macro.components) {
         const sym = getSymbolForComponent(c, { ...this.project, symbolLibrary: [...(this.project.symbolLibrary ?? []), ...(macro.symbolLibrary ?? [])] });
         if (sym) {
           componentsGhost += `
-            <g transform="translate(${c.x}, ${c.y}) rotate(${c.rotation || 0}, ${sym.width / 2}, ${sym.height / 2})">
+            <g transform="translate(${c.x * factor}, ${c.y * factor}) rotate(${c.rotation || 0}, ${sym.width / 2}, ${sym.height / 2})">
               <g color="#63b3ed" stroke="#63b3ed" fill="none">
                 ${sym.importedGraphics ? drawingToSvg(sym.importedGraphics, { color: 'currentColor' }) : sym.svgContent}
               </g>
@@ -1485,7 +1490,7 @@ export class CadCanvas {
 
       return `
         <g id="ghostLayer" transform="translate(${gx}, ${gy})" opacity="0.8" pointer-events="none">
-          <rect x="-6" y="-6" width="${macro.width + 12}" height="${macro.height + 12}" fill="rgba(66, 153, 225, 0.12)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="4,3" rx="4"/>
+          <rect x="-6" y="-6" width="${macro.width * factor + 12}" height="${macro.height * factor + 12}" fill="rgba(66, 153, 225, 0.12)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="4,3" rx="4"/>
           <text x="${macro.width / 2}" y="-10" font-size="11" font-weight="bold" font-family="sans-serif" fill="#63b3ed" text-anchor="middle">📦 ${macro.name} (Klick: Makro platzieren)</text>
           ${componentsGhost}
         </g>
@@ -1496,8 +1501,7 @@ export class CadCanvas {
     const sym = getSymbolById(this.activeSymbolToPlace, this.project);
     if (!sym) return '';
 
-    const gx = this.snap(this.currentMousePos.x);
-    const gy = this.snap(this.currentMousePos.y);
+    const { x: gx, y: gy } = this.placementPosition(this.currentMousePos.x, this.currentMousePos.y, sym);
 
     const existingCount = this.activePage.components.filter(c => c.symbolId === sym.id).length;
     const prefix = sym.defaultBmkPrefix || '';

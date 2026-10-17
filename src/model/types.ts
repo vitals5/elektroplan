@@ -33,6 +33,10 @@ export interface SymbolDefinition {
   width: number;
   height: number;
   pins: PinDefinition[];
+  /** Drawing units per physical mm, for placing this master data in another project. */
+  unitsPerMm?: number;
+  /** Logical insertion point, independent of the symbol's contour bounds. */
+  insertionPoint?: { x: number; y: number };
   /** Original symbol-library reference, retained with the project's master data. */
   source?: { library: string; number: number; variant: number };
   importedGraphics?: DrawingPrimitive[];
@@ -161,6 +165,7 @@ export interface Page {
   higherLevel: string;          // =Anlage (z.B. "=H1")
   location: string;             // +Ort (z.B. "+S1")
   components: PlacedComponent[];
+  grid?: { spacing: number; origin: { x: number; y: number } };
   wires: Wire[];
   texts?: PageText[];
   boxes?: PageBox[];
@@ -175,8 +180,8 @@ export interface Page {
   };
   plotFrame: {
     type: 'DIN_A3_LANDSCAPE';
-    width: number;              // in mm, default 420
-    height: number;             // in mm, default 297
+    width: number;              // drawing units (physical mm via Project.drawingUnitsPerMm)
+    height: number;             // drawing units
     columns: number;            // 0..9 (10 paths per page)
     rows: string[];             // A..F
     titleBlock: TitleBlock;
@@ -194,6 +199,7 @@ export interface Project {
   author: string;
   company: string;
   pages: Page[];
+  drawingUnitsPerMm?: number;
   /** Shared project master data. Placements reference these definitions by symbolId. */
   symbolLibrary?: SymbolDefinition[];
   /** Logical net connections without a drawable source page (may span pages). */

@@ -4,6 +4,7 @@
 
 import JSZip from 'jszip';
 import { EplanNativeProject } from './EplanNativeProject';
+import { EPLAN_SCALE } from './EplanSymbolLibrary';
 import { Project, Page, PlacedComponent, PageType, Wire, PageText, PageBox, PageImage } from '../model/types';
 import { SYMBOL_DEFINITIONS, getSymbolById, getSymbolForComponent, setProjectSymbolLibrary } from '../model/symbols';
 import { AutoconnectEngine } from '../model/AutoconnectEngine';
@@ -279,6 +280,7 @@ export class EdbProjectParser {
       company,
       pages,
       symbolLibrary: native?.library.definitions,
+      ...(native ? { drawingUnitsPerMm: EPLAN_SCALE } : {}),
       activePageId
     };
 

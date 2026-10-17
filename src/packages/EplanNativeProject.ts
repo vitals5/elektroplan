@@ -96,7 +96,7 @@ export class EplanNativeProject {
     let id = base, suffix = 0;
     while (this.library.definitions.some(d => d.id === id)) id = `${base}:${++suffix}`;
     const definition: SymbolDefinition = { id, name, category: 'controls', standard: 'DIN EN 60617',
-      defaultBmkPrefix: '', defaultFunctionText: '', width: 1, height: 1, pins: [], svgContent: '',
+      defaultBmkPrefix: '', defaultFunctionText: '', width: 1, height: 1, unitsPerMm: SCALE, pins: [], svgContent: '',
       description: 'Freies Grafikobjekt aus den Projektdaten', importedGraphics: graphics };
     entry = normalizeDefinition(definition);
     this.graphics.set(key, entry);
@@ -187,7 +187,8 @@ export class EplanNativeProject {
         if (!entry) {
           entry = { definition: { id: `eplan:annotation:${size}:${width}:${value.split('\n').length}`, name: 'Projekttext',
             category: 'controls', standard: 'DIN EN 60617', defaultBmkPrefix: '', defaultFunctionText: '',
-            width, height: size * Math.max(1, value.split('\n').length), pins: [], svgContent: '', importedGraphics: [], description: 'Editierbarer Projekttext' },
+            width, height: size * Math.max(1, value.split('\n').length), unitsPerMm: SCALE, insertionPoint: { x: 0, y: size },
+            pins: [], svgContent: '', importedGraphics: [], description: 'Editierbarer Projekttext' },
             origin: { x: 0, y: size }, labels: new Map() };
           this.graphics.set(key, entry);
         }
@@ -257,6 +258,7 @@ export class EplanNativeProject {
     components.sort((a, b) => drawingOrder(a) - drawingOrder(b));
     page.components = components; page.wires = wires; page.texts = []; page.boxes = [];
     page.plotFrame.height = 297 * SCALE;
+    page.grid = { spacing: 4 * SCALE, origin: { x: 0, y: page.plotFrame.height } };
     page.connectionMode = 'explicit';
     page.importDiagnostics = diagnostics;
     delete page.importedDrawing;

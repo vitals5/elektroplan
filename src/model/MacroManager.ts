@@ -3,7 +3,8 @@
 
 import JSZip from 'jszip';
 import { Project, Page, PlacedComponent, Wire, SymbolDefinition } from './types';
-import { getSymbolForComponent, getComponentSymbolLibrary, mergeProjectSymbolLibrary } from './symbols';
+import { getSymbolForComponent, getComponentSymbolLibrary, getDrawingUnitsPerMm, mergeProjectSymbolLibrary } from './symbols';
+import { componentInsertionPoint, scalePlacedComponent } from './SymbolGeometry';
 
 export interface WindowMacro {
   id: string;
@@ -13,6 +14,7 @@ export interface WindowMacro {
   description: string;
   components: PlacedComponent[];
   symbolLibrary?: SymbolDefinition[];
+  unitsPerMm?: number;
   wires?: Wire[];
   width: number;
   height: number;
@@ -31,6 +33,7 @@ export interface PageMacro {
   description: string;
   page: Page;
   symbolLibrary?: SymbolDefinition[];
+  unitsPerMm?: number;
   isBuiltIn?: boolean;
   author?: string;
   version?: string;
@@ -1069,7 +1072,8 @@ export class MacroManager {
     if (wires) {
       for (const w of wires) {
         if (compIds.has(w.from.componentId) && compIds.has(w.to.componentId)) {
-          internalWires.push(JSON.parse(JSON.stringify(w)));
+          internalWires.push({ ...JSON.parse(JSON.stringify(w)),
+            ...(w.waypoints ? { waypoints: w.waypoints.map(p => ({ x: p.x - minX, y: p.y - minY })) } : {}) });
         }
       }
     }
@@ -1085,6 +1089,10 @@ export class MacroManager {
       width: Math.max(40, maxX - minX),
       height: Math.max(40, maxY - minY),
       components: clonedComponents,
+      unitsPerMm: getDrawingUnitsPerMm(),
+      handlePoint: (() => { const sym = getSymbolForComponent(components[0]);
+        const p = sym ? componentInsertionPoint(components[0], sym) : components[0];
+        return { x: p.x - minX, y: p.y - minY }; })(),
       symbolLibrary: getComponentSymbolLibrary(components),
       wires: internalWires
     };
@@ -1106,6 +1114,7 @@ export class MacroManager {
       isBuiltIn: false,
       created: new Date().toISOString().split('T')[0],
       page: pageClone,
+      unitsPerMm: getDrawingUnitsPerMm(),
       symbolLibrary: getComponentSymbolLibrary(page.components)
     };
   }
@@ -1121,6 +1130,7 @@ export class MacroManager {
     existingComponents: PlacedComponent[],
     project?: Project
   ): { components: PlacedComponent[]; wires: Wire[] } {
+    const factor = this.getMacroScale(macro, project);
     // 1. Calculate next available numbers for each BMK prefix
     const bmkMap = new Map<string, string>(); // old BMK -> new BMK
     const idMap = new Map<string, string>();   // old comp ID -> new comp ID
@@ -1156,11 +1166,11 @@ export class MacroManager {
       const assignedBmk = bmkMap.get(c.bmk) || c.bmk;
 
       return {
-        ...JSON.parse(JSON.stringify(c)),
+        ...scalePlacedComponent(c, factor),
         id: newId,
         bmk: assignedBmk,
-        x: targetX + c.x,
-        y: targetY + c.y
+        x: targetX + c.x * factor,
+        y: targetY + c.y * factor
       };
     });
 
@@ -1175,7 +1185,9 @@ export class MacroManager {
             ...JSON.parse(JSON.stringify(w)),
             id: 'w_' + Math.random().toString(36).substring(2, 9),
             from: { ...w.from, componentId: fromId },
-            to: { ...w.to, componentId: toId }
+            to: { ...w.to, componentId: toId },
+            ...(w.waypoints ? { waypoints: w.waypoints.map(p => ({ x: targetX + p.x * factor, y: targetY + p.y * factor })) } : {}),
+            ...(w.lineWidth !== undefined ? { lineWidth: w.lineWidth * factor } : {})
           });
         }
       }
@@ -1185,11 +1197,37 @@ export class MacroManager {
     return { components: newComponents, wires: newWires };
   }
 
+  public static getMacroScale(macro: WindowMacro | PageMacro, project?: Project): number {
+    const source = macro.unitsPerMm ?? macro.symbolLibrary?.find(s => s.unitsPerMm)?.unitsPerMm
+      ?? (macro.symbolLibrary?.some(s => s.source) ? getDrawingUnitsPerMm(project) : 2);
+    return getDrawingUnitsPerMm(project) / source;
+  }
+
   /**
    * Instantiates a Page Macro (.ems) by appending a cloned page to the project.
    */
   public static instantiatePageMacro(macro: PageMacro, project: Project): Page {
     const pageClone: Page = JSON.parse(JSON.stringify(macro.page));
+    const factor = this.getMacroScale(macro, project);
+    if (factor !== 1) {
+      pageClone.components = pageClone.components.map(c => scalePlacedComponent(c, factor));
+      pageClone.plotFrame.width *= factor; pageClone.plotFrame.height *= factor;
+      if (pageClone.grid) {
+        pageClone.grid.spacing *= factor;
+        pageClone.grid.origin.x *= factor; pageClone.grid.origin.y *= factor;
+      }
+      for (const wire of pageClone.wires) {
+        wire.waypoints = wire.waypoints?.map(p => ({ x: p.x * factor, y: p.y * factor }));
+        if (wire.lineWidth !== undefined) wire.lineWidth *= factor;
+      }
+      for (const text of pageClone.texts ?? []) {
+        text.x *= factor; text.y *= factor;
+        if (text.fontSize !== undefined) text.fontSize *= factor;
+      }
+      for (const item of [...(pageClone.images ?? []), ...(pageClone.boxes ?? [])]) {
+        item.x *= factor; item.y *= factor; item.width *= factor; item.height *= factor;
+      }
+    }
     mergeProjectSymbolLibrary(project, macro.symbolLibrary ?? [], pageClone.components);
     const newPageId = 'page_' + Math.random().toString(36).substring(2, 9);
     pageClone.id = newPageId;

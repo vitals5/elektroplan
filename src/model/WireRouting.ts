@@ -1,16 +1,17 @@
 import { Page, PinDefinition, Project, Wire } from './types';
 import { getSymbolForComponent } from './symbols';
+import { snapCoordinate } from './DrawingGrid';
 
 type Point = { x: number; y: number };
 type Direction = PinDefinition['direction'];
 
 /** Shared centerline for painting, dragging, hit testing and PDF export. */
 export function wirePolyline(from: Point, to: Point, waypoints: readonly Point[] = [],
-  fromDirection?: Direction, toDirection?: Direction, busbar = false): Point[] {
-  if (waypoints.length) return orthogonalWirePoints(from, to, waypoints, fromDirection, toDirection);
+  fromDirection?: Direction, toDirection?: Direction, busbar = false, grid?: Page['grid']): Point[] {
+  if (waypoints.length) return orthogonalWirePoints(from, to, waypoints, fromDirection, toDirection, grid);
   if (Math.abs(from.x - to.x) < 1e-8 || Math.abs(from.y - to.y) < 1e-8) return [from, to];
   if (busbar) return [from, { x: to.x, y: from.y }, to];
-  const midY = (from.y + to.y) / 2;
+  const midY = grid ? snapCoordinate((from.y + to.y) / 2, grid.spacing, grid.origin.y) : (from.y + to.y) / 2;
   return [from, { x: from.x, y: midY }, { x: to.x, y: midY }, to];
 }
 
@@ -27,7 +28,7 @@ export function wirePinDirection(page: Page, project: Project, endpoint: Wire['f
 /** Preserve explicit routing anchors while reconnecting moved pins orthogonally.
  * The result is transient; moving a component never rewrites its imported route.
  */
-export function orthogonalWirePoints(from: Point, to: Point, waypoints: readonly Point[], fromDirection?: Direction, toDirection?: Direction): Point[] {
+export function orthogonalWirePoints(from: Point, to: Point, waypoints: readonly Point[], fromDirection?: Direction, toDirection?: Direction, grid?: Page['grid']): Point[] {
   const aligned = (a: Point, b: Point) => Math.abs(a.x - b.x) < 1e-8 || Math.abs(a.y - b.y) < 1e-8;
   const connector = (a: Point, b: Point, direction?: Direction): Point[] => {
     if (aligned(a, b)) return [a, b];
@@ -37,8 +38,13 @@ export function orthogonalWirePoints(from: Point, to: Point, waypoints: readonly
     const forward = direction === 'top' ? b.y < a.y : direction === 'bottom' ? b.y > a.y
       : direction === 'left' ? b.x < a.x : direction === 'right' ? b.x > a.x : true;
     if (forward) return [a, vertical ? { x: a.x, y: b.y } : { x: b.x, y: a.y }, b];
-    const stub = { x: a.x + (direction === 'left' ? -8 : direction === 'right' ? 8 : 0),
-      y: a.y + (direction === 'top' ? -8 : direction === 'bottom' ? 8 : 0) };
+    const step = grid?.spacing ?? 8;
+    const stub = { x: a.x + (direction === 'left' ? -step : direction === 'right' ? step : 0),
+      y: a.y + (direction === 'top' ? -step : direction === 'bottom' ? step : 0) };
+    if (grid) {
+      if (vertical) stub.y = snapCoordinate(stub.y, step, grid.origin.y);
+      else stub.x = snapCoordinate(stub.x, step, grid.origin.x);
+    }
     return [a, stub, vertical ? { x: b.x, y: stub.y } : { x: stub.x, y: b.y }, b];
   };
   if (!waypoints.length) return connector(from, to, fromDirection).map(p => ({ ...p }));

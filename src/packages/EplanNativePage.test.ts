@@ -10,6 +10,8 @@ import { PdfExporter } from '../export/PdfExporter';
 import { connectionCutouts, supersededConnectionGraphics } from '../model/ConnectionGraphics';
 import { CadCanvas } from '../editor/CadCanvas';
 import { EPLAN_SCALE } from './EplanSymbolLibrary';
+import { componentInsertionPoint } from '../model/SymbolGeometry';
+import { gridForPage, snapSymbolPosition } from '../model/DrawingGrid';
 import { Page, PlacedComponent, Project } from '../model/types';
 
 const archive = Buffer.concat(['Eplan Haus.zip.001', 'Eplan Haus.zip.002'].map(f => fs.readFileSync(f)));
@@ -20,6 +22,8 @@ assert(project.symbolLibrary?.length);
 assert.equal(page.importedDrawing, undefined, 'No special page drawing / theme path');
 assert.equal(page.wires.length, 91);
 assert.equal(page.plotFrame.titleBlock.date, '15.09.2026');
+assert.equal(project.drawingUnitsPerMm, EPLAN_SCALE);
+assert.deepEqual(page.grid, { spacing: 4 * EPLAN_SCALE, origin: { x: 0, y: 297 * EPLAN_SCALE } });
 assert(!messages.some(d => /Bibliotheksanschluss.*fehlt|Anschluss nicht auflösbar|Bibliothekssymbol nicht auflösbar/.test(d)), 'Every source reference must resolve');
 const component = (id: number, type = 17) => page.components.find(c => c.id === `eplan_13_${type}_${id}`)!;
 const symbol = (c: PlacedComponent) => getSymbolForComponent(c, project)!;
@@ -40,6 +44,10 @@ assert.equal(component(0x9a33).symbolId, component(0x9a34).symbolId);
 assert.strictEqual(symbol(component(0x9a33)), symbol(component(0x9a34)), 'Placements share one master definition');
 assert.deepEqual(symbol(component(0x9a33)).source, { library: 'IEC_symbol', number: 1526, variant: 0 });
 assert.equal(symbol(component(0x9a33)).importedGraphics!.length, 28, 'Actual QLTR4_2 source contours');
+const insertion = componentInsertionPoint(component(0x9a33), symbol(component(0x9a33)));
+close(insertion.x / EPLAN_SCALE, 56); close(297 - insertion.y / EPLAN_SCALE, 248);
+const snappedQ12 = snapSymbolPosition(component(0x9a33), symbol(component(0x9a33)), 0, gridForPage(page), page.grid!.spacing);
+close(snappedQ12.x, component(0x9a33).x); close(snappedQ12.y, component(0x9a33).y);
 // Two upward-facing inputs must connect above the devices through the original
 // corners, even though both endpoints have the same Y coordinate.
 const q12UpperWire = page.wires.find(w => w.id === 'eplan_wire_13_24338')!;
@@ -91,6 +99,7 @@ function validateConnections(p: Page): void {
   }
 }
 for (const p of project.pages) {
+  assert(p.grid, 'Every native page retains its physical grid and origin');
   assert.equal(p.importedDrawing, undefined);
   assert.equal(new Set(p.components.map(c => c.id)).size, p.components.length);
   for (const c of p.components) {
@@ -99,6 +108,17 @@ for (const p of project.pages) {
     assert.strictEqual(getSymbolById(c.symbolId, project), symbol(c));
   }
   validateConnections(p);
+  for (const c of p.components.filter(c => symbol(c).source)) {
+    const definition = symbol(c);
+    assert(definition.insertionPoint && definition.unitsPerMm === EPLAN_SCALE);
+    for (const physicalPin of definition.pins) {
+      const info = AutoconnectEngine.getRotatedPinInfo(c, physicalPin, definition);
+      // Real contact edges at .75 mm remain exact quarter-mm coordinates;
+      // coarse raster snapping must not round them away from their contour.
+      for (const value of [info.worldX / EPLAN_SCALE, (297 - info.worldY / EPLAN_SCALE)])
+        close(value * 4, Math.round(value * 4));
+    }
+  }
   const before = JSON.stringify(p.wires);
   AutoconnectEngine.updatePageAutoconnections(p);
   assert.equal(JSON.stringify(p.wires), before, `Opening ${p.title} must not invent connections`);

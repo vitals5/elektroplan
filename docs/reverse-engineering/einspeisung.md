@@ -1,6 +1,6 @@
 # EPLAN P8: allgemeiner Bibliotheksimport
 
-Stand: 16.10.2026. Ausgangspunkt ist PDF-Seite 2 „Einspeisung“ des
+Stand: 17.10.2026. Ausgangspunkt ist PDF-Seite 2 „Einspeisung“ des
 bereitgestellten EPLAN-P8-Exports. Quelle sind ausschließlich die unveränderten
 Archivteile `Eplan Haus.zip.001` und `.002`. Der PDF-Export wird nicht eingeblendet.
 
@@ -161,6 +161,51 @@ Regressionen prüfen die echten Varianten 64:0, 66:0/1, 69:0 und 72:0, Q12s
 obere Route, die 0,25-/1-mm-Sammelschiene sowie Auswahl, Verschieben,
 Anschlussbezeichnungen und PDF-Ausgabe. Visuelle Stichproben verwenden die
 T-Verbindungen auf PDF-Seite 2 und die Kreuzung auf PDF-Seite 24.
+
+## Gemeinsames Raster und Bibliotheksmaßstab
+
+Das Projekt speichert `drawingUnitsPerMm`, die Seite ihr Raster mit Abstand
+und Ursprung, und jede Bibliotheksdefinition ihren Maßstab `unitsPerMm` und
+logischen `insertionPoint`. Beim P8-Import bleibt der Maßstab `1000/420`
+Zeichnungseinheiten pro mm erhalten. Das Editor-Grundraster beträgt 4 mm,
+Halbraster 2 mm und Feinraster 1 mm, mit dem Quellursprung unten links.
+Rasterdarstellung und Fang verwenden dieselben Werte, einschließlich des
+y-abwärts gerichteten Seitenursprungs. Die 4 mm sind die Editor-Voreinstellung;
+abweichende proprietäre Projekteinstellungen sind damit nicht vollständig dekodiert.
+
+Einrasten, Vorschau, Maus- und Touch-Verschieben verwenden den logischen
+Einfügepunkt statt der normalisierten Kontur-Ecke. Beim Drehen bleibt dieser
+Punkt stehen. Der Eigenschaftendialog zeigt und bearbeitet denselben Punkt.
+„Raster aus“ lässt freie Koordinaten zu. Neu erzeugte Leitungsknicke und
+Ausweichstücke nach dem Verschieben richten sich nach dem Seitenraster.
+
+Die P8-Stammdaten bleiben maßhaltig. Im Beispiel besitzen auch tatsächlich
+verbundene Kontakte konturbedingte Viertelmillimeter-Abstände, etwa 0,75 mm
+bis zum Rand eines runden Anschlusses. Deren physische Koordinaten werden
+beibehalten. Der Rasterfang führt Einfügepunkte und Leitungsachsen; ein
+unabhängiges Runden aller Kontaktkonturen würde die Originalgeometrie verändern.
+
+Die Standardbibliothek hat explizite Einfügepunkte und einen Maßstab von zwei
+Zeichnungseinheiten pro mm. Beim Verwenden in einem P8-Projekt werden ihre
+Konturen, physischen Pins und Maße zusammen in den Projektmaßstab umgerechnet.
+LS-Schalter 3P, NH-Trenner 3P, Umschalter 4P und Drehstromzähler haben jetzt
+einheitliche 12-mm-Polabstände. Einzelne ungerade Pin-Koordinaten wurden auf
+das 1-mm-Feinraster gebracht; fehlende Anschlussstummel an Thermostat,
+Wechselrichter und Mehrkanalrelais sowie am oberen T-Abzweig wurden ergänzt.
+SVG- und PDF-Polpositionen wurden gemeinsam korrigiert.
+
+Autoconnect verwendet bei Seiten mit physischem Raster eine numerische
+Achstoleranz von `1e-6` Zeichnungseinheiten. Ein räumlich benachbarter Pin
+erzeugt dadurch keine Verbindung in die nächste Rasterspalte. Die importierte
+Kantenliste bleibt erhalten. Makros speichern ihren Maßstab und Einfügegriff;
+relative Komponentenpositionen und Leitungswegpunkte werden gemeinsam
+normalisiert und beim Einfügen in einen anderen Maßstab umgerechnet.
+
+Prüfungen verwenden das ganze Originalarchiv, die Quellenkoordinaten von Q12,
+alle physischen Pins der importierten Bibliotheken, alle Standardbibliotheks-Pins,
+vier Drehstellungen, genaue Autoconnect-Achsen und Makro-Wegpunkte. Der
+Browser-Test prüft Import, Drehen und Verschieben von Q12, neue P8- und
+Standardplatzierungen, eine neue Leitung, Rasterwechsel und erneutes JSON-Laden.
 
 ## Verbleibende Grenzen
 

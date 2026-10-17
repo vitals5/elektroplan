@@ -78,6 +78,7 @@ export function normalizeDefinition(definition: SymbolDefinition, labels = new M
   const minX = Math.min(...bounds.map(p => p.x)), minY = Math.min(...bounds.map(p => p.y));
   definition.width = Math.max(1, Math.max(...bounds.map(p => p.x)) - minX);
   definition.height = Math.max(1, Math.max(...bounds.map(p => p.y)) - minY);
+  definition.insertionPoint = { x: -minX, y: -minY };
   definition.pins = definition.pins.map(p => ({ ...p, x: p.x - minX, y: p.y - minY,
     ...(p.labelPosition ? { labelPosition: { ...p.labelPosition,
       x: p.labelPosition.x - minX, y: p.labelPosition.y - minY } } : {}) }));
@@ -291,7 +292,7 @@ export class EplanSymbolLibrary {
           : functionClass === 200 ? 'relays' : library === 'SPECIAL' ? 'connections' : /^F/.test(name) ? 'protection' : /^K/.test(name) ? 'relays'
           : /^X/.test(name) ? 'terminals' : 'controls',
         standard: 'DIN EN 60617', defaultBmkPrefix: '', defaultFunctionText: '',
-        width: 1, height: 1, pins: sourcePinLabelPositions(variant.data, pins, this.layers,
+        width: 1, height: 1, unitsPerMm: EPLAN_SCALE, pins: sourcePinLabelPositions(variant.data, pins, this.layers,
           message => this.diagnostics.push(`${library}/${number}:${variantIndex}: ${message}`)), svgContent: '', description: description || `${library}: ${name}`,
         importedGraphics: (shapes.get(variant.id) ?? []).flatMap(r => eplanPrimitives(r, this.layers)), source: { library, number, variant: variantIndex },
         isMaster: functionClass === 200 || undefined,

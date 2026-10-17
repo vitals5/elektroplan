@@ -2,6 +2,7 @@ import { Page, PlacedComponent, Project, SymbolDefinition, Wire } from './types'
 import { getSymbolForComponent } from './symbols';
 import { arcPoints } from './ImportedDrawing';
 import { wirePinDirection, wirePolyline } from './WireRouting';
+import { gridForPage } from './DrawingGrid';
 
 type Point = { x: number; y: number };
 export type WireCutout = { minX: number; minY: number; maxX: number; maxY: number };
@@ -31,7 +32,7 @@ export function connectionGraphicWires(page: Page, project: Project): Map<string
     const from = endpoint(wire.from), to = endpoint(wire.to);
     return { wire, points: from && to ? wirePolyline(from, to, wire.waypoints,
       wirePinDirection(page, project, wire.from), wirePinDirection(page, project, wire.to),
-      page.components.find(c => c.id === wire.from.componentId)?.symbolId === 'potential_rail_source') : [] };
+      page.components.find(c => c.id === wire.from.componentId)?.symbolId === 'potential_rail_source', gridForPage(page)) : [] };
   });
   const result = new Map<string, Wire>();
   for (const component of page.components) {

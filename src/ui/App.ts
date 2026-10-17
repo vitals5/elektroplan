@@ -110,9 +110,9 @@ export class App {
             <div class="menu-opt" id="menuZoomIn">➕ Ausschnitt vergrößern</div>
             <div class="menu-opt" id="menuZoomOut">➖ Ausschnitt verkleinern</div>
             <div class="menu-sep"></div>
-            <div class="menu-opt" id="menuGridFull">📐 Vollraster (8px / 4mm) <span class="opt-key">Alt+1</span></div>
-            <div class="menu-opt" id="menuGridHalf">📐 Halbraster (4px / 2mm) <span class="opt-key">H / Alt+2</span></div>
-            <div class="menu-opt" id="menuGridFine">📐 Feinraster (2px / 1mm) <span class="opt-key">Alt+3</span></div>
+            <div class="menu-opt" id="menuGridFull">📐 Vollraster (4 mm) <span class="opt-key">Alt+1</span></div>
+            <div class="menu-opt" id="menuGridHalf">📐 Halbraster (2 mm) <span class="opt-key">H / Alt+2</span></div>
+            <div class="menu-opt" id="menuGridFine">📐 Feinraster (1 mm) <span class="opt-key">Alt+3</span></div>
             <div class="menu-opt" id="menuGridOff">📐 Rasterfang Aus <span class="opt-key">Alt+0</span></div>
             <div class="menu-sep"></div>
             <div class="menu-opt" id="menuToggleAutoconnect">⚡ Autoconnecting umschalten</div>
@@ -196,7 +196,7 @@ export class App {
           <button class="btn" id="btnZoomIn" title="Vergrößern">➕</button>
           <button class="btn" id="btnZoomOut" title="Verkleinern">➖</button>
           <button class="btn" id="btnZoomFit" title="Blatt formatfüllend anpassen (F)">🔍 Fit</button>
-          <button class="btn active" id="btnGridSnap" title="Raster umschalten (Vollraster 8px / Halbraster 4px / Feinraster 2px / Aus - Tastenkürzel: H)">📐 <span class="hide-mobile">Raster: </span>1x</button>
+          <button class="btn active" id="btnGridSnap" title="Raster umschalten (Vollraster / Halbraster / Feinraster / Aus - Tastenkürzel: H)">📐 <span class="hide-mobile">Raster: </span>1x</button>
           <button class="btn hide-mobile active" id="btnAutoconnect" title="Autoconnecting ein/aus">⚡ Autoconnect</button>
 
           <button class="btn btn-drawer-toggle" id="btnToggleRightSidebar" title="Eigenschaften & Inspektor">⚙️ <span class="hide-mobile">Eigenschaften</span></button>

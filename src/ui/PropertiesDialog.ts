@@ -6,6 +6,7 @@ import { escapeSvg } from '../model/ImportedDrawing';
 import { getSymbolForComponent } from '../model/symbols';
 import { MANUFACTURER_PARTS } from '../model/PartCatalogue';
 import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
+import { componentInsertionPoint, positionAtInsertionPoint } from '../model/SymbolGeometry';
 
 export interface PropertiesDialogCallbacks {
   onSave: (updated: PlacedComponent) => void;
@@ -435,16 +436,17 @@ export class PropertiesDialog {
     }
 
     if (this.activeTab === 'format') {
+      const insertion = sym ? componentInsertionPoint(this.component, sym) : this.component;
       return `
         <div style="display: flex; flex-direction: column; gap: 12px;">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div>
-              <label class="form-label">X-Position (Raster):</label>
-              <input type="number" step="any" id="propPosX" class="form-input" value="${this.component.x}">
+              <label class="form-label">X-Position (Einfügepunkt):</label>
+              <input type="number" step="any" id="propPosX" class="form-input" value="${insertion.x}">
             </div>
             <div>
-              <label class="form-label">Y-Position (Raster):</label>
-              <input type="number" step="any" id="propPosY" class="form-input" value="${this.component.y}">
+              <label class="form-label">Y-Position (Einfügepunkt):</label>
+              <input type="number" step="any" id="propPosY" class="form-input" value="${insertion.y}">
             </div>
           </div>
 
@@ -696,17 +698,21 @@ export class PropertiesDialog {
 
     // Format / Layout tab fields
     const rot = modal.querySelector('#propRotation') as HTMLSelectElement;
+    const symbol = getSymbolForComponent(this.component, this.project);
+    const insertion = symbol ? componentInsertionPoint(this.component, symbol) : { x: this.component.x, y: this.component.y };
     if (rot) this.component.rotation = parseInt(rot.value, 10) as any;
 
     const posX = modal.querySelector('#propPosX') as HTMLInputElement;
     if (posX && Number.isFinite(parseFloat(posX.value))) {
-      this.component.x = parseFloat(posX.value);
+      insertion.x = parseFloat(posX.value);
     }
 
     const posY = modal.querySelector('#propPosY') as HTMLInputElement;
     if (posY && Number.isFinite(parseFloat(posY.value))) {
-      this.component.y = parseFloat(posY.value);
+      insertion.y = parseFloat(posY.value);
     }
+    if (rot || posX || posY) Object.assign(this.component,
+      symbol ? positionAtInsertionPoint(insertion, symbol, this.component.rotation) : insertion);
 
     // Pin labels
     modal.querySelectorAll('.prop-pin-label').forEach(input => {
