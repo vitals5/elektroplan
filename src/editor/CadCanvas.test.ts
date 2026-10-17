@@ -88,3 +88,33 @@ assert.ok(routed.at(-2)!.y > movedTo.y && routed.at(-2)!.x === movedTo.x, 'Appro
 assert.equal(JSON.stringify(anchors), originalAnchors, 'Rendering must not mutate stored source routes');
 assert.equal(wirePinDirection(page, project, { componentId: component.id, pinId: '1' }), 'right');
 console.log('✓ Explicit wire anchors remain orthogonal and attached when components move');
+
+// Labels follow the component anchor, but keep their independent text angle.
+component.rotation = 180;
+const upright = canvas.renderComponents();
+assert.match(upright, /rotate\(180, 10, 15\)/);
+assert.match(upright, /transform="rotate\(-180,/);
+const pdfTexts: {text: string; x: number; y: number; angle: number}[] = [];
+pdf.text = (text: string, x: number, y: number, options: any = {}) => pdfTexts.push({text,x,y,angle:options.angle ?? 0});
+(PdfExporter as any).renderComponents(pdf, page, project, 420, 297, { colorMode: 'color' }, new Map());
+assert.equal(Math.abs(pdfTexts.find(t => t.text === '-Q99')!.angle), 0);
+const lettering = rotateDrawing([{kind:'text',x:5,y:8,size:6,text:'M',color:'#000',rotation:0}],180,20,30)[0];
+assert.deepEqual(lettering, {kind:'text',x:15,y:22,size:6,text:'M',color:'#000',rotation:0});
+console.log('✓ Rotation moves labels and internal lettering without turning their text upside down');
+
+// PDF outlines must rotate with the electrical pins, including built-in symbols.
+const { getSymbolById } = await import('../model/symbols');
+const { AutoconnectEngine } = await import('../model/AutoconnectEngine');
+const builtIn = getSymbolById('contact_no')!;
+for (const rotation of [90,180,270] as const) {
+  const c = {...component,symbolId:builtIn.id,rotation,bmk:'-K1',functionText:'Licht'};
+  const p = {...page,components:[c]};
+  lines.length=0;
+  (PdfExporter as any).renderComponents(pdf,p,{...project,pages:[p]},420,297,{colorMode:'color'},new Map());
+  for (const pin of builtIn.pins) {
+    const world = AutoconnectEngine.getRotatedPinInfo(c,pin,builtIn);
+    const x=world.worldX*.42,y=world.worldY*297/700;
+    assert(lines.some(l=>Math.hypot(l[0]-x,l[1]-y)<1e-7 || Math.hypot(l[2]-x,l[3]-y)<1e-7),`PDF outline meets rotated ${rotation}° pin ${pin.id}`);
+  }
+}
+console.log('✓ Built-in PDF contours remain attached to rotated electrical pins');

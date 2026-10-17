@@ -5,6 +5,8 @@ import { Project, Page, PlacedComponent, Wire } from '../model/types';
 import { getSymbolDefinitions, getSymbolById, getSymbolForComponent, setProjectSymbolLibrary, mergeProjectSymbolLibrary } from '../model/symbols';
 import { ProjectHistory } from '../model/ProjectHistory';
 import { referenceMarkup } from '../model/CrossReferenceNavigation';
+import { isConnectionSymbol, connectionFamily } from '../model/ConnectionSymbols';
+import { drawingToSvg } from '../model/ImportedDrawing';
 import { CadCanvas } from '../editor/CadCanvas';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
 import { PackageHandler, PackageInspectionResult } from '../packages/PackageHandler';
@@ -27,9 +29,10 @@ export class App {
   private inputSession = 0;
   private selectedComponent: PlacedComponent | null = null;
   private selectedWire: Wire | null = null;
-  private activeLeftTab: 'pages' | 'symbols' | 'macros' | 'terminals' | 'bom' | 'parts' = 'pages';
+  private activeLeftTab: 'pages' | 'symbols' | 'connections' | 'macros' | 'terminals' | 'bom' | 'parts' = 'pages';
   private activeRightTab: 'properties' | 'archive' = 'properties';
   private symbolCategoryFilter: string = 'all';
+  private connectionCategoryFilter: string = 'all';
   private macroCategoryFilter: string = 'all';
   private macroSearchQuery: string = '';
   private manufacturerFilter: string = 'all';
@@ -90,6 +93,7 @@ export class App {
           <div class="menu-dropdown">
             <div class="menu-opt" id="menuNew">📄 Neu... <span class="opt-key">Strg+N</span></div>
             <label class="menu-opt" style="margin:0; cursor:pointer;">📂 Öffnen (.zw1, .zip, .001/.002, .xml, .json)... <span class="opt-key">Strg+O</span><input type="file" id="menuFileInput" accept=".zw1,.zip,.edz,.xml,.json,.elk,.001,.002,.003" multiple style="display:none;"></label>
+            <div class="menu-opt" id="menuSettings">⚙️ Einstellungen...</div>
             <div class="menu-opt" id="menuSave">💾 Speichern <span class="opt-key">Strg+S</span></div>
             <div class="menu-sep"></div>
             <div class="menu-opt" id="menuExportPdf">📑 Intelligenter PDF-Export (DIN A3)... <span class="opt-key">Strg+P</span></div>
@@ -131,6 +135,7 @@ export class App {
           Einfügen
           <div class="menu-dropdown">
             <div class="menu-opt" id="menuInsertSym">⚡ Symbol auswählen... <span class="opt-key">Einfg</span></div>
+            <div class="menu-opt" id="menuInsertConnections">🔗 Verbindungselemente...</div>
             <div class="menu-opt" id="menuInsertMacro">📦 Makro auswählen (.ema)...</div>
             <div class="menu-opt" id="menuWire">🔌 Verbindungslinie (Verdrahten) <span class="opt-key">D</span></div>
             <div class="menu-sep"></div>
@@ -185,12 +190,14 @@ export class App {
           <div style="width: 1px; height: 20px; background-color: var(--border-color); margin: 0 2px;"></div>
 
           <!-- Symbol & Insertion Tools -->
-          <button class="btn btn-primary" id="btnOpenSymbolSelection" title="Symbolauswahl öffnen (Einfg)">⚡ <span class="hide-mobile">Symbol (Einfg)</span></button>
+          <button class="btn btn-primary" id="btnOpenSymbolSelection" title="Elementauswahl öffnen (Einfg)">⚡ <span class="hide-mobile">Element (Einfg)</span></button>
           <button class="btn active" id="btnToolSelect" title="Auswahlwerkzeug">👆 <span class="hide-mobile">Auswählen</span></button>
           <button class="btn" id="btnToolWire" title="Verbindungslinie zeichnen (D)">🔌 <span class="hide-mobile">Verdrahten</span></button>
           <button class="btn" id="btnToolRotate" title="Ausgewähltes Bauteil um 90° drehen (R)">🔄 <span class="hide-mobile">Drehen (R)</span></button>
           <button class="btn" id="btnUndo" title="Rückgängig (Strg+Z)" aria-label="Rückgängig">↶</button>
           <button class="btn" id="btnRedo" title="Wiederholen (Strg+Y / Strg+Umschalt+Z)" aria-label="Wiederholen">↷</button>
+          <button class="btn" id="btnOpenConnections" title="Verbindungselemente auswählen">🔗 <span class="hide-mobile">Verbindungen</span></button>
+          <button class="btn" id="btnSettings" title="Einstellungen">⚙️</button>
           <button class="btn" id="btnToolDuplicate" title="Ausgewähltes Bauteil duplizieren (Strg+D)">📋 <span class="hide-mobile">Duplizieren</span></button>
           <button class="btn" id="btnToolDelete" title="Ausgewähltes Element löschen (Entf)">🗑️ <span class="hide-mobile">Löschen</span></button>
 
@@ -227,7 +234,8 @@ export class App {
           </div>
           <div class="tab-nav">
             <button class="tab-btn active" data-tab="pages">Seiten</button>
-            <button class="tab-btn" data-tab="symbols">Symbole</button>
+            <button class="tab-btn" data-tab="symbols">Elemente</button>
+            <button class="tab-btn" data-tab="connections">Verbindungen</button>
             <button class="tab-btn" data-tab="macros">Makros</button>
             <button class="tab-btn" data-tab="parts">Artikel</button>
             <button class="tab-btn" data-tab="terminals">Klemmen</button>
@@ -722,6 +730,9 @@ export class App {
       this.canvas.deleteSelected();
     });
 
+    document.getElementById('btnOpenConnections')?.addEventListener('click', () => this.openConnectionSelection());
+    document.getElementById('btnSettings')?.addEventListener('click', () => this.openSettings());
+
     // Toolbar Actions
     document.getElementById('btnOpenSymbolSelection')?.addEventListener('click', () => {
       new SymbolSelectionDialog({
@@ -885,6 +896,8 @@ export class App {
       if (files?.length) await this.handleFilesOpen(files);
     });
 
+    bindMenuOpt('menuSettings', () => this.openSettings());
+    bindMenuOpt('menuInsertConnections', () => this.openConnectionSelection());
     bindMenuOpt('menuSave', () => this.saveProjectJson());
     bindMenuOpt('menuExportPdf', () => new PdfExportDialog(this.project, this.project.activePageId).show());
     bindMenuOpt('menuExportZw1', async () => await this.exportZw1());
@@ -980,7 +993,8 @@ export class App {
     bindMenuOpt('menuShortcuts', () => {
       alert(
         'Elektro-CAD Tastatur-Kürzel:\n\n' +
-        '• Einfg: Symbolauswahl öffnen\n' +
+        '• Pfeiltasten: Ansicht verschieben (Umschalt: größerer Schritt)\n' +
+        '• Einfg: Elementauswahl öffnen\n' +
         '• Tab: Symbol während Vorschau um 90° drehen\n' +
         '• D / W: Verbindungslinie zeichnen (Verdrahten)\n' +
         '• Doppelklick: Eigenschaften (Schaltzeichen)\n' +
@@ -1043,6 +1057,29 @@ export class App {
     if (statusRight && activePage && this.canvas) {
       statusRight.textContent = `Seite ${activePage.pageNumber} (${activePage.title}) | Raster: ${this.canvas.getGridLabel()} | Bauteile: ${activePage.components.length} | Leitungen: ${activePage.wires.length}`;
     }
+  }
+
+  private openConnectionSelection(): void {
+    new SymbolSelectionDialog({ onSelect: s => this.canvas.setSymbolToPlace(s.id) }, 'connections').show();
+  }
+
+  private openSettings(): void {
+    document.getElementById('settingsModal')?.remove();
+    const modal = document.createElement('div'); modal.id = 'settingsModal'; modal.className = 'modal-backdrop';
+    modal.style.cssText = 'position:fixed;inset:0;background:#000b;z-index:2200;display:flex;align-items:center;justify-content:center';
+    const selected = this.project.settings?.interruptionLabelSide ?? 'source';
+    modal.innerHTML = `<div class="modal-card" style="background:#232731;padding:24px;width:440px;max-width:95vw;border:1px solid #4a5568;border-radius:6px">
+      <h3>Einstellungen</h3><label for="interruptionLabelSide">Beschriftung der Abbruchstellen</label>
+      <select id="interruptionLabelSide" class="form-input">${[['source','Wie importiert / Standard'],['before','Vor dem Pfeil (Leitungsseite)'],['after','Nach dem Pfeil (Spitzenseite)']].map(([id,label]) => `<option value="${id}" ${id === selected ? 'selected' : ''}>${label}</option>`).join('')}</select>
+      <p style="font-size:12px;color:#a0aec0">Die Position bezieht sich auf die Pfeilrichtung und gilt für Bezeichnung und Querverweis. Die Einstellung wird mit dem Projekt gespeichert.</p>
+      <button class="btn btn-primary" id="saveSettings">Übernehmen</button> <button class="btn" id="cancelSettings">Abbrechen</button></div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#cancelSettings')!.addEventListener('click', () => modal.remove());
+    modal.querySelector('#saveSettings')!.addEventListener('click', () => {
+      const value = (modal.querySelector('select') as HTMLSelectElement).value as 'source' | 'before' | 'after';
+      this.project.settings = { ...this.project.settings, interruptionLabelSide: value };
+      modal.remove(); this.notifyChange();
+    });
   }
 
   private initHistoryEvents(): void {
@@ -1116,7 +1153,7 @@ export class App {
 
     if (this.activeLeftTab === 'pages') {
       this.renderPagesTab(container);
-    } else if (this.activeLeftTab === 'symbols') {
+    } else if (this.activeLeftTab === 'symbols' || this.activeLeftTab === 'connections') {
       this.renderSymbolsTab(container);
     } else if (this.activeLeftTab === 'macros') {
       this.renderMacrosTab(container);
@@ -1208,6 +1245,8 @@ export class App {
   }
 
   private renderSymbolsTab(container: HTMLElement): void {
+    const connections = this.activeLeftTab === 'connections';
+    const category = connections ? this.connectionCategoryFilter : this.symbolCategoryFilter;
     let categoriesHtml = `
       <div style="margin-bottom: 8px;">
         <select class="form-input" id="symbolCategorySelect">
@@ -1218,17 +1257,18 @@ export class App {
           <option value="controls" ${this.symbolCategoryFilter === 'controls' ? 'selected' : ''}>Befehls- & Meldegeräte</option>
           <option value="motors" ${this.symbolCategoryFilter === 'motors' ? 'selected' : ''}>Motoren & Aktoren</option>
           <option value="terminals" ${this.symbolCategoryFilter === 'terminals' ? 'selected' : ''}>Klemmen & Verbinder</option>
-          <option value="connections" ${this.symbolCategoryFilter === 'connections' ? 'selected' : ''}>🔗 Verbindungssymbole (T-Stücke, Winkel)</option>
+
           <option value="supply" ${this.symbolCategoryFilter === 'supply' ? 'selected' : ''}>Spannungsversorgung</option>
         </select>
       </div>
       <div class="symbol-grid">
     `;
 
-    const filtered = this.symbolCategoryFilter === 'all'
+    if (connections) categoriesHtml = `<select id="symbolCategorySelect" class="form-input">${[['all','Alle Verbindungselemente'],['interruptions','Abbruchstellen'],['tees','T-Stücke'],['corners','Winkel'],['crossings','Kreuzungen'],['other','Weitere'],['project','Projektbibliothek']].map(([id,label]) => `<option value="${id}" ${category === id ? 'selected' : ''}>${label}</option>`).join('')}</select><div class="symbol-grid">`;
+    const filtered = (connections ? getSymbolDefinitions().filter(s => category === 'all' || category === 'project' && !!s.source || connectionFamily(s) === category) : this.symbolCategoryFilter === 'all'
       ? getSymbolDefinitions()
       : this.symbolCategoryFilter === 'project' ? this.project.symbolLibrary ?? []
-      : getSymbolDefinitions().filter(s => s.category === this.symbolCategoryFilter);
+      : getSymbolDefinitions().filter(s => s.category === this.symbolCategoryFilter)).filter(s => isConnectionSymbol(s) === connections);
 
     for (const sym of filtered) {
       const isSelected = this.canvas.activeSymbolToPlace === sym.id && this.canvas.mode === 'place_symbol';
@@ -1236,7 +1276,7 @@ export class App {
         <div class="symbol-card ${isSelected ? 'selected' : ''}" data-symbol-id="${sym.id}" title="${sym.description}">
           <div class="symbol-preview-svg">
             <svg width="40" height="40" viewBox="0 0 ${sym.width} ${sym.height}">
-              <g color="#e2e8f0">${sym.svgContent}</g>
+              <g color="#e2e8f0">${sym.importedGraphics ? drawingToSvg(sym.importedGraphics) : sym.svgContent}</g>
             </svg>
           </div>
           <div class="symbol-title">${sym.name}</div>
@@ -1251,7 +1291,8 @@ export class App {
 
     // Events
     document.getElementById('symbolCategorySelect')?.addEventListener('change', (e) => {
-      this.symbolCategoryFilter = (e.target as HTMLSelectElement).value;
+      if (connections) this.connectionCategoryFilter = (e.target as HTMLSelectElement).value;
+      else this.symbolCategoryFilter = (e.target as HTMLSelectElement).value;
       this.renderSymbolsTab(container);
     });
 

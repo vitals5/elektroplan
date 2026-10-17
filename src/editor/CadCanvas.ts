@@ -1,9 +1,12 @@
 // src/editor/CadCanvas.ts
 // Interactive SVG-based CAD drawing canvas for electrical schematics
 
+import { interruptionLabelPosition, isInterruptionSymbol } from '../model/ConnectionSymbols';
+import { labelTransform } from '../model/LabelLayout';
+import { plotFrameSvg } from '../model/PlotFrame';
 import { wirePolyline, wirePinDirection } from '../model/WireRouting';
 import { connectionCutouts, connectionGraphicWires, isConnectionGraphic, supersededConnectionGraphics, visibleWireSegments } from '../model/ConnectionGraphics';
-import { drawingToSvg, escapeSvg } from '../model/ImportedDrawing';
+import { drawingToSvg, escapeSvg, uprightSymbolSvg } from '../model/ImportedDrawing';
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
 import { getSymbolById, getSymbolForComponent, getDrawingUnitsPerMm } from '../model/symbols';
 import { referenceTargets, referenceMarkup, ReferenceTarget } from '../model/CrossReferenceNavigation';
@@ -414,6 +417,14 @@ export class CadCanvas {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement
         || (e.target as HTMLElement)?.isContentEditable || (e.target as Element)?.closest?.('.modal-backdrop')) return;
       if ((e.key === 'Enter' || e.key === ' ') && this.referenceFromEvent(e)) return;
+      if (e.key.startsWith('Arrow') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (document.querySelector('.modal-backdrop')) return;
+        e.preventDefault();
+        const step = e.shiftKey ? 160 : 40;
+        this.panX += e.key === 'ArrowLeft' ? step : e.key === 'ArrowRight' ? -step : 0;
+        this.panY += e.key === 'ArrowUp' ? step : e.key === 'ArrowDown' ? -step : 0;
+        this.render(); return;
+      }
       if (e.key === 'Tab' && (e.target as Element)?.closest?.('[data-crossref-source]')) return;
       if (e.ctrlKey || e.metaKey) {
         const key = e.key.toLowerCase();
@@ -1201,68 +1212,7 @@ export class CadCanvas {
   }
 
   private renderPlotFrame(w: number, h: number): string {
-    const margin = 20;
-    const innerMargin = 30;
-    const cols = 10;
-    const colWidth = (w - 2 * innerMargin) / cols;
-
-    let colHeaders = '';
-    for (let i = 0; i < cols; i++) {
-      const cx = innerMargin + i * colWidth + colWidth / 2;
-      colHeaders += `
-        <text x="${cx}" y="${innerMargin - 5}" font-size="10" font-family="monospace" fill="#a0aec0" text-anchor="middle">${i}</text>
-        <text x="${cx}" y="${h - innerMargin + 12}" font-size="10" font-family="monospace" fill="#a0aec0" text-anchor="middle">${i}</text>
-        <line x1="${innerMargin + i * colWidth}" y1="${innerMargin - 10}" x2="${innerMargin + i * colWidth}" y2="${innerMargin}" stroke="#4a5568" stroke-width="1"/>
-      `;
-    }
-
-    const rows = ['A', 'B', 'C', 'D', 'E', 'F'];
-    const rowHeight = (h - 2 * innerMargin - 60) / rows.length;
-    let rowHeaders = '';
-    for (let r = 0; r < rows.length; r++) {
-      const ry = innerMargin + r * rowHeight + rowHeight / 2;
-      rowHeaders += `
-        <text x="${innerMargin - 8}" y="${ry + 3}" font-size="10" font-family="monospace" fill="#a0aec0" text-anchor="middle">${rows[r]}</text>
-        <text x="${w - innerMargin + 8}" y="${ry + 3}" font-size="10" font-family="monospace" fill="#a0aec0" text-anchor="middle">${rows[r]}</text>
-      `;
-    }
-
-    // Title Block (Schriftfeld nach DIN EN ISO 7200)
-    const tbWidth = 320;
-    const tbHeight = 65;
-    const tbX = w - innerMargin - tbWidth;
-    const tbY = h - innerMargin - tbHeight;
-    const tb = this.activePage.plotFrame.titleBlock;
-
-    const titleBlock = `
-      <g id="titleBlock" transform="translate(${tbX}, ${tbY})">
-        <rect x="0" y="0" width="${tbWidth}" height="${tbHeight}" fill="#171923" stroke="#e2e8f0" stroke-width="1.5"/>
-        <line x1="0" y1="22" x2="${tbWidth}" y2="22" stroke="#4a5568"/>
-        <line x1="0" y1="44" x2="${tbWidth}" y2="44" stroke="#4a5568"/>
-        <line x1="160" y1="0" x2="160" y2="44" stroke="#4a5568"/>
-        <line x1="240" y1="22" x2="240" y2="${tbHeight}" stroke="#4a5568"/>
-        
-        <!-- Texts in Titleblock -->
-        <text x="6" y="14" font-size="11" font-weight="bold" fill="#63b3ed">${tb.company || 'Elektroplan CAE Suite'}</text>
-        <text x="166" y="14" font-size="9" fill="#e2e8f0">Kommission: ${tb.commission}</text>
-        
-        <text x="6" y="36" font-size="9" fill="#cbd5e0">Projekt: ${tb.projectTitle}</text>
-        <text x="166" y="36" font-size="8" fill="#a0aec0">Datum: ${tb.date}</text>
-        <text x="246" y="36" font-size="8" fill="#a0aec0">Gez.: ${tb.author}</text>
-        
-        <text x="6" y="56" font-size="11" font-weight="bold" fill="#f6e05e">${this.activePage.title}</text>
-        <text x="246" y="58" font-size="11" font-weight="bold" fill="#ffffff">Blatt: ${this.activePage.pageNumber} / ${tb.totalSheets}</text>
-      </g>
-    `;
-
-    return `
-      <!-- Normblatt Outer & Inner Border -->
-      <rect x="${margin}" y="${margin}" width="${w - 2 * margin}" height="${h - 2 * margin}" fill="none" stroke="#718096" stroke-width="1.5"/>
-      <rect x="${innerMargin}" y="${innerMargin}" width="${w - 2 * innerMargin}" height="${h - 2 * innerMargin}" fill="none" stroke="#4a5568" stroke-width="1"/>
-      ${colHeaders}
-      ${rowHeaders}
-      ${titleBlock}
-    `;
+    return plotFrameSvg(this.activePage, this.project);
   }
 
   private renderComponents(): string {
@@ -1285,6 +1235,8 @@ export class CadCanvas {
 
       const bmkPos = computeBmkPosition(comp, sym);
       const fnPos = computeFunctionTextPosition(comp, sym);
+      const arrowPos = interruptionLabelPosition(this.project, comp, sym);
+      if (arrowPos) Object.assign(fnPos, arrowPos, { transform: labelTransform(arrowPos.x, arrowPos.y, comp.rotation) });
       const techPos = computeTechnicalDataPosition(comp, sym);
       const techText = comp.deviceTag
         ? (comp.deviceTag + (comp.technicalCharacteristics ? ' · ' + comp.technicalCharacteristics : ''))
@@ -1293,9 +1245,10 @@ export class CadCanvas {
 
       // Cross Reference text / Contact mirror (placed below technical data)
       let crossRefDisplay = '';
-      if (comp.crossRef && !isConn) {
-        const crossRefY = sym.height + (hasTech ? 38 : 24);
-        crossRefDisplay = `<text x="${sym.width / 2}" y="${crossRefY}" font-size="8" font-family="monospace" fill="#f6ad55" text-anchor="middle">${referenceMarkup(this.project, comp, true)}</text>`;
+      if (comp.crossRef && (!isConn || isInterruptionSymbol(sym))) {
+        const crossRefY = arrowPos ? arrowPos.referenceY : sym.height + (hasTech ? 38 : 24);
+        const crossRefX = arrowPos?.referenceX ?? sym.width / 2;
+        crossRefDisplay = `<text ${labelTransform(crossRefX, crossRefY, comp.rotation)} x="${crossRefX}" y="${crossRefY}" font-size="8" font-family="monospace" fill="#f6ad55" text-anchor="${arrowPos?.anchor ?? 'middle'}">${referenceMarkup(this.project, comp, true)}</text>`;
       }
 
       // Pins render
@@ -1305,7 +1258,7 @@ export class CadCanvas {
           const handle = this.mode === 'wire' || this.wireStart
             ? `<circle class="pin-handle" cx="${pin.x}" cy="${pin.y}" r="3" fill="#2d3748" stroke="#63b3ed" stroke-width="1.2"/>` : '';
           const text = label && label.visible !== false
-            ? `<text class="source-pin-label" x="${label.x}" y="${label.y}" font-size="${label.fontSize}" font-family="Tahoma, Arial, sans-serif" fill="#e2e8f0" text-anchor="${label.alignment}" transform="rotate(${label.rotation ?? 0}, ${label.x}, ${label.y})">${escapeSvg(comp.pins[pin.id]?.customLabel ?? pin.name)}</text>` : '';
+            ? `<text class="source-pin-label" x="${label.x}" y="${label.y}" font-size="${label.fontSize}" font-family="Tahoma, Arial, sans-serif" fill="#e2e8f0" text-anchor="${label.alignment}" ${labelTransform(label.x, label.y, comp.rotation, label.rotation)}>${escapeSvg(comp.pins[pin.id]?.customLabel ?? pin.name)}</text>` : '';
           return `<g class="pin">${handle}${text}</g>`;
         }
         if (isConn || isTerminal) {
@@ -1318,7 +1271,7 @@ export class CadCanvas {
         return `
           <g class="pin" transform="translate(${pin.x}, ${pin.y})">
             <circle cx="0" cy="0" r="3" fill="#2d3748" stroke="#63b3ed" stroke-width="1.2"/>
-            <text x="${pin.direction === 'top' ? 0 : 5}" y="${pin.direction === 'top' ? -4 : 3.5}" font-size="6.5" font-family="monospace" fill="#a0aec0" text-anchor="${pin.direction === 'top' ? 'middle' : 'start'}">${escapeSvg(comp.pins[pin.id]?.customLabel ?? pin.name)}</text>
+            <text ${labelTransform(pin.direction === 'top' ? 0 : 5, pin.direction === 'top' ? -4 : 3.5, comp.rotation)} x="${pin.direction === 'top' ? 0 : 5}" y="${pin.direction === 'top' ? -4 : 3.5}" font-size="6.5" font-family="monospace" fill="#a0aec0" text-anchor="${pin.direction === 'top' ? 'middle' : 'start'}">${escapeSvg(comp.pins[pin.id]?.customLabel ?? pin.name)}</text>
           </g>
         `;
       }).join('');
@@ -1348,23 +1301,22 @@ export class CadCanvas {
             ` : ''}
 
             <!-- Cross Reference -->
-            ${crossRefDisplay}
           ` : isTerminal ? `
             <!-- Terminal designation and BMK -->
-            <text x="${sym.width + 2}" y="${sym.height / 2 + 3}" font-size="7.5" font-weight="bold" font-family="monospace" fill="#cbd5e0">${comp.deviceTag || comp.technicalCharacteristics || comp.functionText || '1'}</text>
+            <text ${labelTransform(sym.width + 2, sym.height / 2 + 3, comp.rotation)} x="${sym.width + 2}" y="${sym.height / 2 + 3}" font-size="7.5" font-weight="bold" font-family="monospace" fill="#cbd5e0">${comp.deviceTag || comp.technicalCharacteristics || comp.functionText || '1'}</text>
             ${comp.bmk && !comp.bmk.startsWith('comp_') ? `
-              <text x="${sym.width / 2}" y="-4" font-size="7.5" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${escapeSvg(comp.bmk)}</text>
+              <text ${labelTransform(sym.width / 2, -4, comp.rotation)} x="${sym.width / 2}" y="-4" font-size="7.5" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${escapeSvg(comp.bmk)}</text>
             ` : ''}
-          ` : (sym.id.startsWith('potential_arrow') || sym.id === 'potential_rail_source' ? `
-            <text x="${sym.id === 'potential_arrow_left' || sym.id === 'potential_rail_source' ? -4 : (sym.id === 'potential_arrow_right' ? sym.width + 4 : sym.width / 2)}" 
-                  y="${sym.id.includes('down') ? sym.height + 10 : (sym.id.includes('up') ? -4 : sym.height / 2 + 3)}" 
-                  font-size="8.5" font-weight="bold" font-family="monospace" fill="#f56565" 
-                  text-anchor="${sym.id === 'potential_arrow_left' || sym.id === 'potential_rail_source' ? 'end' : (sym.id === 'potential_arrow_right' ? 'start' : 'middle')}">${comp.functionText || comp.bmk}</text>
-          ` : '')}
+          ` : (isInterruptionSymbol(sym) || sym.id === 'potential_rail_source' ? (() => {
+            const pos = arrowPos ?? { x: -4, y: sym.height / 2 + 3, anchor: 'end' };
+            return `<text x="${pos.x}" y="${pos.y}" ${labelTransform(pos.x, pos.y, comp.rotation)} font-size="8.5" font-weight="bold" font-family="monospace" fill="#f56565" text-anchor="${pos.anchor}">${escapeSvg(comp.functionText || comp.bmk)}</text>`;
+          })() : '')}
+
+          ${crossRefDisplay}
 
           <!-- Symbol Vector Graphics -->
           <g color="${strokeColor}">
-            ${superseded.has(comp.id) || comp.source?.routingUsed === false && !isSelected ? '' : sym.importedGraphics ? drawingToSvg(sym.importedGraphics, { color: 'currentColor' }) : sym.svgContent}
+            ${superseded.has(comp.id) || comp.source?.routingUsed === false && !isSelected ? '' : sym.importedGraphics ? drawingToSvg(sym.importedGraphics, { color: 'currentColor', componentRotation: comp.rotation }) : uprightSymbolSvg(sym.svgContent, comp.rotation)}
           </g>
 
           <!-- Terminal Pins -->
@@ -1540,9 +1492,9 @@ export class CadCanvas {
           componentsGhost += `
             <g transform="translate(${c.x * factor}, ${c.y * factor}) rotate(${c.rotation || 0}, ${sym.width / 2}, ${sym.height / 2})">
               <g color="#63b3ed" stroke="#63b3ed" fill="none">
-                ${sym.importedGraphics ? drawingToSvg(sym.importedGraphics, { color: 'currentColor' }) : sym.svgContent}
+                ${sym.importedGraphics ? drawingToSvg(sym.importedGraphics, { color: 'currentColor', componentRotation: c.rotation }) : uprightSymbolSvg(sym.svgContent, c.rotation)}
               </g>
-              <text x="0" y="-4" font-size="9" font-family="monospace" font-weight="bold" fill="#f6e05e">${c.bmk}</text>
+              <text ${labelTransform(0, -4, c.rotation)} x="0" y="-4" font-size="9" font-family="monospace" font-weight="bold" fill="#f6e05e">${c.bmk}</text>
             </g>
           `;
         }
@@ -1573,11 +1525,11 @@ export class CadCanvas {
         <rect x="-4" y="-4" width="${sym.width + 8}" height="${sym.height + 8}" fill="rgba(99, 179, 237, 0.15)" stroke="#63b3ed" stroke-width="1.5" stroke-dasharray="4,3" rx="4"/>
         
         <!-- BMK hint -->
-        <text x="${sym.width / 2}" y="-8" font-size="10" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${bmk} (Klick: Platzieren | Tab / R: Drehen)</text>
+        <text ${labelTransform(sym.width / 2, -8, this.ghostRotation)} x="${sym.width / 2}" y="-8" font-size="10" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${bmk} (Klick: Platzieren | Tab / R: Drehen)</text>
 
         <!-- Symbol Graphics -->
         <g color="#63b3ed">
-          ${sym.importedGraphics ? drawingToSvg(sym.importedGraphics, { color: 'currentColor' }) : sym.svgContent}
+          ${sym.importedGraphics ? drawingToSvg(sym.importedGraphics, { color: 'currentColor', componentRotation: this.ghostRotation }) : uprightSymbolSvg(sym.svgContent, this.ghostRotation)}
         </g>
       </g>
     `;

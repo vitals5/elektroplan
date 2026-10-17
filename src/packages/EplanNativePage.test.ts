@@ -216,3 +216,14 @@ assert.equal(new EodRecord(1, 17, 1, new Uint8Array([0x5a, 0xed, 0])).position, 
 assert.throws(() => readEodTable(new Uint8Array(2), new Uint8Array(), 'Function'), /Nicht unterstütztes/);
 assert(page.importDiagnostics!.some(d => /Datenpräfix/.test(d)), 'Partial coverage remains explicit');
 console.log('✓ General embedded-library import: all active pages, facing physical runs + 1915 native netlist entries, editable shared symbols, JSON and PDF');
+
+// The embedded norm sheet is a shared editable project resource, not a screenshot.
+assert.equal(project.plotFrameTemplate?.name, 'FN1_001');
+assert.equal(project.plotFrameTemplate?.width, 420);
+assert.equal(project.plotFrameTemplate?.height, 297);
+assert.equal(project.plotFrameTemplate?.graphics.length, 30);
+assert.equal(project.plotFrameTemplate?.texts.length, 53);
+assert(project.plotFrameTemplate?.graphics.some(g => g.kind === 'line' && g.y1 === 281 && g.y2 === 281 && g.x1 === 0 && g.x2 === 420));
+assert(project.plotFrameTemplate?.texts.some(t => t.property === 11011 && t.x === 231 && t.y === 285));
+assert(project.plotFrameTemplate?.texts.some(t => t.property === 1001 && t.index === 20134));
+console.log('✓ Embedded FN1_001 norm sheet, full-width footer and native field bindings');

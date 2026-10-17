@@ -1,4 +1,5 @@
 // src/model/types.ts
+import type { PlotFrameTemplate } from './PlotFrame';
 // Data structures following IEC 81346 / DIN EN 60617 standards
 
 export type PageType = 'cover' | 'schematic' | 'terminal_diagram' | 'parts_list' | 'overview';
@@ -199,6 +200,8 @@ export interface Project {
   author: string;
   company: string;
   pages: Page[];
+  plotFrameTemplate?: PlotFrameTemplate;
+  settings?: { interruptionLabelSide?: 'source' | 'before' | 'after' };
   drawingUnitsPerMm?: number;
   /** Shared project master data. Placements reference these definitions by symbolId. */
   symbolLibrary?: SymbolDefinition[];

@@ -383,14 +383,15 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
   {
     id: 'potential_arrow',
     name: 'Abbruchstelle (Potenzialpfeil)',
-    category: 'supply',
+    category: 'connections',
     standard: 'DIN EN 60617',
     defaultBmkPrefix: 'PF',
     defaultFunctionText: 'L1',
     width: 24,
     height: 24,
     pins: [
-      { id: 'IN', name: 'IN', x: 12, y: 0, direction: 'top' }
+      { id: 'IN', name: 'IN', x: 12, y: 0, direction: 'top' },
+      { id: 'OUT', name: 'OUT', x: 12, y: 22, direction: 'bottom' }
     ],
     svgContent: `
       <line x1="12" y1="0" x2="12" y2="12" stroke="currentColor" stroke-width="2"/>
@@ -911,7 +912,8 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     width: 30,
     height: 20,
     pins: [
-      { id: '1', name: '1', x: 0, y: 10, direction: 'left' }
+      { id: '1', name: '1', x: 0, y: 10, direction: 'left' },
+      { id: '2', name: '2', x: 28, y: 10, direction: 'right' }
     ],
     svgContent: `
       <line x1="0" y1="10" x2="16" y2="10" stroke="currentColor" stroke-width="2"/>
@@ -929,7 +931,8 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     width: 30,
     height: 20,
     pins: [
-      { id: '1', name: '1', x: 30, y: 10, direction: 'right' }
+      { id: '1', name: '1', x: 30, y: 10, direction: 'right' },
+      { id: '2', name: '2', x: 2, y: 10, direction: 'left' }
     ],
     svgContent: `
       <line x1="30" y1="10" x2="14" y2="10" stroke="currentColor" stroke-width="2"/>
@@ -947,7 +950,8 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     width: 24,
     height: 30,
     pins: [
-      { id: '1', name: '1', x: 12, y: 0, direction: 'top' }
+      { id: '1', name: '1', x: 12, y: 0, direction: 'top' },
+      { id: '2', name: '2', x: 12, y: 28, direction: 'bottom' }
     ],
     svgContent: `
       <line x1="12" y1="0" x2="12" y2="16" stroke="currentColor" stroke-width="2"/>
@@ -965,7 +969,8 @@ export const SYMBOL_DEFINITIONS: SymbolDefinition[] = [
     width: 24,
     height: 30,
     pins: [
-      { id: '1', name: '1', x: 12, y: 30, direction: 'bottom' }
+      { id: '1', name: '1', x: 12, y: 30, direction: 'bottom' },
+      { id: '2', name: '2', x: 12, y: 2, direction: 'top' }
     ],
     svgContent: `
       <line x1="12" y1="30" x2="12" y2="14" stroke="currentColor" stroke-width="2"/>

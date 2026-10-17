@@ -4,7 +4,7 @@ export const escapeSvg = (text: string): string => text.replace(/&/g, '&amp;').r
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 
 /** Source geometry uses the same foreground as any other library symbol in the editor. */
-export function drawingToSvg(graphics: DrawingPrimitive[], options: { color?: string } = {}): string {
+export function drawingToSvg(graphics: DrawingPrimitive[], options: { color?: string; componentRotation?: number } = {}): string {
   return graphics.map(g => {
     const color = escapeSvg(options.color ?? g.color);
     const fill = 'fill' in g && g.fill ? escapeSvg(options.color ?? g.fill) : 'none';
@@ -17,7 +17,7 @@ export function drawingToSvg(graphics: DrawingPrimitive[], options: { color?: st
         const points = arcPoints(g);
         return `<polyline points="${points.map(p => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="${color}" stroke-width="${g.width ?? 0.6}"/>`;
       }
-      case 'text': return `<text x="${g.x}" y="${g.y}" fill="${color}" font-family="Arial, sans-serif" font-size="${g.size}" text-anchor="${g.anchor ?? 'start'}" ${g.rotation ? `transform="rotate(${g.rotation},${g.x},${g.y})"` : ''}>${g.text.split('\n').map((t, i) => `<tspan x="${g.x}" dy="${i ? g.size * 1.2 : 0}">${escapeSvg(t)}</tspan>`).join('')}</text>`;
+      case 'text': return `<text x="${g.x}" y="${g.y}" fill="${color}" font-family="Arial, sans-serif" font-size="${g.size}" text-anchor="${g.anchor ?? 'start'}" ${(g.rotation ?? 0) - (options.componentRotation ?? 0) ? `transform="rotate(${(g.rotation ?? 0) - (options.componentRotation ?? 0)},${g.x},${g.y})"` : ''}>${g.text.split('\n').map((t, i) => `<tspan x="${g.x}" dy="${i ? g.size * 1.2 : 0}">${escapeSvg(t)}</tspan>`).join('')}</text>`;
     }
   }).join('');
 }
@@ -51,6 +51,16 @@ export function rotateDrawing(graphics: DrawingPrimitive[], angle: number, width
     if (g.kind === 'polygon') return { ...g, points: g.points.map(p => point(p.x, p.y)) };
     const p = point(g.x, g.y);
     if (g.kind === 'arc') return { ...g, ...p, startAngle: g.startAngle + angle, endAngle: g.endAngle + angle };
-    return g.kind === 'text' ? { ...g, ...p, rotation: (g.rotation ?? 0) + angle } : { ...g, ...p };
+    return { ...g, ...p };
   });
+}
+
+/** Library SVGs use text anchors without transforms; keep their lettering upright. */
+export function uprightSymbolSvg(svg: string, rotation = 0): string {
+  if (!rotation) return svg;
+  return svg.replace(/<text\b([^>]*)>/g, (tag, attrs: string) => {
+    const x = /\bx="([^"]+)"/.exec(attrs)?.[1] ?? '0';
+    const y = /\by="([^"]+)"/.exec(attrs)?.[1] ?? '0';
+    return `<g transform="rotate(${-rotation},${x},${y})">${tag}`;
+  }).replace(/<\/text>/g, '</text></g>');
 }

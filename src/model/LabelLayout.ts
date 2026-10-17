@@ -79,7 +79,7 @@ export function computeBmkPosition(comp: PlacedComponent, sym: SymbolDefinition)
   const rotation = cfg?.rotation || 0;
   const fontSize = cfg?.fontSize || 10;
   const visible = cfg?.visible !== false;
-  const transform = rotation !== 0 ? `transform="rotate(${rotation}, ${x}, ${y})"` : '';
+  const transform = labelTransform(x, y, comp.rotation, rotation);
 
   return { x, y, anchor, rotation, fontSize, visible, transform };
 }
@@ -150,7 +150,7 @@ export function computeFunctionTextPosition(comp: PlacedComponent, sym: SymbolDe
   const rotation = cfg?.rotation || 0;
   const fontSize = cfg?.fontSize || 8;
   const visible = cfg?.visible !== false;
-  const transform = rotation !== 0 ? `transform="rotate(${rotation}, ${x}, ${y})"` : '';
+  const transform = labelTransform(x, y, comp.rotation, rotation);
 
   return { x, y, anchor, rotation, fontSize, visible, transform };
 }
@@ -221,7 +221,13 @@ export function computeTechnicalDataPosition(comp: PlacedComponent, sym: SymbolD
   const rotation = cfg?.rotation || 0;
   const fontSize = cfg?.fontSize || 8;
   const visible = cfg?.visible !== undefined ? cfg.visible : !!(comp.deviceTag || comp.technicalCharacteristics);
-  const transform = rotation !== 0 ? `transform="rotate(${rotation}, ${x}, ${y})"` : '';
+  const transform = labelTransform(x, y, comp.rotation, rotation);
 
   return { x, y, anchor, rotation, fontSize, visible, transform };
+}
+
+/** Counter-rotate text about its own anchor; the component still moves the anchor. */
+export function labelTransform(x: number, y: number, componentRotation = 0, textRotation = 0): string {
+  const angle = textRotation - componentRotation;
+  return angle ? `transform="rotate(${angle}, ${x}, ${y})"` : '';
 }

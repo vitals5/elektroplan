@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import { PackageHandler } from './PackageHandler';
+import { defaultPlotFrame } from '../model/PlotFrame';
 import { Project } from '../model/types';
 
 const project: Project = {
@@ -25,6 +26,8 @@ const project: Project = {
       titleBlock: { projectTitle: '', commission: '', company: '', author: '', date: '', revision: '', sheetNumber: '1', totalSheets: '1' } }
   }]
 };
+project.settings = { interruptionLabelSide: 'before' };
+project.plotFrameTemplate = defaultPlotFrame();
 const xml = PackageHandler.generateProjectXml(project);
 assert(xml.includes('symbol="source&lt;&amp;"'), 'XML attributes are escaped too');
 assert(!xml.includes('<script>'), 'payload text must not become XML markup');

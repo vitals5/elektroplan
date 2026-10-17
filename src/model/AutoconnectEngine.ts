@@ -58,6 +58,7 @@ export class AutoconnectEngine {
   public static getAllPins(components: PlacedComponent[]): RotatedPinInfo[] {
     const pins: RotatedPinInfo[] = [];
     for (const comp of components) {
+      if (comp.source?.routingUsed === false) continue;
       const sym = getSymbolForComponent(comp);
       if (!sym) continue;
       for (const pinDef of sym.pins) {
@@ -111,59 +112,28 @@ export class AutoconnectEngine {
     // Group pins by Y (for horizontal connections) with tolerance <= 2px
     const horizontalClusters = this.clusterPins(allPins, p => p.worldY, tolerance);
 
-    // 1. Vertical Autoconnect: same column
-    for (const pins of verticalClusters) {
-      if (pins.length < 2) continue;
-      // Sort vertically from top to bottom
-      pins.sort((a, b) => a.worldY - b.worldY);
-
-      for (let i = 0; i < pins.length - 1; i++) {
-        const topPin = pins[i];
-        const bottomPin = pins[i + 1];
-
-        if (topPin.componentId === bottomPin.componentId) continue;
-
-        const distance = bottomPin.worldY - topPin.worldY;
-        if (distance >= minimumDistance && distance <= this.MAX_AUTOCONNECT_DISTANCE) {
-          // Top pin must face downwards ('bottom') and bottom pin must face upwards ('top')
-          if (topPin.direction === 'bottom' && bottomPin.direction === 'top') {
-            pairs.push({
-              pin1: topPin,
-              pin2: bottomPin,
-              orientation: 'vertical',
-              distance
-            });
-          }
+    const connect = (clusters: RotatedPinInfo[][], vertical: boolean) => {
+      const forward = vertical ? 'bottom' : 'right', backward = vertical ? 'top' : 'left';
+      const coordinate = (p: RotatedPinInfo) => vertical ? p.worldY : p.worldX;
+      for (const cluster of clusters) {
+        const pins = cluster.filter(p => p.direction === forward || p.direction === backward).sort((a, b) => coordinate(a) - coordinate(b));
+        const positions: RotatedPinInfo[][] = [];
+        for (const pin of pins) {
+          const last = positions.at(-1);
+          if (last && Math.abs(coordinate(last[0]) - coordinate(pin)) < 1e-6) last.push(pin);
+          else positions.push([pin]);
+        }
+        for (let i = 1; i < positions.length; i++) {
+          const distance = coordinate(positions[i][0]) - coordinate(positions[i - 1][0]);
+          if (distance < minimumDistance || distance > this.MAX_AUTOCONNECT_DISTANCE) continue;
+          for (const a of positions[i - 1].filter(p => p.direction === forward))
+            for (const b of positions[i].filter(p => p.direction === backward))
+              if (a.componentId !== b.componentId) pairs.push({ pin1: a, pin2: b,
+                orientation: vertical ? 'vertical' : 'horizontal', distance });
         }
       }
-    }
-
-    // 2. Horizontal Autoconnect: same row
-    for (const pins of horizontalClusters) {
-      if (pins.length < 2) continue;
-      // Sort horizontally from left to right
-      pins.sort((a, b) => a.worldX - b.worldX);
-
-      for (let i = 0; i < pins.length - 1; i++) {
-        const leftPin = pins[i];
-        const rightPin = pins[i + 1];
-
-        if (leftPin.componentId === rightPin.componentId) continue;
-
-        const distance = rightPin.worldX - leftPin.worldX;
-        if (distance >= minimumDistance && distance <= this.MAX_AUTOCONNECT_DISTANCE) {
-          // Left pin must face rightwards ('right') and right pin must face leftwards ('left')
-          if (leftPin.direction === 'right' && rightPin.direction === 'left') {
-            pairs.push({
-              pin1: leftPin,
-              pin2: rightPin,
-              orientation: 'horizontal',
-              distance
-            });
-          }
-        }
-      }
-    }
+    };
+    connect(verticalClusters, true); connect(horizontalClusters, false);
 
     return pairs;
   }

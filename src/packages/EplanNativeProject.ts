@@ -1,4 +1,6 @@
 import JSZip from 'jszip';
+import { readEplanPlotFrame } from './EplanPlotFrame';
+import { PlotFrameTemplate } from '../model/PlotFrame';
 import { DrawingPrimitive, Page, PinDefinition, PlacedComponent, Project, SymbolDefinition, Wire } from '../model/types';
 import { NativePort, physicalConnections } from './EplanPhysicalConnections';
 import { EodRecord, eplanText, readEodTable, EOD_LAYOUTS } from './EodReader';
@@ -13,6 +15,7 @@ type Tables = Record<keyof typeof EOD_LAYOUTS, EodRecord[]>;
 /** Page-independent importer: source placements reference the embedded master data. */
 export class EplanNativeProject {
   readonly messages: string[] = [];
+  private plotFrameTemplate?: PlotFrameTemplate;
   private graphics = new Map<string, LibraryEntry>();
   private recordsByPage = new Map<number, EodRecord[]>();
   private connectionsByPage = new Map<number, EodRecord[]>();
@@ -53,6 +56,7 @@ export class EplanNativeProject {
   }
 
   finalize(project: Project): void {
+    if (this.plotFrameTemplate) project.plotFrameTemplate = this.plotFrameTemplate;
     const components = new Map(project.pages.flatMap(p => p.components).filter(c => c.source)
       .map(c => [`${c.source!.objectType}:${c.source!.objectId}`, c]));
     project.logicalConnections = [];
@@ -82,6 +86,7 @@ export class EplanNativeProject {
     const library = await EplanSymbolLibrary.create(zip, root);
     await library.prepare([...tables.Function, ...tables.IPoint, ...tables.Potential, ...tables.Instance]);
     const importer = new EplanNativeProject(tables, library);
+    importer.plotFrameTemplate = await readEplanPlotFrame(zip, root, tables.Instance, library);
     importer.messages.push(...library.diagnostics);
     return importer;
   }

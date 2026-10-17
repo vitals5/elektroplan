@@ -259,6 +259,38 @@ kollineare und gedrehte Pins beim normalen Editieren. Der Browser prüft echten
 Split-Archivimport, dunklen Editor, Steckdosenbögen, L/N/PE und Bearbeiten,
 Drehen, Verschieben sowie JSON-Wiederladen.
 
+## Normblatt und Editorbedienung (17.10.2026)
+
+Das Projekt referenziert über `TrDMProject.Frame` die eingebettete Vorlage
+`FN1_001` (Form-Typ 21, Objekt 106). Die indexierten Form-Slots sind 1297 Bytes
+breit; die zugehörigen Instance-Objekte verweisen über EBF1 auf diese Form.
+Übernommen werden 30 Konturen und 53 Text-/Property-Platzierungen auf 420 × 297 mm.
+Die Fußzeile beginnt 16 mm über dem unteren Blattrand und läuft über die ganze
+Breite. EE26 bestimmt den Textanker, EE21 die Größe und ED63/ED65 das Feld bzw.
+seine Untereigenschaft. 20132/20134 binden Anlagen-/Ortskennzeichen ein.
+Editor und PDF verwenden dieselbe Vorlage, Feldauflösung und Textanpassung.
+Lange Texte werden umbrochen, bei Bedarf verkleinert/gekürzt und an der Zelle
+beschnitten. Blattzahl und Seitennummerierung zählen die tatsächlich importierten
+48 aktiven Seiten; die PDF-Vorlage enthält eine Auswahl von 45 Druckseiten.
+Einige mehrsprachige Beschriftungen sind nur als Präfix verfügbar; für Seite,
+Ersatz von und Ersetzt durch dienen die identifizierten Standardfeldbezeichnungen
+als Ersatz. Das ist keine vollständige Wiederherstellung aller Sprachressourcen.
+
+Abbruchstellen sind in der eigenen Verbindungsauswahl einschließlich der
+Projektbibliothek verfügbar. Gegenüberliegende, auch deckungsgleiche Ports werden
+bei der Nachbarschaftssuche als gemeinsamer Ort behandelt. Die Bibliothekspfeile
+besitzen beidseitige Anschlüsse. Die Projekteinstellung vor/nach dem Pfeil steuert
+Bezeichnung und Querverweis in allen vier Drehlagen und bleibt in JSON/XML erhalten.
+Textanker drehen sich mit dem Element, Textwinkel bleiben eigenständig; das gilt
+für Beschriftungen, Pintexte und interne Symboltexte in Editor und PDF.
+Pfeiltasten verschieben nur die Ansicht (40 Bildschirmpixel, mit Umschalt 160);
+Eingabefelder und Dialoge behalten ihre Tastaturbedienung.
+
+Browserprüfung: echter Split-Archivimport, eigene Auswahlfelder, alle vier
+Pfeiltasten, Eigenschaftendialog mit 180°, horizontale Textmatrizen, Einstellungs-
+Undo/Redo und geometrisch begrenzter langer Plankopftext. Die bestehenden 193
+Leiterabschnitte von Wohnzimmer 1 bleiben im PDF-Vektorvergleich erhalten.
+
 ## Verbleibende Grenzen
 
 Die Slot-/Indexinterpretation ist für das mitgelieferte P8-Layout rekonstruiert,

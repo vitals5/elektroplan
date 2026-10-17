@@ -285,6 +285,7 @@ export class EdbProjectParser {
     };
 
     native?.finalize(project);
+    if (project.plotFrameTemplate?.diagnostics?.length) messages.push(...project.plotFrameTemplate.diagnostics.map(d => 'Normblatt: ' + d));
     if (native) messages.push(...native.messages, `${project.symbolLibrary!.length} gemeinsame Projekt-Bibliotheksdefinitionen übernommen.`);
     setProjectSymbolLibrary(project);
 

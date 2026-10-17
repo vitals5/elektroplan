@@ -1,6 +1,7 @@
 // src/ui/SymbolSelectionDialog.ts
 // Symbol Selection modal ("Symbolauswahl")
 
+import { isConnectionSymbol, connectionFamily } from '../model/ConnectionSymbols';
 import { SymbolDefinition } from '../model/types';
 import { getSymbolDefinitions, getSymbolById } from '../model/symbols';
 
@@ -14,8 +15,9 @@ export class SymbolSelectionDialog {
   private searchQuery: string = '';
   private selectedSymbolId: string = getSymbolDefinitions()[0].id;
 
-  constructor(callbacks: SymbolSelectionCallbacks) {
+  constructor(callbacks: SymbolSelectionCallbacks, private kind: 'elements' | 'connections' = 'elements') {
     this.callbacks = callbacks;
+    this.selectedSymbolId = getSymbolDefinitions().find(s => isConnectionSymbol(s) === (kind === 'connections'))?.id ?? '';
   }
 
   public show(): void {
@@ -62,7 +64,7 @@ export class SymbolSelectionDialog {
         ">
           <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px;">
             <span style="color: #63b3ed;">📐</span>
-            <span>Symbolauswahl (DIN EN 60617 / IEC 81346)</span>
+            <span>${this.kind === 'connections' ? 'Verbindungselemente' : 'Elementauswahl'} (DIN EN 60617 / IEC 81346)</span>
           </div>
           <button id="btnCloseSymModal" style="background: none; border: none; color: #a0aec0; font-size: 18px; cursor: pointer;">&times;</button>
         </div>
@@ -104,7 +106,7 @@ export class SymbolSelectionDialog {
           ">
             <div style="font-size: 10px; font-weight: bold; color: #a0aec0; text-transform: uppercase; margin-bottom: 6px;">Bibliotheken</div>
             
-            <div class="sym-tree-node active" data-cat="all" style="padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 6px;">
+            ${this.kind === 'connections' ? [ ['all', 'Alle Verbindungselemente'], ['interruptions', 'Abbruchstellen'], ['tees', 'T-Stücke'], ['corners', 'Winkel'], ['crossings', 'Kreuzungen'], ['other', 'Weitere'], ['project', 'Projektbibliothek'] ].map(([id, label]) => `<div class="sym-tree-node ${id === 'all' ? 'active' : ''}" data-cat="${id}" style="padding:6px;cursor:pointer">${label}</div>`).join('') : `            <div class="sym-tree-node active" data-cat="all" style="padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 6px;">
               <span>📁</span> Alle Symbole
             </div>
             <div class="sym-tree-node" data-cat="project" style="padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 6px;">
@@ -125,12 +127,10 @@ export class SymbolSelectionDialog {
             <div class="sym-tree-node" data-cat="terminals" style="padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 6px;">
               <span>🔌</span> Klemmen & Verbinder
             </div>
-            <div class="sym-tree-node" data-cat="connections" style="padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 6px;">
-              <span>🔗</span> Verbindungssymbole
-            </div>
             <div class="sym-tree-node" data-cat="supply" style="padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 6px;">
               <span>🔋</span> Spannungsversorgung
-            </div>
+            </div>`}
+
           </div>
 
           <!-- Middle Column: Symbol Cards Grid -->
@@ -188,7 +188,8 @@ export class SymbolSelectionDialog {
 
   private getFilteredSymbols(): SymbolDefinition[] {
     return getSymbolDefinitions().filter(s => {
-      const matchCat = this.selectedCategory === 'all' || s.category === this.selectedCategory
+      if (isConnectionSymbol(s) !== (this.kind === 'connections')) return false;
+      const matchCat = this.selectedCategory === 'all' || this.kind === 'connections' && connectionFamily(s) === this.selectedCategory || s.category === this.selectedCategory
         || (this.selectedCategory === 'project' && !!s.source);
       const matchQuery = !this.searchQuery ||
         s.name.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
@@ -351,6 +352,12 @@ export class SymbolSelectionDialog {
   }
 
   private updateGrid(modal: HTMLElement): void {
+    const filtered = this.getFilteredSymbols();
+    if (!filtered.some(s => s.id === this.selectedSymbolId)) this.selectedSymbolId = filtered[0]?.id ?? '';
+    const insert = modal.querySelector('#btnInsertSym') as HTMLButtonElement;
+    if (insert) insert.disabled = !this.selectedSymbolId;
+    const detail = modal.querySelector('#symDetailsContainer');
+    if (detail) detail.innerHTML = this.renderSymbolDetails();
     const grid = modal.querySelector('#symGridContainer');
     if (grid) {
       grid.innerHTML = this.renderSymbolsGrid();

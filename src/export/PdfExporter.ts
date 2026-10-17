@@ -1,3 +1,6 @@
+import { defaultPlotFrame, frameTextCell, frameTextValue, fitFrameText } from '../model/PlotFrame';
+import { interruptionLabelPosition, isInterruptionSymbol } from '../model/ConnectionSymbols';
+import { rotatedLocalPoint } from '../model/SymbolGeometry';
 // src/export/PdfExporter.ts
 // Smart Vector PDF Export:
 // - Multi-page vector PDF (DIN A3 / DIN A4 Landscape)
@@ -91,7 +94,7 @@ export class PdfExporter {
 
       // Render Plot Frame (Normblatt)
       if (options.plotFrame) {
-        this.renderPlotFrame(doc, page, pageWidthMm, pageHeightMm, options.colorMode, totalSheetsCount);
+        this.renderPlotFrame(doc, page, pageWidthMm, pageHeightMm, options.colorMode, totalSheetsCount, project);
       }
 
       // Render Embedded Images
@@ -159,83 +162,27 @@ export class PdfExporter {
     wMm: number,
     hMm: number,
     colorMode: 'color' | 'monochrome',
-    totalSheets: number
+    totalSheets: number,
+    project?: Project
   ): void {
-    const margin = 8;
-    const innerMargin = 14;
-
-    doc.setLineWidth(0.4);
-    doc.setDrawColor(0, 0, 0);
-
-    // Outer & inner boundary rectangles
-    doc.rect(margin, margin, wMm - 2 * margin, hMm - 2 * margin);
-    doc.setLineWidth(0.2);
-    doc.rect(innerMargin, innerMargin, wMm - 2 * innerMargin, hMm - 2 * innerMargin);
-
-    // Columns 0..9 headers
-    const cols = 10;
-    const colWidth = (wMm - 2 * innerMargin) / cols;
-    doc.setFont('courier', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(80, 80, 80);
-
-    for (let i = 0; i < cols; i++) {
-      const cx = innerMargin + i * colWidth + colWidth / 2;
-      doc.text(i.toString(), cx, innerMargin - 2, { align: 'center' });
-      doc.text(i.toString(), cx, hMm - innerMargin + 4, { align: 'center' });
-      doc.line(innerMargin + i * colWidth, innerMargin - 4, innerMargin + i * colWidth, innerMargin);
+    const template = project?.plotFrameTemplate ?? defaultPlotFrame();
+    const context = project ?? { pages: [page], description: page.plotFrame.titleBlock.projectTitle, company: page.plotFrame.titleBlock.company, author: page.plotFrame.titleBlock.author } as Project;
+    const sx = wMm / template.width, sy = hMm / template.height;
+    this.renderImportedGraphics(doc, template.graphics, sx, sy, colorMode, 0, 0, '#7ca552');
+    for (const text of template.texts) {
+      const value = !project && text.property === 10300 ? String(totalSheets) : frameTextValue(text, page, context, template);
+      if (!value) continue;
+      const cell = frameTextCell(text, template), fit = fitFrameText(value, text, cell);
+      doc.saveGraphicsState();
+      doc.rect(cell.x * sx, cell.y * sy, cell.width * sx, cell.height * sy, null);
+      doc.clip(); doc.discardPath();
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(fit.size * sy * 72 / 25.4);
+      doc.setTextColor(...(colorMode === 'color' ? [124, 165, 82] : [0, 0, 0]) as [number, number, number]);
+      fit.lines.forEach((line, i) => doc.text(line, fit.x * sx, (fit.y + i * fit.size * 1.2) * sy,
+        { align: text.anchor === 'middle' ? 'center' : text.anchor === 'end' ? 'right' : 'left' }));
+      doc.restoreGraphicsState();
     }
-
-    // Rows A..F markers
-    const rows = ['A', 'B', 'C', 'D', 'E', 'F'];
-    const rowHeight = (hMm - 2 * innerMargin - 25) / rows.length;
-    for (let r = 0; r < rows.length; r++) {
-      const ry = innerMargin + r * rowHeight + rowHeight / 2;
-      doc.text(rows[r], innerMargin - 3, ry, { align: 'center' });
-      doc.text(rows[r], wMm - innerMargin + 3, ry, { align: 'center' });
-    }
-
-    // DIN EN ISO 7200 Title Block (Bottom Right)
-    const tbW = 120;
-    const tbH = 26;
-    const tbX = wMm - innerMargin - tbW;
-    const tbY = hMm - innerMargin - tbH;
-    const tb = page.plotFrame.titleBlock;
-
-    doc.setLineWidth(0.3);
-    doc.setDrawColor(0, 0, 0);
-    doc.setFillColor(255, 255, 255);
-    doc.rect(tbX, tbY, tbW, tbH, 'FD');
-
-    // Horizontal divider lines
-    doc.line(tbX, tbY + 9, tbX + tbW, tbY + 9);
-    doc.line(tbX, tbY + 18, tbX + tbW, tbY + 18);
-
-    // Vertical dividers
-    doc.line(tbX + 60, tbY, tbX + 60, tbY + 18);
-    doc.line(tbX + 90, tbY + 9, tbX + 90, tbY + tbH);
-
-    // Texts inside Titleblock
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(colorMode === 'color' ? 30 : 0, colorMode === 'color' ? 70 : 0, colorMode === 'color' ? 140 : 0);
-    doc.text(tb.company || 'Elektroplan CAE Suite', tbX + 2, tbY + 6);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(50, 50, 50);
-    doc.text(`Komm.: ${tb.commission || 'KOM-2026'}`, tbX + 62, tbY + 6);
-
-    doc.setFontSize(7.5);
-    doc.text(`Projekt: ${tb.projectTitle}`, tbX + 2, tbY + 15);
-    doc.text(`Datum: ${tb.date}`, tbX + 62, tbY + 15);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(0, 0, 0);
-    doc.text(page.title, tbX + 2, tbY + 23);
-
-    doc.text(`Blatt: ${page.pageNumber} / ${totalSheets}`, tbX + 92, tbY + 23);
   }
 
   /**
@@ -405,7 +352,7 @@ export class PdfExporter {
       // Draw Symbol Vector Outline
       doc.setDrawColor(0, 0, 0);
       doc.setLineWidth(0.35);
-      this.drawVectorSymbol(doc, sym.id, compX, compY, compW, compH);
+      this.drawVectorSymbol(this.rotatedSymbolDocument(doc, compX, compY, compW, compH, comp.rotation, sx, sy), sym.id, compX, compY, compW, compH);
       }
 
       const isConnection = !sym.importedGraphics && (sym.category === 'connections' || sym.id.startsWith('potential_arrow') || sym.id === 'potential_rail_source');
@@ -426,7 +373,7 @@ export class PdfExporter {
           doc.setFontSize(label.fontSize * sy * 72 / 25.4);
           doc.setTextColor(0, 0, 0);
           doc.text(comp.pins[pin.id]?.customLabel ?? pin.name, px * sx, py * sy,
-            { align: label.alignment === 'middle' ? 'center' : label.alignment === 'end' ? 'right' : 'left', angle: -(comp.rotation + (label.rotation ?? 0)) });
+            { align: label.alignment === 'middle' ? 'center' : label.alignment === 'end' ? 'right' : 'left', angle: -(label.rotation ?? 0) });
         }
       } else if (!isConnection && !isTerminal) {
         for (const pin of sym.pins) {
@@ -444,7 +391,15 @@ export class PdfExporter {
       }
 
       // Draw Labels according to component type
-      if (isConnection) {
+      const arrowPos = interruptionLabelPosition(project, comp, sym);
+      if (isInterruptionSymbol(sym) && (isConnection || arrowPos)) {
+        const local = arrowPos!;
+        const point = rotatedLocalPoint(local, sym, comp.rotation);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize((sym.source ? computeFunctionTextPosition(comp, sym).fontSize : 8.5) * sy * 72 / 25.4);
+        doc.setTextColor(0, 0, 0);
+        if (!sym.source || computeFunctionTextPosition(comp, sym).visible) doc.text(comp.functionText || comp.bmk, (comp.x + point.x) * sx, (comp.y + point.y) * sy,
+          { align: local.anchor === 'middle' ? 'center' : local.anchor === 'end' ? 'right' : 'left' });
+      } else if (isConnection) {
         // Interruption point / Potential arrow: render target name beside arrow
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6.5);
@@ -466,13 +421,15 @@ export class PdfExporter {
         doc.setFont('courier', 'bold');
         doc.setFontSize(5.5);
         doc.setTextColor(50, 50, 50);
-        doc.text(termNum, compX + compW + 1.2, compY + compH * 0.5 + 1.0);
+        const anchor = rotatedLocalPoint({x:sym.width+2,y:sym.height/2+3},sym,comp.rotation);
+        doc.text(termNum, (comp.x+anchor.x)*sx, (comp.y+anchor.y)*sy);
 
         if (comp.bmk && !comp.bmk.startsWith('comp_')) {
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(6.5);
           doc.setTextColor(options.colorMode === 'color' ? 180 : 0, options.colorMode === 'color' ? 120 : 0, 0);
-          doc.text(comp.bmk, compX + compW * 0.5, compY - 1.5, { align: 'center' });
+          const anchor = rotatedLocalPoint({x:sym.width/2,y:-4},sym,comp.rotation);
+          doc.text(comp.bmk, (comp.x+anchor.x)*sx, (comp.y+anchor.y)*sy, { align: 'center' });
         }
       } else {
         const drawLabel = (text: string, pos: ReturnType<typeof computeBmkPosition>, bold: boolean, color: number[]) => {
@@ -485,7 +442,7 @@ export class PdfExporter {
           doc.setFontSize(pos.fontSize * sy * 72 / 25.4);
           const rgb = options.colorMode === 'color' ? color : [0, 0, 0];
           doc.setTextColor(rgb[0], rgb[1], rgb[2]);
-          doc.text(text, px * sx, py * sy, { align: pos.anchor === 'middle' ? 'center' : pos.anchor === 'end' ? 'right' : 'left', angle: -(comp.rotation + pos.rotation) });
+          doc.text(text, px * sx, py * sy, { align: pos.anchor === 'middle' ? 'center' : pos.anchor === 'end' ? 'right' : 'left', angle: -pos.rotation });
         };
         drawLabel(comp.bmk, computeBmkPosition(comp, sym), true, [140, 95, 0]);
         drawLabel(comp.functionText, computeFunctionTextPosition(comp, sym), false, [0, 0, 0]);
@@ -495,11 +452,12 @@ export class PdfExporter {
 
       // SMART PDF: Interactive Cross-References (Kontaktspiegel & Querverweise)
       if (comp.crossRef) {
-        const crY = compY + compH + 9;
+        const crPoint = rotatedLocalPoint({ x: arrowPos?.referenceX ?? sym.width / 2, y: arrowPos ? arrowPos.referenceY : sym.height + 24 }, sym, comp.rotation);
+        const crX = (comp.x + crPoint.x) * sx, crY = (comp.y + crPoint.y) * sy;
         doc.setFont('courier', 'bold');
         doc.setFontSize(6);
         doc.setTextColor(options.colorMode === 'color' ? 200 : 50, 50, 0);
-        doc.text(comp.crossRef, compX + compW / 2, crY, { align: 'center' });
+        doc.text(comp.crossRef, crX, crY, { align: arrowPos?.anchor === 'end' ? 'right' : arrowPos?.anchor === 'start' ? 'left' : 'center' });
 
         // Add PDF Hyperlink if interactive cross-references are enabled
         if (options.interactiveCrossReferences) {
@@ -510,7 +468,7 @@ export class PdfExporter {
             if (targetPdfPage) {
               const linkW = 20;
               const linkH = 4;
-              const linkX = compX + compW / 2 - linkW / 2;
+              const linkX = crX - linkW / 2;
               const linkY = crY - 3;
               doc.link(linkX, linkY, linkW, linkH, { pageNumber: targetPdfPage });
               if (options.colorMode === 'color') {
@@ -523,6 +481,31 @@ export class PdfExporter {
         }
       }
     }
+  }
+
+  /** Rotate built-in outlines and text anchors with the same center as their pins. */
+  private static rotatedSymbolDocument(doc: jsPDF, x: number, y: number, w: number, h: number, rotation: number, sx: number, sy: number): jsPDF {
+    if (!rotation) return doc;
+    const rad = rotation * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+    const point = (px: number, py: number) => [x+w/2+(px-x-w/2)*cos-(py-y-h/2)*sin*sx/sy,
+      y+h/2+(px-x-w/2)*sin*sy/sx+(py-y-h/2)*cos] as [number,number];
+    const polygon = (points: [number,number][], style?: string) => {
+      doc.path([...points.map(([px,py], i) => ({op: i ? 'l' : 'm', c: point(px,py)})), {op:'h',c:[]}]);
+      if (style === 'F') doc.fill(); else if (style === 'FD' || style === 'DF') doc.fillStroke(); else doc.stroke();
+      return doc;
+    };
+    const methods = {
+      line: (x1: number,y1: number,x2: number,y2: number) => doc.line(...point(x1,y1),...point(x2,y2)),
+      rect: (px: number,py: number,pw: number,ph: number,style?: string) => polygon([[px,py],[px+pw,py],[px+pw,py+ph],[px,py+ph]],style),
+      triangle: (x1: number,y1: number,x2: number,y2: number,x3: number,y3: number,style?: string) => polygon([[x1,y1],[x2,y2],[x3,y3]],style),
+      circle: (px: number,py: number,r: number,style?: string) => doc.circle(...point(px,py),r,style),
+      ellipse: (px: number,py: number,rx: number,ry: number,style?: string) => doc.ellipse(...point(px,py),Math.abs(sin)>.5?ry*sx/sy:rx,Math.abs(sin)>.5?rx*sy/sx:ry,style),
+      text: (text: string,px: number,py: number,options?: Parameters<jsPDF['text']>[3]) => doc.text(text,...point(px,py),options),
+    };
+    return new Proxy(doc, {get(target,key) {
+      if (key in methods) return methods[key as keyof typeof methods];
+      const value = Reflect.get(target,key); return typeof value === 'function' ? value.bind(target) : value;
+    }});
   }
 
   /**
