@@ -1,4 +1,6 @@
 import { selectionCount } from '../model/ElementSelection';
+import { createCoverPage } from '../model/CoverPage';
+import { CoverPageDialog } from './CoverPageDialog';
 import { SharedProperty, SelectionPatch, sharedPropertyValue, applySelectionProperties } from '../model/SelectionProperties';
 import { cableCrossings } from '../model/CableDefinition';
 // src/ui/App.ts
@@ -145,6 +147,7 @@ export class App {
             <div class="menu-opt" id="menuWire">🔌 Verbindungslinie (Verdrahten) <span class="opt-key">D</span></div>
             <div class="menu-sep"></div>
             <div class="menu-opt" id="menuNewPage">📄 Neue Seite anlegen...</div>
+            <div class="menu-opt" id="menuNewCoverPage">📄 Titelblatt (EPLAN P8) anlegen...</div>
             <div class="menu-opt" id="menuInsertPageMacro">📄 Seitenmakro anfügen (.ems)...</div>
           </div>
         </div>
@@ -360,6 +363,7 @@ export class App {
         this.updateFloatingSelectionBar();this.renderRightTab();
       },
       onOpenSelectionProperties: () => this.openSelectionProperties(),
+      onOpenCoverPage:()=>{const page=this.project.pages.find(p=>p.id===this.project.activePageId);if(page?.pageType==='cover')this.openCoverPage(page);},
       onOpenProperties: (comp) => {
         this.openPropertiesDialog(comp);
       },
@@ -993,6 +997,7 @@ export class App {
       this.updateToolButtons('btnToolWire');
     });
     bindMenuOpt('menuNewPage', () => this.addNewPage());
+    bindMenuOpt('menuNewCoverPage',()=>this.addCoverPage());
     bindMenuOpt('menuInsertPageMacro', () => {
       this.openMacroSelectionDialog('page');
     });
@@ -1215,6 +1220,7 @@ export class App {
         <span style="font-size: 11px; font-weight: bold; color: var(--text-muted); text-transform: uppercase;">Projektseiten (DIN EN 81346)</span>
         <button class="btn btn-primary" id="btnAddPage" style="padding: 2px 8px; font-size: 11px;">+ Seite</button>
       </div>
+      <button class="btn" id="btnAddCoverPage" style="width:100%;margin-bottom:12px">+ Titelblatt (EPLAN P8)</button>
       <div class="page-tree">
     `;
 
@@ -1250,6 +1256,18 @@ export class App {
     document.getElementById('btnAddPage')?.addEventListener('click', () => {
       this.addNewPage();
     });
+    document.getElementById('btnAddCoverPage')?.addEventListener('click',()=>this.addCoverPage());
+  }
+
+  private addCoverPage():void {
+    const page=createCoverPage(this.project);
+    this.project.pages.unshift(page);this.canvas.setPage(page.id);this.updateUI();this.openCoverPage(page);
+  }
+
+  private openCoverPage(page:Page):void {
+    new CoverPageDialog(page,this.project,{onSave:cover=>{
+      page.coverPage=cover;this.notifyChange();
+    }}).show();
   }
 
   private addNewPage(): void {
@@ -2256,6 +2274,7 @@ export class App {
         <div style="font-size: 11px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; margin-bottom: 12px;">
           Seiteneigenschaften (Blatt ${activePage?.pageNumber || '1'})
         </div>
+        ${activePage?.pageType==='cover'?'<button class="btn btn-primary" id="btnEditCoverPage" style="width:100%;margin-bottom:12px">Titelblatt bearbeiten…</button>':''}
 
         <div class="form-group">
           <label class="form-label">Seitentitel</label>
@@ -2292,6 +2311,7 @@ export class App {
         </div>
       `;
 
+      document.getElementById('btnEditCoverPage')?.addEventListener('click',()=>{if(activePage)this.openCoverPage(activePage);});
       document.getElementById('pageTitleInput')?.addEventListener('input', (e) => {
         if (activePage) activePage.title = (e.target as HTMLInputElement).value;
         this.notifyChange();

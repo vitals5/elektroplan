@@ -1,5 +1,6 @@
 // src/model/types.ts
 import type { PlotFrameTemplate } from './PlotFrame';
+import type { CoverPageData, CoverPageTemplate } from './CoverPage';
 // Data structures following IEC 81346 / DIN EN 60617 standards
 
 export type PageType = 'cover' | 'schematic' | 'terminal_diagram' | 'parts_list' | 'overview';
@@ -197,6 +198,7 @@ export interface Page {
   texts?: PageText[];
   boxes?: PageBox[];
   images?: PageImage[];
+  coverPage?: CoverPageData;
   suppressedAutoconnections?: string[];
   importDiagnostics?: string[];
   connectionMode?: 'explicit' | 'autoconnect';
@@ -227,6 +229,7 @@ export interface Project {
   company: string;
   pages: Page[];
   plotFrameTemplate?: PlotFrameTemplate;
+  coverPageTemplate?: CoverPageTemplate;
   settings?: { interruptionLabelSide?: 'source' | 'before' | 'after' };
   drawingUnitsPerMm?: number;
   /** Shared project master data. Placements reference these definitions by symbolId. */

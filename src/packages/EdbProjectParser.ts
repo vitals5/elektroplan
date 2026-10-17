@@ -10,6 +10,7 @@ import { SYMBOL_DEFINITIONS, getSymbolById, getSymbolForComponent, setProjectSym
 import { AutoconnectEngine } from '../model/AutoconnectEngine';
 
 export interface ExtractedPageMeta {
+  pageType?: PageType;
   pageId: number;
   pageNumber: string;
   location: string;
@@ -179,7 +180,7 @@ export class EdbProjectParser {
 
       // Determine PageType
       let pageType: PageType = 'schematic';
-      if (rp.title.toLowerCase().includes('titelblatt') || rp.location === 'EAA' || rp.pageNumber === '0') {
+      if (rp.pageType==='cover' || rp.title.toLowerCase().includes('titelblatt') || rp.location === 'EAA' || rp.pageNumber === '0') {
         pageType = 'cover';
       } else if (/^(PLG_|TERM_)/.test(rp.location) || /steckerplan|klemmenplan/i.test(rp.title)) {
         pageType = 'terminal_diagram';
@@ -286,6 +287,7 @@ export class EdbProjectParser {
 
     native?.finalize(project);
     if (project.plotFrameTemplate?.diagnostics?.length) messages.push(...project.plotFrameTemplate.diagnostics.map(d => 'Normblatt: ' + d));
+    if (project.coverPageTemplate?.diagnostics?.length) messages.push(...project.coverPageTemplate.diagnostics.map(d => 'Titelseite: ' + d));
     if (native) messages.push(...native.messages, `${project.symbolLibrary!.length} gemeinsame Projekt-Bibliotheksdefinitionen übernommen.`);
     setProjectSymbolLibrary(project);
 

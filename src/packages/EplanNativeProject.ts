@@ -1,6 +1,8 @@
 import { nativeCableKind, readEplanCables, bindImportedCableCores } from './EplanCables';
 import JSZip from 'jszip';
 import { readEplanPlotFrame } from './EplanPlotFrame';
+import { readEplanCoverPage } from './EplanCoverPage';
+import type { CoverPageTemplate } from '../model/CoverPage';
 import { PlotFrameTemplate } from '../model/PlotFrame';
 import { DrawingPrimitive, Page, PinDefinition, PlacedComponent, Project, SymbolDefinition, Wire } from '../model/types';
 import { NativePort, physicalConnections } from './EplanPhysicalConnections';
@@ -17,12 +19,14 @@ type Tables = Record<keyof typeof EOD_LAYOUTS, EodRecord[]>;
 export class EplanNativeProject {
   readonly messages: string[] = [];
   private plotFrameTemplate?: PlotFrameTemplate;
+  private coverPageTemplate?: CoverPageTemplate;
   private graphics = new Map<string, LibraryEntry>();
   private recordsByPage = new Map<number, EodRecord[]>();
   private connectionsByPage = new Map<number, EodRecord[]>();
   get pages() {
     return this.tables.Page.filter(r => r.string(0x2b04, 4)).map(r => ({
       pageId: r.id, pageNumber: r.string(0x2b04, 4), title: eplanText(r.string(0x2b03, 4)),
+      pageType:this.coverPageTemplate && r.string(0x2b07,4)===this.coverPageTemplate.name?'cover' as const:undefined,
       higherLevel: r.string(0x044c, 4), location: r.string(0x04b0, 4)
     })).sort((a, b) => {
       const rank = (location: string) => location === 'EAA' ? 0 : /^(TERM_|PLG_)/.test(location) ? 2 : 1;
@@ -58,6 +62,7 @@ export class EplanNativeProject {
 
   finalize(project: Project): void {
     if (this.plotFrameTemplate) project.plotFrameTemplate = this.plotFrameTemplate;
+    if (this.coverPageTemplate) project.coverPageTemplate = this.coverPageTemplate;
     for (const page of project.pages) bindImportedCableCores(page,project);
     const components = new Map(project.pages.flatMap(p => p.components).filter(c => c.source)
       .map(c => [`${c.source!.objectType}:${c.source!.objectId}`, c]));
@@ -89,6 +94,7 @@ export class EplanNativeProject {
     await library.prepare([...tables.Function, ...tables.IPoint, ...tables.Potential, ...tables.Instance]);
     const importer = new EplanNativeProject(tables, library);
     importer.plotFrameTemplate = await readEplanPlotFrame(zip, root, tables.Instance, library);
+    importer.coverPageTemplate = await readEplanCoverPage(zip, root, tables.Instance, library);
     importer.messages.push(...library.diagnostics);
     return importer;
   }

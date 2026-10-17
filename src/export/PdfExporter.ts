@@ -1,4 +1,5 @@
 import { cableDrawing } from '../model/CableDefinition';
+import { coverPageTemplate, coverPageTextRuns, coverPageLogo } from '../model/CoverPage';
 import { defaultPlotFrame, frameTextCell, frameTextValue, fitFrameText } from '../model/PlotFrame';
 import { interruptionLabelPosition, isInterruptionSymbol } from '../model/ConnectionSymbols';
 import { rotatedLocalPoint } from '../model/SymbolGeometry';
@@ -97,6 +98,7 @@ export class PdfExporter {
       if (options.plotFrame) {
         this.renderPlotFrame(doc, page, pageWidthMm, pageHeightMm, options.colorMode, totalSheetsCount, project);
       }
+      if(page.pageType==='cover')this.renderCoverPage(doc,page,project,pageWidthMm,pageHeightMm,options.colorMode);
 
       // Render Embedded Images
       this.renderImages(doc, page, pageWidthMm, pageHeightMm);
@@ -183,6 +185,25 @@ export class PdfExporter {
       doc.setTextColor(...(colorMode === 'color' ? [124, 165, 82] : [0, 0, 0]) as [number, number, number]);
       fit.lines.forEach((line, i) => doc.text(line, fit.x * sx, (fit.y + i * fit.size * 1.2) * sy,
         { align: text.anchor === 'middle' ? 'center' : text.anchor === 'end' ? 'right' : 'left' }));
+      doc.restoreGraphicsState();
+    }
+  }
+
+  private static renderCoverPage(doc:jsPDF,page:Page,project:Project,wMm:number,hMm:number,colorMode:'color'|'monochrome'):void {
+    const template=coverPageTemplate(project),sx=wMm/template.width,sy=hMm/template.height;
+    this.renderImportedGraphics(doc,template.graphics,sx,sy,colorMode,0,0,'#7ca552');
+    const logo=coverPageLogo(page,project);
+    if(logo){
+      const image=doc.getImageProperties(logo.dataUrl),factor=Math.min(logo.width*sx/image.width,logo.height*sy/image.height);
+      const width=image.width*factor,height=image.height*factor;
+      doc.addImage(logo.dataUrl,logo.dataUrl.startsWith('data:image/png')?'PNG':'JPEG',logo.x*sx+(logo.width*sx-width)/2,logo.y*sy+(logo.height*sy-height)/2,width,height);
+    }
+    for(const {text,value,cell,fit} of coverPageTextRuns(page,project)){
+      if(!value)continue;
+      doc.saveGraphicsState();doc.rect(cell.x*sx,cell.y*sy,cell.width*sx,cell.height*sy,null);doc.clip();doc.discardPath();
+      doc.setFont('helvetica','normal');doc.setFontSize(fit.size*sy*72/25.4);
+      doc.setTextColor(...(colorMode==='color'?[124,165,82]:[0,0,0]) as [number,number,number]);
+      fit.lines.forEach((line,i)=>doc.text(line,fit.x*sx,(fit.y+i*fit.size*1.2)*sy,{align:text.anchor==='middle'?'center':text.anchor==='end'?'right':'left'}));
       doc.restoreGraphicsState();
     }
   }

@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import JSZip from 'jszip';
+import { readEodTable } from './EodReader';
+import { EplanSymbolLibrary } from './EplanSymbolLibrary';
+import { readEplanCoverPage } from './EplanCoverPage';
+
+const parts = ['Eplan Haus.zip.001', 'Eplan Haus.zip.002'];
+if (parts.every(part => fs.existsSync(part))) {
+  const zip = await JSZip.loadAsync(Buffer.concat(parts.map(part => fs.readFileSync(part))));
+  const root = 'EPLAN-Haus.edb/';
+  const instances = readEodTable(await zip.file(root + 'Instance.eod')!.async('uint8array'),
+    await zip.file(root + 'Instance.eox')!.async('uint8array'), 'Instance');
+  const library = await EplanSymbolLibrary.create(zip, root);
+  const template = await readEplanCoverPage(zip, root, instances, library);
+  assert(template);
+  assert.equal(template.name, 'F26_001');
+  assert.equal(template.width, 420); assert.equal(template.height, 297);
+  assert.equal(template.graphics.length, 8);
+  assert.equal(template.graphics.filter(graphic => graphic.kind === 'polygon' && graphic.fill).length, 5);
+  assert.equal(template.texts.length, 39);
+  assert.equal(template.texts.filter(text => text.property !== undefined).length, 22);
+  assert.equal(template.texts.find(text => text.id === '151956')?.text, 'Projektbeschreibung');
+  assert.equal(template.texts.find(text => text.id === '151985')?.text, 'Hersteller (Firma)');
+  assert.equal(template.texts.find(text => text.id === '151983')?.text, 'Pfad');
+  assert(!template.texts.some(text => text.text?.includes('@')));
+  assert(template.diagnostics?.some(diagnostic => diagnostic.includes('12 unvollständige')));
+  const description = template.texts.find(text => text.property === 10011)!;
+  assert.equal(description.x, 116); assert.equal(description.y, 115); assert.equal(description.size, 6.21);
+  const created = template.texts.find(text => text.property === 10021)!;
+  assert(Math.abs(created.y - (297 - 70.273)) < .00001);
+  const total = template.texts.find(text => text.property === 10300)!;
+  assert.equal(total.anchor, 'end');
+  assert.equal(template.properties?.['10100:0'], 'STECKLER');
+  assert.equal(template.properties?.['10011:0'], 'Einfamilienhaus mit Garage');
+  assert.equal(template.properties?.['10021:0'], '14.05.2026');
+  assert.equal(template.properties?.['10023:0'], '18.09.2026');
+  assert.equal(template.properties?.['11015:0'], 'F26_001');
+  assert.equal(template.properties?.['10235:0'], undefined, 'Do not substitute unrelated customer address fields');
+  assert.equal(template.images?.length, 1);
+  const image = template.images![0];
+  assert.equal(image.x, 64); assert.equal(image.width, 29);
+  assert(Math.abs(image.y - 24.346394366197) < 1e-9);
+  assert(Math.abs(image.height - 40.386) < 1e-9);
+  assert.match(image.dataUrl, /^data:image\/jpeg;base64,\/9j\//);
+  // Ambiguous basenames must not silently choose the wrong embedded resource.
+  zip.file(root + 'Images/another/EPLAN.jpg', await zip.file(root + 'Images/bc146770/EPLAN.jpg')!.async('uint8array'));
+  const ambiguous = await readEplanCoverPage(zip, root, instances, library);
+  assert.equal(ambiguous?.images?.length, 0);
+  assert(ambiguous?.diagnostics?.some(diagnostic => diagnostic.includes('nicht eindeutig')));
+  assert.equal(await readEplanCoverPage(new JSZip(), root, [], library), undefined);
+  console.log('✓ Native title form, indexed properties, PDF coordinates, filled graphics and embedded logo');
+} else console.log('↷ Native title-form fixture is unavailable');

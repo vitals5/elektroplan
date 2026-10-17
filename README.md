@@ -13,6 +13,7 @@ Eine moderne, professionelle **Elektroplan- & Stromlaufplan-Software für Window
 * **EPLAN-P8-Bibliotheksimport**: Mitgelieferte Symbolbibliotheken liefern Konturen, Varianten und physische Anschlüsse für alle aktiven Seiten. Platzierungen bleiben regulär editierbar; Stammdaten bleiben beim Speichern erhalten. Editor und PDF verwenden ihre jeweilige Farbgebung. Formatbefunde und Grenzen: [REA-Untersuchung](docs/reverse-engineering/einspeisung.md).
 
 ### 📐 Normgerechte Schaltungsplanung (DIN EN 81346 / IEC 60617)
+* **Titelseite im EPLAN-P8-Format**: „+ Titelblatt (EPLAN P8)“ in der Seitenliste oder „Einfügen → Titelblatt“ erzeugt eine editierbare Titelseite. „Titelblatt bearbeiten“, `F2` oder Doppelklick öffnet Kundendaten, Projektbeschreibung, Kennwerte, Termine und Logo mit Vorschau. Das Beispiel übernimmt die eingebettete Vorlage **F26_001** samt Feldpositionen, Grafiken und Logo. Neue Projekte erhalten dieselbe Formularanordnung ohne vorgegebenes Firmenlogo. Seitenzahl, Speichern, Rückgängig und Vektor-PDF werden unterstützt. Für die ursprünglichen Formulardaten eines früher importierten Beispiels beide Archivteile erneut öffnen. [Formatbefunde und Grenzen](docs/reverse-engineering/titelseite.md).
 * **Kennzeichnungsstruktur**: Vollständige Unterstützung von `=Anlage` (z.B. `=A1`), `+Ort` (z.B. `+S1`) und `-BMK` (Betriebsmittelkennzeichen wie `-K1`, `-Q1`, `-M1`).
 * **CAD Normblatt (DIN A3 Landscape)**:
   * Pfad-Spalten `0` bis `9` für präzise Querverweise.

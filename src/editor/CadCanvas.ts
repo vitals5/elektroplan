@@ -1,4 +1,5 @@
 import { ElementSelection, MoveSnapshot, emptySelection, selectionCount, normalizeSelection, selectionBounds, elementsInWindow, captureSelectionMove, translateSelection } from '../model/ElementSelection';
+import { coverPageSvg } from '../model/CoverPage';
 import { cableSvg, cableCrossings } from '../model/CableDefinition';
 // src/editor/CadCanvas.ts
 // Interactive SVG-based CAD drawing canvas for electrical schematics
@@ -25,6 +26,7 @@ export type EditorMode = 'select' | 'wire' | 'place_symbol' | 'place_macro' | 'p
 export interface CadCanvasCallbacks {
   onSelectionChanged?: (selection: ElementSelection) => void;
   onOpenSelectionProperties?: () => void;
+  onOpenCoverPage?: () => void;
   onSelectComponent: (component: PlacedComponent | null) => void;
   onSelectCable?: (cable: CableDefinition | null) => void;
   onSelectWire: (wire: Wire | null) => void;
@@ -502,6 +504,7 @@ export class CadCanvas {
         }
       } else if (e.key === 'Enter' || e.key === 'F2') {
         if(this.multipleSelection){e.preventDefault();this.callbacks.onOpenSelectionProperties?.();return;}
+        if(!this.selectedComponentId&&!this.selectedCableId&&!this.selectedWireId&&this.activePage.pageType==='cover'){e.preventDefault();this.callbacks.onOpenCoverPage?.();return;}
         if (this.selectedComponentId) {
           const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
           if (comp) {
@@ -567,6 +570,8 @@ export class CadCanvas {
     const comp = this.findComponentAt(world.x, world.y);
     if (comp) {
       this.callbacks.onOpenProperties?.(comp);
+    } else if(this.activePage.pageType==='cover') {
+      this.callbacks.onOpenCoverPage?.();
     }
   }
 
@@ -1280,6 +1285,7 @@ export class CadCanvas {
         
         <!-- DIN A3 Normblatt Plot Frame -->
         ${this.renderPlotFrame(pageWidth, pageHeight)}
+        ${coverPageSvg(this.activePage, this.project)}
 
         <!-- Wires -->
         <g id="wiresLayer">
