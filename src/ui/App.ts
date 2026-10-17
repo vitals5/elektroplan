@@ -2096,7 +2096,7 @@ export class App {
       // Form bindings
       document.getElementById('btnPropApply')?.addEventListener('click', () => {
         const bmkInput = document.getElementById('propBmk') as HTMLInputElement;
-        if (bmkInput) comp.bmk = bmkInput.value.trim() || comp.bmk;
+        if (bmkInput) comp.bmk = bmkInput.value.trim();
 
         const devInput = document.getElementById('propDeviceTag') as HTMLInputElement;
         if (devInput) comp.deviceTag = devInput.value.trim();

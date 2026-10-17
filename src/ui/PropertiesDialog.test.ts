@@ -41,4 +41,19 @@ assert.match(form, /<textarea[^>]*id="propFunctionText"[^>]*>L1 &lt;Prüfen&gt; 
 fields['#propFunctionText'] = { value: component.functionText };
 dialog.collectFormData(modal);
 assert.equal(dialog.component.functionText, component.functionText);
+fields['#propBmk'] = { value: '   ' };
+fields['#propFunctionText'] = { value: '' };
+fields['#propHigherLevel'] = { value: '' };
+fields['#propLocation'] = { value: '' };
+dialog.collectFormData(modal);
+assert.equal(dialog.component.bmk, '', 'Explicitly clearing BMK must replace the previous value');
+assert.equal(dialog.component.functionText, '');
+const clearedForm = dialog.renderActiveTabContent() as string;
+for (const id of ['propBmk', 'propHigherLevel', 'propLocation']) {
+  assert.match(clearedForm, new RegExp(`id="${id}"[^>]*value=""`), `${id} stays empty when reopening or switching tabs`);
+}
+delete fields['#propBmk'];
+dialog.component.bmk = '-Q2';
+dialog.collectFormData(modal);
+assert.equal(dialog.component.bmk, '-Q2', 'An absent BMK field on another tab must preserve the value');
 console.log('✓ Property dialog preserves imported layout precision and shows editable source labels');

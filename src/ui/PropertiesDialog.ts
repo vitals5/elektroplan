@@ -130,7 +130,7 @@ export class PropertiesDialog {
             </div>
             <div>
               <label class="form-label">Vollständiges BMK (Vorschau):</label>
-              <input type="text" class="form-input" disabled value="${escapeSvg(this.component.higherLevelFunction || '=A1')}${escapeSvg(this.component.mountingLocation || '+S1')}${escapeSvg(this.component.bmk)}" style="background: #181b22; color: #a0aec0;">
+              <input type="text" class="form-input" disabled value="${escapeSvg(this.component.higherLevelFunction ?? '=A1')}${escapeSvg(this.component.mountingLocation ?? '+S1')}${escapeSvg(this.component.bmk)}" style="background: #181b22; color: #a0aec0;">
             </div>
           </div>
 
@@ -153,11 +153,11 @@ export class PropertiesDialog {
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div>
               <label class="form-label">Anlage (=Höhere Ebene):</label>
-              <input type="text" id="propHigherLevel" class="form-input" value="${escapeSvg(this.component.higherLevelFunction || '=A1')}">
+              <input type="text" id="propHigherLevel" class="form-input" value="${escapeSvg(this.component.higherLevelFunction ?? '=A1')}">
             </div>
             <div>
               <label class="form-label">Einbauort (+Ort):</label>
-              <input type="text" id="propLocation" class="form-input" value="${escapeSvg(this.component.mountingLocation || '+S1')}">
+              <input type="text" id="propLocation" class="form-input" value="${escapeSvg(this.component.mountingLocation ?? '+S1')}">
             </div>
           </div>
 
@@ -704,7 +704,7 @@ export class PropertiesDialog {
   private collectFormData(modal: HTMLElement): void {
     // Symbol tab fields
     const bmk = modal.querySelector('#propBmk') as HTMLInputElement;
-    if (bmk) this.component.bmk = bmk.value.trim() || this.component.bmk;
+    if (bmk) this.component.bmk = bmk.value.trim();
 
     const deviceTag = modal.querySelector('#propDeviceTag') as HTMLInputElement;
     if (deviceTag) this.component.deviceTag = deviceTag.value.trim();
