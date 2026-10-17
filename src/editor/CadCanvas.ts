@@ -1,3 +1,4 @@
+import { ElementSelection, MoveSnapshot, emptySelection, selectionCount, normalizeSelection, selectionBounds, elementsInWindow, captureSelectionMove, translateSelection } from '../model/ElementSelection';
 import { cableSvg, cableCrossings } from '../model/CableDefinition';
 // src/editor/CadCanvas.ts
 // Interactive SVG-based CAD drawing canvas for electrical schematics
@@ -22,6 +23,8 @@ export type { GridResolution } from '../model/DrawingGrid';
 export type EditorMode = 'select' | 'wire' | 'place_symbol' | 'place_macro' | 'pan' | 'cable';
 
 export interface CadCanvasCallbacks {
+  onSelectionChanged?: (selection: ElementSelection) => void;
+  onOpenSelectionProperties?: () => void;
   onSelectComponent: (component: PlacedComponent | null) => void;
   onSelectCable?: (cable: CableDefinition | null) => void;
   onSelectWire: (wire: Wire | null) => void;
@@ -61,6 +64,9 @@ export class CadCanvas {
   public selectedComponentId: string | null = null;
   public selectedWireId: string | null = null;
   public selectedCableId: string | null = null;
+  private multipleSelection?: ElementSelection;
+  private selectionWindow?: {start:{x:number;y:number};end:{x:number;y:number};client:{x:number;y:number};moved:boolean;base:ElementSelection;additive:boolean};
+  private selectionDrag?: {origin:{x:number;y:number};snapshot:MoveSnapshot;dx:number;dy:number};
   private cableStart?: { x: number; y: number };
   private cableDrag?: { cable: CableDefinition; start: {x:number;y:number}; end: {x:number;y:number}; origin: {x:number;y:number}; moved: boolean };
   public hoveredPin: { componentId: string; pinId: string } | null = null;
@@ -110,6 +116,7 @@ export class CadCanvas {
     const page = this.project.pages.find(p => p.id === pageId);
     if (page) {
       this.referenceMarker = undefined;
+      this.multipleSelection=undefined;this.selectionWindow=undefined;this.selectionDrag=undefined;
       this.activePage = page;
       this.project.activePageId = pageId;
       this.selectedComponentId = null;
@@ -130,6 +137,7 @@ export class CadCanvas {
     this.wireStart = null; this.lastMousePress = null; this.hoveredPin = null;
     this.activeSymbolToPlace = null; this.activeMacroToPlace = null; this.mode = 'select';
     this.referenceMarker = undefined;
+    this.multipleSelection=undefined;this.selectionWindow=undefined;this.selectionDrag=undefined;
     this.project = project;
     this.activePage = this.getOrCreateActivePage();
     this.selectedComponentId = null;
@@ -157,6 +165,7 @@ export class CadCanvas {
 
   public focusReference(target: ReferenceTarget): void {
     if (!this.project.pages.some(p => p.id === target.pageId)) return;
+    this.clearMultipleSelection();
     this.setMode('select');
     this.isDraggingComponent = false; this.touchMode = 'none'; this.lastMousePress = null;
     this.callbacks.onNavigateToPage?.(target.pageId);
@@ -183,6 +192,7 @@ export class CadCanvas {
   }
 
   public setMode(mode: EditorMode): void {
+    this.selectionWindow=undefined;
     this.mode = mode;
     this.cableStart = undefined;
     this.wireStart = null;
@@ -190,6 +200,7 @@ export class CadCanvas {
   }
 
   public setSymbolToPlace(symbolId: string): void {
+    this.clearMultipleSelection();
     this.activeSymbolToPlace = symbolId;
     this.activeMacroToPlace = null;
     this.mode = 'place_symbol';
@@ -198,6 +209,7 @@ export class CadCanvas {
   }
 
   public setMacroToPlace(macro: WindowMacro): void {
+    this.clearMultipleSelection();
     this.activeMacroToPlace = macro;
     this.activeSymbolToPlace = null;
     this.mode = 'place_macro';
@@ -205,6 +217,7 @@ export class CadCanvas {
   }
 
   public placeMacroAt(worldX: number, worldY: number, macro: WindowMacro): PlacedComponent[] {
+    this.clearMultipleSelection();
     const { x: snappedX, y: snappedY } = this.macroPlacementPosition(worldX, worldY, macro);
     const res = MacroManager.instantiateWindowMacro(macro, snappedX, snappedY, this.activePage.components, this.project);
 
@@ -260,6 +273,7 @@ export class CadCanvas {
   }
 
   public rotateSelected(delta: number = 90): void {
+    if(this.multipleSelection)return;
     const cable = this.activePage.cables?.find(c=>c.id===this.selectedCableId);
     if (cable) {
       const cx=cable.start.x,cy=cable.start.y,a=delta*Math.PI/180;
@@ -283,6 +297,7 @@ export class CadCanvas {
   }
 
   public duplicateSelected(): void {
+    if(this.multipleSelection)return;
     const cable = this.activePage.cables?.find(c=>c.id===this.selectedCableId);
     if (cable) {
       const copy: CableDefinition=JSON.parse(JSON.stringify(cable)); copy.id='cable_'+crypto.randomUUID();delete copy.source;
@@ -320,6 +335,17 @@ export class CadCanvas {
   }
 
   public deleteSelected(): void {
+    if(this.multipleSelection){
+      const {componentIds,cableIds}=this.multipleSelection,ids=new Set(componentIds);
+      this.activePage.components=this.activePage.components.filter(c=>!ids.has(c.id));
+      this.activePage.wires=this.activePage.wires.filter(w=>!ids.has(w.from.componentId)&&!ids.has(w.to.componentId));
+      this.activePage.cables=this.activePage.cables?.filter(c=>!cableIds.includes(c.id));
+      this.project.logicalConnections=this.project.logicalConnections?.filter(w=>!ids.has(w.from.componentId)&&!ids.has(w.to.componentId));
+      for(const c of this.activePage.components)for(const pin of Object.values(c.pins))if(pin.wireIds)pin.wireIds=pin.wireIds.filter(id=>this.activePage.wires.some(w=>w.id===id));
+      this.setElementSelection(emptySelection());
+      if(this.autoconnectEnabled)AutoconnectEngine.updatePageAutoconnections(this.activePage);
+      this.notifyModified();this.render();return;
+    }
     if (this.selectedCableId) {
       this.activePage.cables = (this.activePage.cables ?? []).filter(c=>c.id!==this.selectedCableId);
       this.selectedCableId=null; this.callbacks.onSelectCable?.(null);this.notifyModified();this.render();return;
@@ -461,6 +487,7 @@ export class CadCanvas {
           if (key === 'y' || e.shiftKey) this.callbacks.onRedo?.(); else this.callbacks.onUndo?.();
           return;
         }
+        if (key === 'a') { e.preventDefault();this.setMode('select');this.setElementSelection({componentIds:this.activePage.components.filter(c=>c.source?.routingUsed!==false).map(c=>c.id),cableIds:(this.activePage.cables ?? []).map(c=>c.id)});return; }
         if (key === 'd') { e.preventDefault(); this.duplicateSelected(); return; }
       }
       
@@ -474,6 +501,7 @@ export class CadCanvas {
           this.rotateSelected();
         }
       } else if (e.key === 'Enter' || e.key === 'F2') {
+        if(this.multipleSelection){e.preventDefault();this.callbacks.onOpenSelectionProperties?.();return;}
         if (this.selectedComponentId) {
           const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
           if (comp) {
@@ -498,6 +526,8 @@ export class CadCanvas {
           this.rotateSelected();
         }
       } else if (e.key === 'Escape') {
+        if(this.selectionDrag)translateSelection(this.activePage,this.selectionDrag.snapshot,0,0);
+        this.selectionDrag=undefined;this.selectionWindow=undefined;this.setElementSelection(emptySelection());
         this.mode = 'select';
         this.cableStart = undefined;
         this.wireStart = null;
@@ -531,6 +561,7 @@ export class CadCanvas {
   }
 
   private onDoubleClick(e: MouseEvent): void {
+    if(this.multipleSelection){this.callbacks.onOpenSelectionProperties?.();return;}
     if ((e.target as Element)?.closest?.('[data-crossref-source],[data-cable-id]')) return;
     const world = this.screenToWorld(e.clientX, e.clientY);
     const comp = this.findComponentAt(world.x, world.y);
@@ -543,6 +574,8 @@ export class CadCanvas {
     e.preventDefault();
     const world = this.screenToWorld(e.clientX, e.clientY);
     const comp = this.findComponentAt(world.x, world.y);
+    if(this.multipleSelection && (comp && this.multipleSelection.componentIds.includes(comp.id) || this.cableFromEvent(e) && this.multipleSelection.cableIds.includes(this.cableFromEvent(e)!.id))){this.showContextMenu(e.clientX,e.clientY,null,null);return;}
+    this.clearMultipleSelection();
     const wire = this.findWireAt(world.x, world.y);
 
     if (comp) {
@@ -575,7 +608,8 @@ export class CadCanvas {
     menu.style.zIndex = '3000';
 
     let items = '';
-    if (comp) {
+    if(this.multipleSelection){items=`<div class="ctx-header">${selectionCount(this.multipleSelection)} Elemente ausgewählt</div><div class="ctx-item" data-action="properties">Gemeinsame Eigenschaften… <span class="ctx-key">F2</span></div><div class="ctx-item ctx-danger" data-action="delete">Auswahl löschen <span class="ctx-key">Entf</span></div>`;}
+    else if (comp) {
       const sym = getSymbolForComponent(comp, this.project);
       items += `
         <div class="ctx-header"><strong>${escapeSvg(comp.bmk)}</strong> (${sym?.name || 'Bauteil'})</div>
@@ -617,7 +651,8 @@ export class CadCanvas {
       el.addEventListener('click', (e) => {
         const action = (e.currentTarget as HTMLElement).dataset.action;
         closeMenu();
-        if (action === 'properties' && comp) {
+        if(action==='properties' && this.multipleSelection){this.callbacks.onOpenSelectionProperties?.();}
+        else if (action === 'properties' && comp) {
           this.callbacks.onOpenProperties?.(comp);
         } else if (action === 'rotate') {
           this.rotateSelected();
@@ -648,6 +683,7 @@ export class CadCanvas {
   }
 
   public placeSymbolAt(worldX: number, worldY: number): PlacedComponent | null {
+    this.clearMultipleSelection();
     if (!this.activeSymbolToPlace) return null;
     const sym = getSymbolById(this.activeSymbolToPlace, this.project);
     if (!sym) return null;
@@ -715,7 +751,7 @@ export class CadCanvas {
     }
 
     if (e.button !== 0) return;
-    if (this.referenceFromEvent(e)) return;
+    if (!(this.mode==='select' && (e.ctrlKey||e.metaKey||e.shiftKey)) && this.referenceFromEvent(e)) return;
     this.referenceMarker = undefined;
 
     const world = this.screenToWorld(e.clientX, e.clientY);
@@ -731,6 +767,8 @@ export class CadCanvas {
     }
 
     if (this.mode === 'cable') { this.placeCablePoint(world); return; }
+    if(this.mode==='select' && this.handleSelectionMouseDown(e,world))return;
+    this.clearMultipleSelection();
     const clickedCable = this.cableFromEvent(e);
     if (clickedCable) {
       this.selectCable(clickedCable);
@@ -783,6 +821,7 @@ export class CadCanvas {
       this.callbacks.onSelectWire(clickedWire);
       this.callbacks.onSelectComponent(null);
       this.updateSelectionClasses();
+      if(this.mode==='select')this.beginSelectionWindow(e,world);
       return;
     }
 
@@ -793,6 +832,7 @@ export class CadCanvas {
     this.callbacks.onSelectComponent(null);
     this.callbacks.onSelectWire(null);
     this.updateSelectionClasses();
+    if(this.mode==='select')this.beginSelectionWindow(e,world);
   }
 
   private onMouseMove(e: MouseEvent): void {
@@ -806,6 +846,15 @@ export class CadCanvas {
     const world = this.screenToWorld(e.clientX, e.clientY);
     this.currentMousePos = world;
 
+    if(this.selectionWindow){
+      const box=this.selectionWindow;box.end=world;
+      box.moved ||= Math.hypot(e.clientX-box.client.x,e.clientY-box.client.y)>=3;
+      this.updateSelectionOverlay();return;
+    }
+    if(this.selectionDrag){
+      const step=this.getEffectiveGridSize(e.shiftKey||e.altKey),dx=snapCoordinate(world.x-this.selectionDrag.origin.x,step),dy=snapCoordinate(world.y-this.selectionDrag.origin.y,step);
+      this.moveElementSelection(dx,dy);return;
+    }
     if (this.cableDrag) { this.moveCable(world);return; }
 
     if (this.isDraggingComponent && this.selectedComponentId) {
@@ -840,6 +889,16 @@ export class CadCanvas {
   }
 
   private onMouseUp(): void {
+    if(this.selectionWindow){
+      const box=this.selectionWindow;this.selectionWindow=undefined;
+      if(box.moved){const found=elementsInWindow(this.activePage,this.project,box.start,box.end);this.setElementSelection({componentIds:[...(box.additive?box.base.componentIds:[]),...found.componentIds],cableIds:[...(box.additive?box.base.cableIds:[]),...found.cableIds]});}
+      this.updateSelectionOverlay();
+    }
+    if(this.selectionDrag){
+      const moved=this.selectionDrag.dx!==0||this.selectionDrag.dy!==0;this.selectionDrag=undefined;
+      if(moved){this.lastMousePress=null;for(const id of this.getElementSelection().componentIds)AutoconnectEngine.clearSuppressedForComponent(this.activePage,id);if(this.autoconnectEnabled)AutoconnectEngine.updatePageAutoconnections(this.activePage);this.notifyModified();}
+      this.render();
+    }
     if (this.cableDrag) { const moved=this.cableDrag.moved;this.cableDrag=undefined;if(moved)this.notifyModified();this.render(); }
     if (this.isPanning) {
       this.isPanning = false;
@@ -899,6 +958,8 @@ export class CadCanvas {
       const cable=this.cableFromEvent(e);
       if(cable){e.preventDefault();this.selectCable(cable);this.cableDrag={cable,start:{...cable.start},end:{...cable.end},origin:world,moved:false};return;}
       this.selectedCableId=null;this.callbacks.onSelectCable?.(null);
+
+      this.clearMultipleSelection();
 
       // Symbol placing
       if (this.mode === 'place_symbol' && this.activeSymbolToPlace) {
@@ -1070,11 +1131,11 @@ export class CadCanvas {
 
   private updateSelectionClasses(): void {
     this.svg.querySelectorAll('.cable-definition').forEach(el=>{
-      el.classList.toggle('selected',el.id===this.selectedCableId);
-      el.setAttribute('color',el.id===this.selectedCableId?'#63b3ed':'#e2e8f0');
+      el.classList.toggle('selected',this.getElementSelection().cableIds.includes(el.id));
+      el.setAttribute('color',this.getElementSelection().cableIds.includes(el.id)?'#63b3ed':'#e2e8f0');
     });
     this.svg.querySelectorAll('.component').forEach(el => {
-      const isSel = el.id === this.selectedComponentId;
+      const isSel = this.getElementSelection().componentIds.includes(el.id);
       el.classList.toggle('selected', isSel);
       const selRect = el.querySelector('.selection-rect') as SVGElement | null;
       if (selRect) {
@@ -1084,6 +1145,7 @@ export class CadCanvas {
     this.svg.querySelectorAll('.wire').forEach(el => {
       el.classList.toggle('selected', el.id === this.selectedWireId);
     });
+    this.updateSelectionOverlay();
   }
 
   private wirePoints(wire: Wire): { x: number; y: number }[] {
@@ -1261,6 +1323,7 @@ export class CadCanvas {
 
         <!-- Ghost Symbol under Cursor (Placement Preview) -->
         ${this.renderGhostSymbol()}
+        <g id="selectionOverlayLayer" pointer-events="none">${this.renderSelectionOverlay()}</g>
       </g>
     `;
   }
@@ -1269,12 +1332,79 @@ export class CadCanvas {
     return plotFrameSvg(this.activePage, this.project);
   }
 
+  public getElementSelection():ElementSelection {
+    return this.multipleSelection ?? {componentIds:this.selectedComponentId?[this.selectedComponentId]:[],cableIds:this.selectedCableId?[this.selectedCableId]:[]};
+  }
+
+  public setElementSelection(selection:ElementSelection):void {
+    const normalized=normalizeSelection(this.activePage,selection),count=selectionCount(normalized);
+    this.multipleSelection=count>1?normalized:undefined;
+    this.selectedComponentId=count===1?normalized.componentIds[0] ?? null:null;
+    this.selectedWireId=null;this.selectedCableId=count===1?normalized.cableIds[0] ?? null:null;
+    const comp=this.activePage.components.find(c=>c.id===this.selectedComponentId) ?? null;
+    const cable=this.activePage.cables?.find(c=>c.id===this.selectedCableId) ?? null;
+    this.callbacks.onSelectComponent(comp);this.callbacks.onSelectWire(null);this.callbacks.onSelectCable?.(cable);
+    // Legacy selection callbacks may clear another primary ID.
+    this.selectedComponentId=comp?.id ?? null;this.selectedCableId=cable?.id ?? null;
+    this.callbacks.onSelectionChanged?.(normalized);this.updateSelectionClasses();
+  }
+
+  private clearMultipleSelection():void {
+    if(!this.multipleSelection)return;
+    this.multipleSelection=undefined;this.callbacks.onSelectionChanged?.(this.getElementSelection());
+  }
+
+  private handleSelectionMouseDown(e:MouseEvent,world:{x:number;y:number}):boolean {
+    const cable=this.cableFromEvent(e),component=cable?null:this.findComponentAt(world.x,world.y);
+    if(!cable&&!component){if(e.ctrlKey||e.metaKey||e.shiftKey){this.beginSelectionWindow(e,world);return true;}return false;}
+    const key=cable?'cableIds':'componentIds',id=(cable ?? component)!.id,current=this.getElementSelection();
+    if(e.ctrlKey||e.metaKey||e.shiftKey){
+      const next={componentIds:[...current.componentIds],cableIds:[...current.cableIds]};
+      next[key]=next[key].includes(id)?next[key].filter(v=>v!==id):[...next[key],id];this.lastMousePress=null;
+      this.setElementSelection(next);return true;
+    }
+    if(this.multipleSelection && current[key].includes(id)){
+      if(this.lastMousePress?.componentId===id && e.timeStamp-this.lastMousePress.time<350){this.lastMousePress=null;this.callbacks.onOpenSelectionProperties?.();return true;}
+      this.lastMousePress={componentId:id,time:e.timeStamp};
+      this.selectionDrag={origin:world,snapshot:captureSelectionMove(this.activePage,current),dx:0,dy:0};
+      return true;
+    }
+    return false;
+  }
+
+  private beginSelectionWindow(e:MouseEvent,world:{x:number;y:number}):void {
+    this.selectionWindow={start:world,end:world,client:{x:e.clientX,y:e.clientY},moved:false,base:this.getElementSelection(),additive:e.ctrlKey||e.metaKey||e.shiftKey};
+  }
+
+  private moveElementSelection(dx:number,dy:number):void {
+    const drag=this.selectionDrag!;drag.dx=dx;drag.dy=dy;translateSelection(this.activePage,drag.snapshot,dx,dy);
+    for(const original of drag.snapshot.components){
+      const c=this.activePage.components.find(c=>c.id===original.id)!,sym=getSymbolForComponent(c,this.project);
+      if(sym)this.svg.getElementById(c.id)?.setAttribute('transform',`translate(${c.x},${c.y}) rotate(${c.rotation || 0},${sym.width/2},${sym.height/2})`);
+    }
+    for(const original of drag.snapshot.cables)this.svg.getElementById(original.id)?.setAttribute('transform',`translate(${dx},${dy})`);
+    const wires=this.svg.getElementById('wiresLayer');if(wires)wires.innerHTML=this.renderWires();this.updateSelectionOverlay();
+  }
+
+  private renderSelectionOverlay():string {
+    const box=this.selectionWindow;
+    if(box?.moved){const x=Math.min(box.start.x,box.end.x),y=Math.min(box.start.y,box.end.y);return `<rect class="selection-marquee" x="${x}" y="${y}" width="${Math.abs(box.end.x-box.start.x)}" height="${Math.abs(box.end.y-box.start.y)}" fill="#63b3ed22" stroke="#63b3ed" stroke-width="1" vector-effect="non-scaling-stroke" stroke-dasharray="5 3"/>`;}
+    if(!this.multipleSelection)return '';
+    const bounds=selectionBounds(this.activePage,this.project,this.multipleSelection);if(!bounds)return '';
+    return `<rect class="selection-group-outline" x="${bounds.left-6}" y="${bounds.top-6}" width="${bounds.right-bounds.left+12}" height="${bounds.bottom-bounds.top+12}" fill="none" stroke="#63b3ed" stroke-dasharray="6 4" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+  }
+
+  private updateSelectionOverlay():void {
+    const layer=this.svg.getElementById('selectionOverlayLayer');if(layer)layer.innerHTML=this.renderSelectionOverlay();
+  }
+
   private cableFromEvent(e: Event): CableDefinition | undefined {
     const id=(e.target as Element)?.closest?.('[data-cable-id]')?.getAttribute('data-cable-id');
     return this.activePage.cables?.find(c=>c.id===id);
   }
 
   public selectCable(cable: CableDefinition): void {
+    this.clearMultipleSelection();
     this.selectedComponentId=null;this.selectedWireId=null;
     this.callbacks.onSelectComponent(null);this.callbacks.onSelectWire(null);
     this.selectedCableId=cable.id;this.callbacks.onSelectCable?.(cable);this.updateSelectionClasses();
@@ -1301,7 +1431,7 @@ export class CadCanvas {
 
   private renderCables():string {
     const preview=this.cableStart ? `<line x1="${this.cableStart.x}" y1="${this.cableStart.y}" x2="${Math.abs(this.currentMousePos.x-this.cableStart.x)>=Math.abs(this.currentMousePos.y-this.cableStart.y)?this.currentMousePos.x:this.cableStart.x}" y2="${Math.abs(this.currentMousePos.x-this.cableStart.x)>=Math.abs(this.currentMousePos.y-this.cableStart.y)?this.cableStart.y:this.currentMousePos.y}" stroke="#63b3ed" stroke-dasharray="4 3" pointer-events="none"/>` : '';
-    return (this.activePage.cables ?? []).map(c=>cableSvg(c,this.activePage,this.project,c.id===this.selectedCableId)).join('')+preview;
+    return (this.activePage.cables ?? []).map(c=>cableSvg(c,this.activePage,this.project,this.getElementSelection().cableIds.includes(c.id))).join('')+preview;
   }
 
   private renderComponents(): string {
@@ -1317,7 +1447,7 @@ export class CadCanvas {
 
       const isConn = !sym.importedGraphics && (sym.category === 'connections' || sym.id.startsWith('potential_arrow') || sym.id === 'potential_rail_source');
       const isTerminal = sym.id === 'terminal_single';
-      const isSelected = comp.id === this.selectedComponentId;
+      const isSelected = this.getElementSelection().componentIds.includes(comp.id);
       const connectedWire = graphicWires.get(comp.id);
       const strokeColor = isSelected ? '#63b3ed' : isConnectionGraphic(comp, sym)
         ? this.getWireColor(connectedWire?.potential ?? 'Signal', connectedWire?.color) : '#e2e8f0';

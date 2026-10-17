@@ -1,3 +1,5 @@
+import { selectionCount } from '../model/ElementSelection';
+import { SharedProperty, SelectionPatch, sharedPropertyValue, applySelectionProperties } from '../model/SelectionProperties';
 import { cableCrossings } from '../model/CableDefinition';
 // src/ui/App.ts
 // Main application controller for Elektroplan (Elektro-CAD CAE Suite)
@@ -353,6 +355,11 @@ export class App {
         if(cable){this.selectedComponent=null;this.selectedWire=null;this.activeRightTab='properties';}
         this.updateFloatingSelectionBar();this.renderRightTab();
       },
+      onSelectionChanged: selection => {
+        if(selectionCount(selection)>1)this.activeRightTab='properties';
+        this.updateFloatingSelectionBar();this.renderRightTab();
+      },
+      onOpenSelectionProperties: () => this.openSelectionProperties(),
       onOpenProperties: (comp) => {
         this.openPropertiesDialog(comp);
       },
@@ -434,8 +441,15 @@ export class App {
     const btnRot = document.getElementById('btnFloatingRotate');
     const btnDel = document.getElementById('btnFloatingDelete');
 
+    const multiple=this.canvas && selectionCount(this.canvas.getElementSelection())>1;
+    for(const id of ['btnToolRotate','btnToolDuplicate']){const button=document.getElementById(id) as HTMLButtonElement|null;if(button)button.disabled=!!multiple;}
+    const macroButton=document.getElementById('btnFloatingExportMacro');if(macroButton)macroButton.style.display=multiple?'none':'';
     if (bar && tag) {
-      if (this.selectedComponent) {
+      if (multiple) {
+        tag.textContent=`${selectionCount(this.canvas.getElementSelection())} Elemente ausgewählt`;
+        if(btnEdit)btnEdit.style.display='inline-flex';if(btnRot)btnRot.style.display='none';
+        if(btnDel){btnDel.title='Ausgewählte Elemente löschen';btnDel.textContent='🗑️';}bar.style.display='flex';
+      } else if (this.selectedComponent) {
         tag.textContent = `${this.selectedComponent.bmk} (${this.selectedComponent.functionText || 'Bauteil'})`;
         if (btnEdit) btnEdit.style.display = 'inline-flex';
         if (btnRot) btnRot.style.display = 'inline-block';
@@ -650,6 +664,7 @@ export class App {
 
     // Floating action buttons (mobile bar & selection bar)
     document.getElementById('fabEdit')?.addEventListener('click', () => {
+      if(selectionCount(this.canvas.getElementSelection())>1){this.openSelectionProperties();return;}
       if (this.selectedComponent) {
         this.openPropertiesDialog(this.selectedComponent);
       } else if (this.selectedCable) {
@@ -660,6 +675,7 @@ export class App {
     });
 
     document.getElementById('btnFloatingEdit')?.addEventListener('click', () => {
+      if(selectionCount(this.canvas.getElementSelection())>1){this.openSelectionProperties();return;}
       if (this.selectedComponent) this.openPropertiesDialog(this.selectedComponent);
       else if (this.selectedCable) { this.activeRightTab='properties';this.setRightPanelCollapsed(false);this.renderRightTab(); }
     });
@@ -1013,6 +1029,10 @@ export class App {
       alert(
         'Elektro-CAD Tastatur-Kürzel:\n\n' +
         '• Pfeiltasten: Ansicht verschieben (Umschalt: größerer Schritt)\n' +
+        '• Mausrahmen: Mehrere Elemente auswählen\n' +
+        '• Strg-/Umschalt-Klick oder -Rahmen: Auswahl ergänzen / umschalten\n' +
+        '• Strg+A: Alle Elemente auswählen\n' +
+        '• F2 / Enter: Eigenschaften der Auswahl\n' +
         '• Einfg: Elementauswahl öffnen\n' +
         '• Tab: Symbol während Vorschau um 90° drehen\n' +
         '• D / W: Verbindungslinie zeichnen (Verdrahten)\n' +
@@ -1138,6 +1158,7 @@ export class App {
 
   private restoreHistory(project: Project): void {
     (document.activeElement as HTMLElement | null)?.blur?.();
+    const elementSelection=this.canvas.getElementSelection();
     const componentId = this.canvas.selectedComponentId, wireId = this.canvas.selectedWireId, cableId=this.canvas.selectedCableId;
     this.project = project;
     setProjectSymbolLibrary(project);
@@ -1149,6 +1170,7 @@ export class App {
     this.selectedWire = page.wires.find(w => w.id === wireId) ?? null;
     this.canvas.selectedComponentId = this.selectedComponent?.id ?? null;
     this.canvas.selectedWireId = this.selectedWire?.id ?? null;
+    if(selectionCount(elementSelection)>1)this.canvas.setElementSelection(elementSelection);
     this.canvas.render();
     this.updateToolButtons('btnToolSelect');
     this.updateFloatingSelectionBar();
@@ -1890,6 +1912,40 @@ export class App {
     }
   }
 
+  private openSelectionProperties():void {
+    this.activeRightTab='properties';if(this.isRightCollapsed)this.setRightPanelCollapsed(false);this.renderRightTab();
+  }
+
+  private renderSelectionProperties(container:HTMLElement):void {
+    const selection=this.canvas.getElementSelection(),page=this.project.pages.find(p=>p.id===this.project.activePageId)!;
+    const field=(key:SharedProperty,label:string,number=false)=>{
+      const value=sharedPropertyValue(page,this.project,selection,key);
+      return `<label class="form-label" style="display:block;margin-bottom:8px">${label}<input class="form-input" data-shared-property="${key}" id="shared-${key}" type="${number?'number':'text'}" ${number?'min="0.1" max="20" step="any"':''} value="${value===undefined?'':escapeSvg(String(typeof value==='number'?Number(value.toFixed(4)):value))}" placeholder="${value===undefined?'Unterschiedliche Werte':''}"></label>`;
+    };
+    container.innerHTML=`<h3>Gemeinsame Eigenschaften</h3><p>${selectionCount(selection)} Elemente ausgewählt (${selection.componentIds.length} Bauteile / Verbindungselemente, ${selection.cableIds.length} Kabel).</p>
+      <p style="font-size:12px;color:var(--text-muted)">Nur geänderte Felder werden übernommen. Unterschiedliche Werte können gemeinsam vereinheitlicht werden.</p>
+      <fieldset style="border:1px solid var(--border-color);padding:8px;margin:10px 0"><legend>Schriftgrößen (mm)</legend>
+      ${field('bmkFontSize','BMK',true)}${field('functionFontSize','Funktionstext / Kabelbeschriftung',true)}
+      ${selection.componentIds.length?field('technicalFontSize','Technische Daten (Bauteile)',true)+field('crossRefFontSize','Querverweise (Bauteile / Verbindungselemente)',true):''}
+      ${field('pinFontSize','Anschluss- / Aderbezeichnungen',true)}</fieldset>
+      ${selection.componentIds.length?`<fieldset style="border:1px solid var(--border-color);padding:8px;margin:10px 0"><legend>Bauteile / Verbindungselemente</legend>${field('functionText','Funktionstext')}${field('deviceTag','Gerätebezeichnung')}${field('technicalCharacteristics','Technische Kennwerte')}</fieldset>`:''}
+      ${selection.cableIds.length?`<fieldset style="border:1px solid var(--border-color);padding:8px;margin:10px 0"><legend>Kabeldefinitionen</legend>${field('cableType','Kabeltyp')}${field('crossSection','Aderquerschnitt (mm²)')}</fieldset>`:''}
+      <button class="btn btn-primary" id="applySharedProperties" disabled>Änderungen übernehmen</button>
+      <button class="btn" id="clearElementSelection">Auswahl aufheben</button>`;
+    const patch:SelectionPatch={},apply=container.querySelector('#applySharedProperties') as HTMLButtonElement;
+    container.querySelectorAll<HTMLInputElement>('[data-shared-property]').forEach(input=>input.addEventListener('input',()=>{
+      const key=input.dataset.sharedProperty as SharedProperty;
+      if(input.type==='number' && input.value==='')delete patch[key];else patch[key]=input.type==='number'?Number(input.value):input.value;
+      apply.disabled=Object.keys(patch).length===0||[...container.querySelectorAll<HTMLInputElement>('[data-shared-property]')].some(i=>i.dataset.sharedProperty! in patch && !i.validity.valid);
+    }));
+    apply.addEventListener('click',()=>{
+      if(apply.disabled)return;
+      if(applySelectionProperties(page,this.project,this.canvas.getElementSelection(),patch))this.notifyChange();
+      this.renderRightTab();
+    });
+    container.querySelector('#clearElementSelection')?.addEventListener('click',()=>this.canvas.setElementSelection({componentIds:[],cableIds:[]}));
+  }
+
   private startCableDefinition():void {
     this.canvas.setMode('cable');this.updateToolButtons('btnCableDefinition');
     const status=document.getElementById('statusLeft');if(status)status.textContent='Kabeldefinition: Startpunkt und Endpunkt quer über die Adern anklicken. Esc bricht ab.';
@@ -1931,6 +1987,7 @@ export class App {
   }
 
   private renderPropertiesTab(container: HTMLElement): void {
+    if(this.canvas && selectionCount(this.canvas.getElementSelection())>1){this.renderSelectionProperties(container);return;}
     if (this.selectedCable) { this.renderCableProperties(container,this.selectedCable);return; }
     if (this.selectedComponent) {
       const comp = this.selectedComponent;
