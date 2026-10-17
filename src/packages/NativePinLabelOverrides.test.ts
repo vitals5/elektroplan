@@ -10,7 +10,7 @@ const u16 = (n: number) => { const b = Buffer.alloc(2); b.writeUInt16LE(n); retu
 const u32 = (n: number) => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
 const f64 = (n: number) => { const b = Buffer.alloc(8); b.writeDoubleLE(n); return b; };
 const field = (tag: number, payload: Uint8Array) => Buffer.concat([u16(tag), payload]);
-const instance = (data: Uint8Array) => new EodRecord(44, 17, 1, data);
+const instance = (data: Uint8Array) => new EodRecord(44, 17, 1, Buffer.concat([field(0xeb19, Buffer.from('USB\0')), data]));
 const pin: PinDefinition = { id: 'port', name: 'USB', x: 31, y: 42, direction: 'bottom' };
 const layers = new Map([[420, { fontSize: 1.8, angle: 0 }]]);
 const close = (a: number, b: number, tolerance = 1e-8) => assert(Math.abs(a - b) < tolerance, `${a} != ${b}`);
@@ -24,6 +24,7 @@ function placement(options: { property?: number; parentType?: number; parentId?:
     u16(0xffff), field(0xed63, u16(options.property ?? 20036)), field(0xee17, u16(15)),
     ...(options.orientation === undefined ? [] : [field(0xee19, Buffer.from([options.orientation]))]), u16(0xffff)]);
 }
+assert.equal(nativePinLabelOverrides(new EodRecord(44,17,1,placement()),[pin],layers).size,0,'An absent designation must not print a library placeholder');
 const untouched = JSON.stringify(pin), layout = nativePinLabelOverrides(instance(placement()), [pin], layers).get('port')!;
 assert(layout);
 close(layout.x, 0); close(layout.y, -10.20268395592381); close(layout.fontSize, 5.322857142857144);

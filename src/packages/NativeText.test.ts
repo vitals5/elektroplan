@@ -54,6 +54,7 @@ if(fs.existsSync('Eplan Haus.zip.001')&&fs.existsSync('Eplan Haus.zip.002')){
     assert(Math.abs((socket.y+label.y)/scale-152.714688)<.001);
     assert.equal(definition.pins[0].labelPosition,undefined,'Instance layout does not change the master geometry');
   }
+  assert.equal(page.components.find(c=>c.source?.objectId===40424)!.pins['0'].labelPosition,undefined,'An absent source designation must not create a placeholder label');
   const image=project.pages.find(p=>p.title==='Einspeisung')!.images!.find(i=>i.id==='native-image-153386')!;
   assert(image);assert(Math.abs(image.x/scale-12)<1e-7);assert(Math.abs(image.y/scale-193)<1e-7);
   assert(Math.abs(image.width/scale-76)<1e-7);assert(image.dataUrl.startsWith('data:image/png;'));

@@ -18,7 +18,7 @@ type PinLabel = NonNullable<PinDefinition['labelPosition']>;
 export function nativePinLabelOverrides(instance: EodRecord, pins: readonly PinDefinition[],
   layers: ReadonlyMap<number, EplanLayerStyle>): Map<string, PinLabel> {
   const result = new Map<string, PinLabel>();
-  if (instance.type !== 0x11 || pins.length !== 1) return result;
+  if (instance.type !== 0x11 || pins.length !== 1 || !instance.pins[0]?.trim()) return result;
   const candidates = completePropertyPlacements(instance.data).filter(p => p.number(0xea67) === instance.type
     && p.number(0xea67, 4, 4) === instance.id && p.number(0xed63) === 20036);
   // No instance arrangement selector has been identified. Multiple alternative
