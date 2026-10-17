@@ -128,3 +128,32 @@ assert(Math.abs(sizes.find(t=>t.text==='-Q99')!.size-5*297/700*72/25.4)<1e-7);
 assert(Math.abs(sizes.find(t=>t.text==='/2.4')!.size-3*297/700*72/25.4)<1e-7);
 assert.match(canvas.renderComponents(),/font-size="3"/);
 console.log('✓ Individual label and cross-reference sizes are reflected in SVG and physical PDF fonts');
+
+// Moved reference anchors and their PDF links follow a rotated component while
+// retaining the independent text angle and the individual label settings.
+const referenceTexts:{text:string;x:number;y:number;align:string;angle:number}[]=[];
+const links:number[][]=[];
+pdf.text=(text:string,x:number,y:number,o:any={})=>referenceTexts.push({text,x,y,align:o.align,angle:o.angle ?? 0});
+pdf.getTextWidth=()=>12;pdf.link=(x:number,y:number,w:number,h:number)=>links.push([x,y,w,h]);
+component.crossRefPosition={preset:'right',offsetX:2.125,offsetY:-3.875,alignment:'start',rotation:90};
+for(const rotation of [0,90,180,270] as const){
+  component.rotation=rotation;referenceTexts.length=0;links.length=0;
+  const before: string=JSON.stringify(component.bmkPosition);
+  const output=canvas.renderComponents();
+  assert.match(output,/class="cross-reference"[^>]*x="30.125" y="11.125"/);
+  assert.match(output,/data-crossref-source="placed"/,'Moved SVG references remain clickable');
+  (PdfExporter as any).renderComponents(pdf,page,project,420,297,{colorMode:'color',interactiveCrossReferences:true},new Map([['2',1]]));
+  const text=referenceTexts.find(t=>t.text==='/2.4')!;
+  const a=rotation*Math.PI/180,dx=30.125-10,dy=11.125-15;
+  assert(Math.abs(text.x-(component.x+10+dx*Math.cos(a)-dy*Math.sin(a))*.42)<1e-7);
+  assert(Math.abs(text.y-(component.y+15+dx*Math.sin(a)+dy*Math.cos(a))*297/700)<1e-7);
+  assert.equal(text.angle,-90);assert.equal(text.align,'left');assert.equal(links.length,1);
+  assert(text.x>=links[0][0]-1e-7&&text.x<=links[0][0]+links[0][2]+1e-7);
+  assert(text.y>=links[0][1]-1e-7&&text.y<=links[0][1]+links[0][3]+1e-7);
+  assert.equal(JSON.stringify(component.bmkPosition),before);
+}
+component.crossRefPosition.visible=false;referenceTexts.length=0;links.length=0;
+assert.doesNotMatch(canvas.renderComponents(),/class="cross-reference"/);
+(PdfExporter as any).renderComponents(pdf,page,project,420,297,{colorMode:'color',interactiveCrossReferences:true},new Map([['2',1]]));
+assert(!referenceTexts.some(t=>t.text==='/2.4'));assert.equal(links.length,0);
+console.log('✓ Editable reference positions agree in SVG and PDF, including rotated text, clickable links and visibility');

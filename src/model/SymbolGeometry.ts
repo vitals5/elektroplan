@@ -32,7 +32,7 @@ export function scalePlacedComponent(component: PlacedComponent, factor: number)
   copy.x *= factor; copy.y *= factor;
   if (copy.crossRefFontSize !== undefined) copy.crossRefFontSize *= factor;
   if (copy.pinLabelFontSize !== undefined) copy.pinLabelFontSize *= factor;
-  for (const key of ['bmkPosition', 'functionTextPosition', 'technicalDataPosition'] as const) {
+  for (const key of ['bmkPosition', 'functionTextPosition', 'technicalDataPosition', 'crossRefPosition'] as const) {
     const config = copy[key];
     if (!config) continue;
     for (const field of ['offsetX', 'offsetY', 'fontSize'] as const) if (config[field] !== undefined) config[field]! *= factor;

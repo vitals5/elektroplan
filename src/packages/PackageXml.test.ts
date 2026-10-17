@@ -28,6 +28,7 @@ const project: Project = {
 };
 project.pages[0].cables=[{id:'cable',start:{x:0,y:0},end:{x:100,y:0},bmk:'-W1',cableType:'NYM-J',coreCount:5,crossSection:'2,5',fontSize:4,cores:[{id:'core',t:.5,color:'BU',wireIds:['wire']}]}];
 project.pages[0].components[0].crossRefFontSize=3;
+project.pages[0].components[0].crossRefPosition={preset:'right',offsetX:2.125,offsetY:-3.875,alignment:'end',rotation:90,visible:true};
 project.pages[0].components[0].pinLabelFontSize=4;
 project.settings = { interruptionLabelSide: 'before' };
 project.plotFrameTemplate = defaultPlotFrame();

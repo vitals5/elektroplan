@@ -1,7 +1,8 @@
 // src/model/LabelLayout.ts
 // Calculates exact screen coordinates, anchors, rotations, and styles for component labels
 
-import { PlacedComponent, TextFormatConfig, SymbolDefinition } from './types';
+import { PlacedComponent, TextFormatConfig, SymbolDefinition, Project } from './types';
+import { interruptionLabelPosition } from './ConnectionSymbols';
 
 export interface CalculatedLabelPosition {
   x: number;
@@ -224,6 +225,33 @@ export function computeTechnicalDataPosition(comp: PlacedComponent, sym: SymbolD
   const transform = labelTransform(x, y, comp.rotation, rotation);
 
   return { x, y, anchor, rotation, fontSize, visible, transform };
+}
+
+/** Keep the automatic interruption layout unless an instance overrides it. */
+export function computeCrossReferencePosition(comp: PlacedComponent, sym: SymbolDefinition, project: Project): CalculatedLabelPosition {
+  const cfg = comp.crossRefPosition;
+  const arrow = interruptionLabelPosition(project, comp, sym);
+  const hasTech = computeTechnicalDataPosition(comp, sym).visible && !!(comp.deviceTag || comp.technicalCharacteristics);
+  const bottom = sym.height + (hasTech ? 38 : 24);
+  let x = arrow?.referenceX ?? sym.width / 2;
+  let y = arrow?.referenceY ?? bottom;
+  let anchor: CalculatedLabelPosition['anchor'] = arrow?.anchor ?? 'middle';
+  switch (cfg?.preset) {
+    case 'top': x = sym.width / 2; y = -20; anchor = 'middle'; break;
+    case 'top_left': x = 0; y = -20; anchor = 'start'; break;
+    case 'top_right': x = sym.width; y = -20; anchor = 'end'; break;
+    case 'bottom': x = sym.width / 2; y = bottom; anchor = 'middle'; break;
+    case 'bottom_left': x = 0; y = bottom; anchor = 'start'; break;
+    case 'bottom_right': x = sym.width; y = bottom; anchor = 'end'; break;
+    case 'left': x = -8; y = sym.height / 2; anchor = 'end'; break;
+    case 'right': x = sym.width + 8; y = sym.height / 2; anchor = 'start'; break;
+  }
+  x += cfg?.offsetX ?? 0;
+  y += cfg?.offsetY ?? 0;
+  anchor = cfg?.alignment ?? anchor;
+  const rotation = cfg?.rotation ?? 0;
+  return { x, y, anchor, rotation, visible: cfg?.visible !== false,
+    fontSize: comp.crossRefFontSize ?? cfg?.fontSize ?? 8, transform: labelTransform(x, y, comp.rotation, rotation) };
 }
 
 /** Counter-rotate text about its own anchor; the component still moves the anchor. */

@@ -97,6 +97,7 @@ export interface PlacedComponent {
   bmkPosition?: TextFormatConfig;
   functionTextPosition?: TextFormatConfig;
   technicalDataPosition?: TextFormatConfig;
+  crossRefPosition?: TextFormatConfig;
 }
 
 export interface Wire {

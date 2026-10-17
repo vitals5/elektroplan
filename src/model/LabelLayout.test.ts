@@ -1,6 +1,10 @@
 // src/model/LabelLayout.test.ts
-import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from './LabelLayout';
-import { PlacedComponent, SymbolDefinition } from './types';
+import assert from 'node:assert/strict';
+import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition, computeCrossReferencePosition } from './LabelLayout';
+import { PlacedComponent, SymbolDefinition, Project } from './types';
+import { getSymbolById } from './symbols';
+import { interruptionLabelPosition } from './ConnectionSymbols';
+import { scalePlacedComponent } from './SymbolGeometry';
 
 const mockSymbol: SymbolDefinition = {
   id: 'contactor_no',
@@ -80,3 +84,28 @@ console.assert(techPos.y === 82, `Tech data Y should be 82, got ${techPos.y}`);
 console.log('✅ Technical data positioning verified');
 
 console.log('🎉 ALL LABEL LAYOUT TESTS PASSED!');
+
+const project = {} as Project;
+assert.equal(computeCrossReferencePosition(baseComp,mockSymbol,project).y,98, 'References clear visible technical text');
+assert.equal(computeCrossReferencePosition({...baseComp,technicalDataPosition:{visible:false}},mockSymbol,project).y,84);
+const positioned = {...baseComp,rotation:180 as const,crossRefFontSize:5,
+  crossRefPosition:{preset:'right' as const,offsetX:2.125,offsetY:-3.875,alignment:'end' as const,rotation:90 as const,visible:false}};
+const ref = computeCrossReferencePosition(positioned,mockSymbol,project);
+assert.deepEqual(ref,{x:50.125,y:26.125,anchor:'end',rotation:90,fontSize:5,visible:false,transform:'transform="rotate(-90, 50.125, 26.125)"'});
+assert.deepEqual(computeCrossReferencePosition(JSON.parse(JSON.stringify(positioned)),mockSymbol,project),ref);
+const scaled=scalePlacedComponent(positioned,2);
+assert.deepEqual(scaled.crossRefPosition,{...positioned.crossRefPosition,offsetX:4.25,offsetY:-7.75});
+assert.equal(positioned.crossRefPosition.offsetX,2.125,'Scaling a macro does not mutate its source reference layout');
+const arrow = getSymbolById('potential_arrow_right')!;
+for(const side of ['before','after'] as const)for(const rotation of [0,90,180,270] as const){
+  const p = {settings:{interruptionLabelSide:side}} as Project;
+  const c = {...baseComp,symbolId:arrow.id,crossRef:'/2.1',rotation};
+  const automatic = interruptionLabelPosition(p,c,arrow)!;
+  const unchanged = computeCrossReferencePosition(c,arrow,p);
+  assert.deepEqual([unchanged.x,unchanged.y,unchanged.anchor],[automatic.referenceX,automatic.referenceY,automatic.anchor]);
+  const shifted = computeCrossReferencePosition({...c,crossRefPosition:{offsetX:3,offsetY:-7}},arrow,p);
+  assert.deepEqual([shifted.x,shifted.y],[unchanged.x+3,unchanged.y-7]);
+  const explicit = computeCrossReferencePosition({...c,crossRefPosition:{preset:'left'}},arrow,p);
+  assert.deepEqual([explicit.x,explicit.y,explicit.anchor],[-8,arrow.height/2,'end']);
+}
+console.log('✓ Reference position presets, offsets, visibility, serialization and automatic interruption layouts for every rotation');

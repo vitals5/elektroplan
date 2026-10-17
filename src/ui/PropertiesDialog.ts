@@ -6,8 +6,8 @@ import { PlacedComponent, Project, TextFormatConfig } from '../model/types';
 import { escapeSvg } from '../model/ImportedDrawing';
 import { getSymbolForComponent, getDrawingUnitsPerMm } from '../model/symbols';
 import { MANUFACTURER_PARTS } from '../model/PartCatalogue';
-import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
-import { componentInsertionPoint, positionAtInsertionPoint } from '../model/SymbolGeometry';
+import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition, computeCrossReferencePosition } from '../model/LabelLayout';
+import { componentInsertionPoint, positionAtInsertionPoint, rotatedLocalPoint } from '../model/SymbolGeometry';
 
 export interface PropertiesDialogCallbacks {
   onSave: (updated: PlacedComponent) => void;
@@ -361,6 +361,8 @@ export class PropertiesDialog {
             </div>
           </div>
 
+          ${this.crossReferencePositionFields()}
+
           <div style="background:#1f242e;border:1px solid #3e4656;border-radius:6px;padding:12px">
             <strong>Schriftgrößen (mm)</strong>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">
@@ -475,6 +477,27 @@ export class PropertiesDialog {
     return '';
   }
 
+  private crossReferencePositionFields(): string {
+    const cfg = this.component.crossRefPosition;
+    const units = getDrawingUnitsPerMm(this.project);
+    return `<fieldset style="background:#1f242e;border:1px solid #3e4656;border-radius:6px;padding:12px">
+      <legend style="color:#f6ad55">Querverweise / Kontaktspiegel</legend>
+      <label><input type="checkbox" id="propCrossRefVisible" ${cfg?.visible !== false ? 'checked' : ''}> Sichtbar</label>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px">
+        <label class="form-label">Position<select class="form-input" id="propCrossRefPreset">${[
+          ['custom','Standard (mit Versatz)'],['top','Oben'],['top_left','Oben links'],['top_right','Oben rechts'],
+          ['bottom','Unten'],['bottom_left','Unten links'],['bottom_right','Unten rechts'],['left','Links daneben'],['right','Rechts daneben']
+        ].map(([value,label])=>`<option value="${value}" ${(cfg?.preset ?? 'custom')===value?'selected':''}>${label}</option>`).join('')}</select></label>
+        <label class="form-label">Ausrichtung<select class="form-input" id="propCrossRefAlignment">${[
+          ['','Automatisch'],['start','Linksbündig'],['middle','Zentriert'],['end','Rechtsbündig']
+        ].map(([value,label])=>`<option value="${value}" ${(cfg?.alignment ?? '')===value?'selected':''}>${label}</option>`).join('')}</select></label>
+        <label class="form-label">Versatz X (mm)<input type="number" step="any" class="form-input" id="propCrossRefOffsetX" value="${(cfg?.offsetX ?? 0)/units}"></label>
+        <label class="form-label">Versatz Y (mm)<input type="number" step="any" class="form-input" id="propCrossRefOffsetY" value="${(cfg?.offsetY ?? 0)/units}"></label>
+        <label class="form-label">Drehung<select class="form-input" id="propCrossRefRotation">${[0,90,180,270].map(value=>`<option value="${value}" ${(cfg?.rotation ?? 0)===value?'selected':''}>${value}°</option>`).join('')}</select></label>
+      </div>
+    </fieldset>`;
+  }
+
   private fontSizeFields(): string {
     const sym = getSymbolForComponent(this.component, this.project);
     if (!sym) return '';
@@ -495,6 +518,7 @@ export class PropertiesDialog {
     const bmkPos = computeBmkPosition(this.component, sym);
     const fnPos = computeFunctionTextPosition(this.component, sym);
     const techPos = computeTechnicalDataPosition(this.component, sym);
+    const refPos = computeCrossReferencePosition(this.component, sym, this.project);
 
     const isConn = !sym.importedGraphics && sym.category === 'connections';
 
@@ -502,13 +526,13 @@ export class PropertiesDialog {
       ? (this.component.deviceTag + (this.component.technicalCharacteristics ? ' · ' + this.component.technicalCharacteristics : ''))
       : (this.component.technicalCharacteristics || '');
 
-    // Viewbox centered on the symbol
-    const padX = 70;
-    const padY = 45;
-    const vbX = -padX;
-    const vbY = -padY;
-    const vbW = sym.width + padX * 2;
-    const vbH = sym.height + padY * 2;
+    // Include moved reference anchors and the rotated symbol in the preview.
+    const points = [{x:0,y:0},{x:sym.width,y:0},{x:0,y:sym.height},{x:sym.width,y:sym.height},
+      ...[bmkPos,fnPos,techPos,refPos].filter(p=>p.visible)].map(p=>rotatedLocalPoint(p,sym,this.component.rotation));
+    const vbX = Math.min(...points.map(p=>p.x))-70;
+    const vbY = Math.min(...points.map(p=>p.y))-45;
+    const vbW = Math.max(...points.map(p=>p.x))-vbX+70;
+    const vbH = Math.max(...points.map(p=>p.y))-vbY+45;
 
     const bmkSvg = (!isConn && bmkPos.visible) ? `
       <text x="${bmkPos.x}" y="${bmkPos.y}" font-size="${bmkPos.fontSize}" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="${bmkPos.anchor}" ${bmkPos.transform}>${escapeSvg(this.component.bmk)}</text>
@@ -532,6 +556,7 @@ export class PropertiesDialog {
         <line x1="${vbX}" y1="${sym.height / 2}" x2="${vbX + vbW}" y2="${sym.height / 2}" stroke="#2a3240" stroke-width="0.8" stroke-dasharray="2,2"/>
         <line x1="${sym.width / 2}" y1="${vbY}" x2="${sym.width / 2}" y2="${vbY + vbH}" stroke="#2a3240" stroke-width="0.8" stroke-dasharray="2,2"/>
 
+        <g transform="rotate(${this.component.rotation},${sym.width/2},${sym.height/2})">
         <!-- Symbol Graphics -->
         <g color="#e2e8f0">
           ${sym.svgContent}
@@ -544,7 +569,8 @@ export class PropertiesDialog {
         ${bmkSvg}
         ${fnSvg}
         ${techSvg}
-        ${this.component.crossRef ? `<text x="${sym.width/2}" y="${sym.height+38}" text-anchor="middle" font-size="${this.component.crossRefFontSize ?? 8}" fill="#f6ad55">${escapeSvg(this.component.crossRef)}</text>` : ''}
+        ${this.component.crossRef && refPos.visible ? `<text class="cross-reference" x="${refPos.x}" y="${refPos.y}" text-anchor="${refPos.anchor}" font-size="${refPos.fontSize}" ${refPos.transform} fill="#f6ad55">${escapeSvg(this.component.crossRef)}</text>` : ''}
+        </g>
       </svg>
     `;
   }
@@ -692,6 +718,7 @@ export class PropertiesDialog {
         delete this.component.bmkPosition;
         delete this.component.functionTextPosition;
         delete this.component.technicalDataPosition;
+        delete this.component.crossRefPosition;
         const content = modal.querySelector('#propTabContent');
         if (content) {
           content.innerHTML = this.renderActiveTabContent();
@@ -771,6 +798,20 @@ export class PropertiesDialog {
     }
 
     // Display / Label positioning tab fields
+    const refPreset = modal.querySelector('#propCrossRefPreset') as HTMLSelectElement | null;
+    if (refPreset) {
+      const value = (id: string) => (modal.querySelector(`#propCrossRef${id}`) as HTMLInputElement | HTMLSelectElement | null)?.value;
+      const number = (id: string, fallback = 0) => { const n = Number(value(id)); return Number.isFinite(n) ? n : fallback; };
+      this.component.crossRefPosition = {
+        ...this.component.crossRefPosition,
+        preset: refPreset.value as TextFormatConfig['preset'],
+        offsetX: number('OffsetX', (this.component.crossRefPosition?.offsetX ?? 0)/units)*units,
+        offsetY: number('OffsetY', (this.component.crossRefPosition?.offsetY ?? 0)/units)*units,
+        alignment: (value('Alignment') || undefined) as TextFormatConfig['alignment'],
+        rotation: number('Rotation') as TextFormatConfig['rotation'],
+        visible: (modal.querySelector('#propCrossRefVisible') as HTMLInputElement | null)?.checked !== false,
+      };
+    }
     const bmkPreset = modal.querySelector('#propBmkPreset') as HTMLSelectElement;
     if (bmkPreset) {
       const bmkOffsetX = modal.querySelector('#propBmkOffsetX') as HTMLInputElement;

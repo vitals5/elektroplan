@@ -14,7 +14,7 @@ import { getSymbolById, getSymbolForComponent, getDrawingUnitsPerMm } from '../m
 import { referenceTargets, referenceMarkup, ReferenceTarget } from '../model/CrossReferenceNavigation';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
 import { AutoconnectEngine, AutoconnectPreviewSegment } from '../model/AutoconnectEngine';
-import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
+import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition, computeCrossReferencePosition } from '../model/LabelLayout';
 import { WindowMacro, MacroManager } from '../model/MacroManager';
 import { componentInsertionPoint, positionAtInsertionPoint } from '../model/SymbolGeometry';
 import { gridForPage, gridStep, snapCoordinate, snapSymbolPosition, GridResolution } from '../model/DrawingGrid';
@@ -1460,14 +1460,12 @@ export class CadCanvas {
       const techText = comp.deviceTag
         ? (comp.deviceTag + (comp.technicalCharacteristics ? ' · ' + comp.technicalCharacteristics : ''))
         : (comp.technicalCharacteristics || '');
-      const hasTech = Boolean(techPos.visible && techText);
 
       // Cross Reference text / Contact mirror (placed below technical data)
       let crossRefDisplay = '';
-      if (comp.crossRef && (!isConn || isInterruptionSymbol(sym))) {
-        const crossRefY = arrowPos ? arrowPos.referenceY : sym.height + (hasTech ? 38 : 24);
-        const crossRefX = arrowPos?.referenceX ?? sym.width / 2;
-        crossRefDisplay = `<text ${labelTransform(crossRefX, crossRefY, comp.rotation)} x="${crossRefX}" y="${crossRefY}" font-size="${comp.crossRefFontSize ?? 8}" font-family="monospace" fill="#f6ad55" text-anchor="${arrowPos?.anchor ?? 'middle'}">${referenceMarkup(this.project, comp, true)}</text>`;
+      const refPos = computeCrossReferencePosition(comp, sym, this.project);
+      if (comp.crossRef && refPos.visible && (!isConn || isInterruptionSymbol(sym))) {
+        crossRefDisplay = `<text class="cross-reference" ${refPos.transform} x="${refPos.x}" y="${refPos.y}" font-size="${refPos.fontSize}" font-family="monospace" fill="#f6ad55" text-anchor="${refPos.anchor}">${referenceMarkup(this.project, comp, true)}</text>`;
       }
 
       // Pins render

@@ -14,7 +14,7 @@ import { wirePolyline, wirePinDirection } from '../model/WireRouting';
 import { gridForPage } from '../model/DrawingGrid';
 import { connectionCutouts, connectionGraphicWires, isConnectionGraphic, supersededConnectionGraphics, visibleWireSegments } from '../model/ConnectionGraphics';
 import { arcPoints, rotateDrawing } from '../model/ImportedDrawing';
-import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
+import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition, computeCrossReferencePosition } from '../model/LabelLayout';
 import { jsPDF } from 'jspdf';
 import { Project, Page, PlacedComponent, Wire, DrawingPrimitive } from '../model/types';
 import { getSymbolForComponent } from '../model/symbols';
@@ -453,13 +453,14 @@ export class PdfExporter {
       }
 
       // SMART PDF: Interactive Cross-References (Kontaktspiegel & Querverweise)
-      if (comp.crossRef) {
-        const crPoint = rotatedLocalPoint({ x: arrowPos?.referenceX ?? sym.width / 2, y: arrowPos ? arrowPos.referenceY : sym.height + 24 }, sym, comp.rotation);
+      const refPos = computeCrossReferencePosition(comp, sym, project);
+      if (comp.crossRef && refPos.visible && (!isConnection || isInterruptionSymbol(sym))) {
+        const crPoint = rotatedLocalPoint(refPos, sym, comp.rotation);
         const crX = (comp.x + crPoint.x) * sx, crY = (comp.y + crPoint.y) * sy;
         doc.setFont('courier', 'bold');
-        doc.setFontSize((comp.crossRefFontSize ?? 8) * sy * 72 / 25.4);
+        doc.setFontSize(refPos.fontSize * sy * 72 / 25.4);
         doc.setTextColor(options.colorMode === 'color' ? 200 : 50, 50, 0);
-        doc.text(comp.crossRef, crX, crY, { align: arrowPos?.anchor === 'end' ? 'right' : arrowPos?.anchor === 'start' ? 'left' : 'center' });
+        doc.text(comp.crossRef, crX, crY, { align: refPos.anchor === 'end' ? 'right' : refPos.anchor === 'start' ? 'left' : 'center', angle: -refPos.rotation });
 
         // Add PDF Hyperlink if interactive cross-references are enabled
         if (options.interactiveCrossReferences) {
@@ -468,10 +469,13 @@ export class PdfExporter {
             const targetPageStr = match[1];
             const targetPdfPage = pageMapping.get(targetPageStr);
             if (targetPdfPage) {
-              const linkW = 20;
-              const linkH = 4;
-              const linkX = crX - linkW / 2;
-              const linkY = crY - 3;
+              const textW = doc.getTextWidth(comp.crossRef), textH = refPos.fontSize * sy;
+              const startX = refPos.anchor === 'end' ? -textW : refPos.anchor === 'start' ? 0 : -textW / 2;
+              const a = refPos.rotation * Math.PI / 180;
+              const corners = [[startX,-textH],[startX+textW,-textH],[startX,.25*textH],[startX+textW,.25*textH]]
+                .map(([x,y])=>({x:crX+x*Math.cos(a)-y*Math.sin(a),y:crY+x*Math.sin(a)+y*Math.cos(a)}));
+              const linkX = Math.min(...corners.map(p=>p.x)), linkY = Math.min(...corners.map(p=>p.y));
+              const linkW = Math.max(...corners.map(p=>p.x))-linkX, linkH = Math.max(...corners.map(p=>p.y))-linkY;
               doc.link(linkX, linkY, linkW, linkH, { pageNumber: targetPdfPage });
               if (options.colorMode === 'color') {
                 doc.setDrawColor(66, 153, 225);

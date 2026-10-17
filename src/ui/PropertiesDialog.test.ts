@@ -56,4 +56,21 @@ delete fields['#propBmk'];
 dialog.component.bmk = '-Q2';
 dialog.collectFormData(modal);
 assert.equal(dialog.component.bmk, '-Q2', 'An absent BMK field on another tab must preserve the value');
+project.drawingUnitsPerMm = 2;
+dialog.component.crossRef='/2.1';
+dialog.component.crossRefFontSize=4;
+Object.assign(fields,{
+  '#propCrossRefPreset':{value:'right'},'#propCrossRefOffsetX':{value:'2.125'},'#propCrossRefOffsetY':{value:'-3.875'},
+  '#propCrossRefAlignment':{value:'start'},'#propCrossRefRotation':{value:'90'},'#propCrossRefVisible':{checked:true}
+});
+dialog.collectFormData(modal);
+assert.deepEqual(dialog.component.crossRefPosition,{preset:'right',offsetX:4.25,offsetY:-7.75,alignment:'start',rotation:90,visible:true});
+assert.equal(dialog.component.crossRefFontSize,4,'Moving a reference preserves its font size');
+assert.match(dialog.generatePreviewSvg(),/class="cross-reference" x="32.25" y="7.25"/);
+dialog.activeTab='display';
+const display=dialog.renderActiveTabContent() as string;
+assert.match(display,/id="propCrossRefOffsetX" value="2.125"/);
+assert.match(display,/id="propCrossRefOffsetY" value="-3.875"/);
+fields['#propCrossRefVisible'].checked=false;dialog.collectFormData(modal);
+assert.doesNotMatch(dialog.generatePreviewSvg(),/class="cross-reference"/);
 console.log('✓ Property dialog preserves imported layout precision and shows editable source labels');
