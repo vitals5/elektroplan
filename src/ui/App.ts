@@ -1,12 +1,13 @@
+import { cableCrossings } from '../model/CableDefinition';
 // src/ui/App.ts
 // Main application controller for Elektroplan (Elektro-CAD CAE Suite)
 
-import { Project, Page, PlacedComponent, Wire } from '../model/types';
-import { getSymbolDefinitions, getSymbolById, getSymbolForComponent, setProjectSymbolLibrary, mergeProjectSymbolLibrary } from '../model/symbols';
+import { Project, Page, PlacedComponent, Wire, CableDefinition } from '../model/types';
+import { getSymbolDefinitions, getSymbolById, getSymbolForComponent, setProjectSymbolLibrary, mergeProjectSymbolLibrary, getDrawingUnitsPerMm } from '../model/symbols';
 import { ProjectHistory } from '../model/ProjectHistory';
 import { referenceMarkup } from '../model/CrossReferenceNavigation';
 import { isConnectionSymbol, connectionFamily } from '../model/ConnectionSymbols';
-import { drawingToSvg } from '../model/ImportedDrawing';
+import { drawingToSvg, escapeSvg } from '../model/ImportedDrawing';
 import { CadCanvas } from '../editor/CadCanvas';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
 import { PackageHandler, PackageInspectionResult } from '../packages/PackageHandler';
@@ -29,6 +30,7 @@ export class App {
   private inputSession = 0;
   private selectedComponent: PlacedComponent | null = null;
   private selectedWire: Wire | null = null;
+  private selectedCable: CableDefinition | null = null;
   private activeLeftTab: 'pages' | 'symbols' | 'connections' | 'macros' | 'terminals' | 'bom' | 'parts' = 'pages';
   private activeRightTab: 'properties' | 'archive' = 'properties';
   private symbolCategoryFilter: string = 'all';
@@ -135,6 +137,7 @@ export class App {
           Einfügen
           <div class="menu-dropdown">
             <div class="menu-opt" id="menuInsertSym">⚡ Symbol auswählen... <span class="opt-key">Einfg</span></div>
+            <div class="menu-opt" id="menuInsertCable">Kabeldefinition / Kabelbeschriftung...</div>
             <div class="menu-opt" id="menuInsertConnections">🔗 Verbindungselemente...</div>
             <div class="menu-opt" id="menuInsertMacro">📦 Makro auswählen (.ema)...</div>
             <div class="menu-opt" id="menuWire">🔌 Verbindungslinie (Verdrahten) <span class="opt-key">D</span></div>
@@ -197,6 +200,7 @@ export class App {
           <button class="btn" id="btnUndo" title="Rückgängig (Strg+Z)" aria-label="Rückgängig">↶</button>
           <button class="btn" id="btnRedo" title="Wiederholen (Strg+Y / Strg+Umschalt+Z)" aria-label="Wiederholen">↷</button>
           <button class="btn" id="btnOpenConnections" title="Verbindungselemente auswählen">🔗 <span class="hide-mobile">Verbindungen</span></button>
+          <button class="btn" id="btnCableDefinition" title="Kabeldefinition: Start- und Endpunkt über die Adern setzen">▧ <span class="hide-mobile">Kabel</span></button>
           <button class="btn" id="btnSettings" title="Einstellungen">⚙️</button>
           <button class="btn" id="btnToolDuplicate" title="Ausgewähltes Bauteil duplizieren (Strg+D)">📋 <span class="hide-mobile">Duplizieren</span></button>
           <button class="btn" id="btnToolDelete" title="Ausgewähltes Element löschen (Entf)">🗑️ <span class="hide-mobile">Löschen</span></button>
@@ -331,16 +335,23 @@ export class App {
 
     this.canvas = new CadCanvas(container, this.project, {
       onSelectComponent: (comp) => {
+        this.selectedCable=null;if(this.canvas)this.canvas.selectedCableId=null;
         this.selectedComponent = comp;
         if (comp) this.selectedWire = null;
         this.updateFloatingSelectionBar();
         this.renderRightTab();
       },
       onSelectWire: (wire) => {
+        this.selectedCable=null;if(this.canvas)this.canvas.selectedCableId=null;
         this.selectedWire = wire;
         if (wire) this.selectedComponent = null;
         this.updateFloatingSelectionBar();
         this.renderRightTab();
+      },
+      onSelectCable: cable => {
+        this.selectedCable=cable;
+        if(cable){this.selectedComponent=null;this.selectedWire=null;this.activeRightTab='properties';}
+        this.updateFloatingSelectionBar();this.renderRightTab();
       },
       onOpenProperties: (comp) => {
         this.openPropertiesDialog(comp);
@@ -367,6 +378,7 @@ export class App {
       onProjectModified: () => {
         const banner = document.getElementById('placeHintBanner');
         if (banner) banner.style.display = 'none';
+        if(this.canvas.mode==='select')this.updateToolButtons('btnToolSelect');
         this.updateUI();
       }
     });
@@ -432,6 +444,10 @@ export class App {
           btnDel.textContent = '🗑️';
         }
         bar.style.display = 'flex';
+      } else if (this.selectedCable) {
+        tag.textContent='Kabel: '+(this.selectedCable.bmk || this.selectedCable.cableType || 'Kabeldefinition');
+        if(btnEdit)btnEdit.style.display='inline-flex';if(btnRot)btnRot.style.display='inline-block';
+        if(btnDel)btnDel.title='Kabeldefinition löschen';bar.style.display='flex';
       } else if (this.selectedWire) {
         tag.textContent = `🔌 Leitung: ${this.selectedWire.potential} (${this.selectedWire.color || 'BK'}, ${this.selectedWire.crossSection || '1.5mm²'})`;
         if (btnEdit) btnEdit.style.display = 'none';
@@ -636,15 +652,16 @@ export class App {
     document.getElementById('fabEdit')?.addEventListener('click', () => {
       if (this.selectedComponent) {
         this.openPropertiesDialog(this.selectedComponent);
+      } else if (this.selectedCable) {
+        this.activeRightTab='properties';this.setRightPanelCollapsed(false);this.renderRightTab();
       } else {
         alert('Bitte tippen Sie zuerst ein Bauteil im Plan an.');
       }
     });
 
     document.getElementById('btnFloatingEdit')?.addEventListener('click', () => {
-      if (this.selectedComponent) {
-        this.openPropertiesDialog(this.selectedComponent);
-      }
+      if (this.selectedComponent) this.openPropertiesDialog(this.selectedComponent);
+      else if (this.selectedCable) { this.activeRightTab='properties';this.setRightPanelCollapsed(false);this.renderRightTab(); }
     });
 
     document.getElementById('btnFloatingExportMacro')?.addEventListener('click', () => {
@@ -731,6 +748,7 @@ export class App {
     });
 
     document.getElementById('btnOpenConnections')?.addEventListener('click', () => this.openConnectionSelection());
+    document.getElementById('btnCableDefinition')?.addEventListener('click', () => this.startCableDefinition());
     document.getElementById('btnSettings')?.addEventListener('click', () => this.openSettings());
 
     // Toolbar Actions
@@ -896,6 +914,7 @@ export class App {
       if (files?.length) await this.handleFilesOpen(files);
     });
 
+    bindMenuOpt('menuInsertCable', () => this.startCableDefinition());
     bindMenuOpt('menuSettings', () => this.openSettings());
     bindMenuOpt('menuInsertConnections', () => this.openConnectionSelection());
     bindMenuOpt('menuSave', () => this.saveProjectJson());
@@ -1031,7 +1050,7 @@ export class App {
   }
 
   private updateToolButtons(activeId: string): void {
-    ['btnToolSelect', 'btnToolWire'].forEach(id => {
+    ['btnToolSelect', 'btnToolWire', 'btnCableDefinition'].forEach(id => {
       document.getElementById(id)?.classList.toggle('active', id === activeId);
     });
   }
@@ -1055,7 +1074,7 @@ export class App {
     const statusRight = document.getElementById('statusRight');
     const activePage = this.project.pages.find(p => p.id === this.project.activePageId);
     if (statusRight && activePage && this.canvas) {
-      statusRight.textContent = `Seite ${activePage.pageNumber} (${activePage.title}) | Raster: ${this.canvas.getGridLabel()} | Bauteile: ${activePage.components.length} | Leitungen: ${activePage.wires.length}`;
+      statusRight.textContent = `Seite ${activePage.pageNumber} (${activePage.title}) | Raster: ${this.canvas.getGridLabel()} | Bauteile: ${activePage.components.length} | Leitungen: ${activePage.wires.length} | Kabel: ${activePage.cables?.length ?? 0}`;
     }
   }
 
@@ -1119,11 +1138,13 @@ export class App {
 
   private restoreHistory(project: Project): void {
     (document.activeElement as HTMLElement | null)?.blur?.();
-    const componentId = this.canvas.selectedComponentId, wireId = this.canvas.selectedWireId;
+    const componentId = this.canvas.selectedComponentId, wireId = this.canvas.selectedWireId, cableId=this.canvas.selectedCableId;
     this.project = project;
     setProjectSymbolLibrary(project);
     this.canvas.setProject(project, false);
     const page = project.pages.find(p => p.id === project.activePageId)!;
+    this.selectedCable=page.cables?.find(c=>c.id===cableId) ?? null;
+    this.canvas.selectedCableId=this.selectedCable?.id ?? null;
     this.selectedComponent = page.components.find(c => c.id === componentId) ?? null;
     this.selectedWire = page.wires.find(w => w.id === wireId) ?? null;
     this.canvas.selectedComponentId = this.selectedComponent?.id ?? null;
@@ -1268,7 +1289,7 @@ export class App {
     const filtered = (connections ? getSymbolDefinitions().filter(s => category === 'all' || category === 'project' && !!s.source || connectionFamily(s) === category) : this.symbolCategoryFilter === 'all'
       ? getSymbolDefinitions()
       : this.symbolCategoryFilter === 'project' ? this.project.symbolLibrary ?? []
-      : getSymbolDefinitions().filter(s => s.category === this.symbolCategoryFilter)).filter(s => isConnectionSymbol(s) === connections);
+      : getSymbolDefinitions().filter(s => s.category === this.symbolCategoryFilter)).filter(s => !s.annotationKind && isConnectionSymbol(s) === connections);
 
     for (const sym of filtered) {
       const isSelected = this.canvas.activeSymbolToPlace === sym.id && this.canvas.mode === 'place_symbol';
@@ -1287,7 +1308,8 @@ export class App {
     }
 
     categoriesHtml += `</div>`;
-    container.innerHTML = categoriesHtml;
+    container.innerHTML = (connections ? '<button class="btn" id="connectionCableTool" style="width:100%;margin-bottom:8px">Kabeldefinition / Kabelbeschriftung</button>' : '') + categoriesHtml;
+    container.querySelector('#connectionCableTool')?.addEventListener('click',()=>this.startCableDefinition());
 
     // Events
     document.getElementById('symbolCategorySelect')?.addEventListener('change', (e) => {
@@ -1868,11 +1890,53 @@ export class App {
     }
   }
 
+  private startCableDefinition():void {
+    this.canvas.setMode('cable');this.updateToolButtons('btnCableDefinition');
+    const status=document.getElementById('statusLeft');if(status)status.textContent='Kabeldefinition: Startpunkt und Endpunkt quer über die Adern anklicken. Esc bricht ab.';
+  }
+
+  private renderCableProperties(container:HTMLElement,cable:CableDefinition):void {
+    const units=getDrawingUnitsPerMm(this.project),page=this.project.pages.find(p=>p.id===this.project.activePageId)!;
+    const crossings=cableCrossings(cable,page,this.project);
+    const input=(id:string,label:string,value:string|number,type='text')=>`<label class="form-label">${label}<input class="form-input" id="${id}" type="${type}" ${type==='number'?'step="any"':''} value="${escapeSvg(String(value))}"></label>`;
+    container.innerHTML=`<h3>Kabeldefinition / Kabelbeschriftung</h3>
+      ${input('cableBmk','Kabel-BMK',cable.bmk)}${input('cableType','Kabeltyp',cable.cableType)}
+      ${input('cableCoreCount','Aderzahl',cable.coreCount ?? '','number')}${input('cableSection','Aderquerschnitt (mm²)',cable.crossSection)}${input('cableDescription','Zusatztext',cable.description ?? '')}
+      <fieldset style="border:1px solid var(--border-color);margin:10px 0"><legend>Beschriftung</legend>
+      ${input('cableFontSize','Schriftgröße (mm)',Number(((cable.fontSize ?? units*2.2356)/units).toFixed(4)),'number')}
+      ${input('cableBmkFontSize','BMK-Schriftgröße (mm)',Number(((cable.bmkFontSize ?? cable.fontSize ?? units*2.2356)/units).toFixed(4)),'number')}
+      ${input('cableCoreFontSize','Ader-Schriftgröße (mm)',Number(((cable.coreFontSize ?? units*1.6146)/units).toFixed(4)),'number')}
+      ${input('cableLabelX','Beschriftung Versatz X (mm)',(cable.labelOffset?.x ?? -units)/units,'number')}${input('cableLabelY','Beschriftung Versatz Y (mm)',(cable.labelOffset?.y ?? -.285*units)/units,'number')}
+      <label><input id="cableShowLabel" type="checkbox" ${cable.showLabel!==false?'checked':''}> Kabelbeschriftung sichtbar</label><br>
+      <label><input id="cableShowCores" type="checkbox" ${cable.showCoreLabels!==false?'checked':''}> Aderbeschriftungen sichtbar</label>
+      <label class="form-label">Adermarkierung<select class="form-input" id="cableMarkStyle"><option value="none" ${cable.markStyle==='none'?'selected':''}>Ohne Schrägstrich (importiert)</option><option value="slash" ${cable.markStyle!=='none'?'selected':''}>Schrägstrich</option></select></label></fieldset>
+      <fieldset style="border:1px solid var(--border-color);margin:10px 0"><legend>Definitionslinie (mm)</legend>
+      ${input('cableStartX','Start X',cable.start.x/units,'number')}${input('cableStartY','Start Y',cable.start.y/units,'number')}${input('cableEndX','Ende X',cable.end.x/units,'number')}${input('cableEndY','Ende Y',cable.end.y/units,'number')}</fieldset>
+      <p>${crossings.length} gekreuzte Leiterpositionen. Die Definitionslinie verbindet die Adern elektrisch nicht miteinander.</p>
+      ${cable.cores.length?`<details><summary>Aderbeschriftungen (${cable.cores.length})</summary>${cable.cores.map((core,i)=>`<div style="margin:8px 0">Ader ${i+1}${input('cableCoreColor'+i,'Farbe',core.color ?? '')}${input('cableCoreName'+i,'Bezeichnung',core.designation ?? '')}</div>`).join('')}</details>`:''}
+      <button class="btn" id="cableRotate">Drehen</button> <button class="btn" id="cableDelete">Kabeldefinition löschen</button>`;
+    const bindText=(id:string,apply:(value:string)=>void)=>container.querySelector('#'+id)?.addEventListener('input',event=>{apply((event.target as HTMLInputElement).value);this.notifyChange();});
+    for(const [id,key] of [['cableBmk','bmk'],['cableType','cableType'],['cableSection','crossSection'],['cableDescription','description']] as const)bindText(id,value=>cable[key]=value);
+    const bindNumber=(id:string,apply:(value:number)=>void,min=-Infinity,max=Infinity)=>container.querySelector('#'+id)?.addEventListener('input',event=>{const input=event.target as HTMLInputElement,value=Number(input.value);if(input.value!==''&&input.validity.valid&&Number.isFinite(value)&&value>=min&&value<=max){apply(value);this.notifyChange();}});
+    bindNumber('cableCoreCount',value=>{if(Number.isInteger(value))cable.coreCount=value;},1,999);
+    for(const [id,key] of [['cableFontSize','fontSize'],['cableBmkFontSize','bmkFontSize'],['cableCoreFontSize','coreFontSize']] as const)bindNumber(id,value=>cable[key]=value*units,.1,20);
+    for(const [id,key,axis] of [['cableStartX','start','x'],['cableStartY','start','y'],['cableEndX','end','x'],['cableEndY','end','y']] as const)bindNumber(id,value=>cable[key][axis]=value*units);
+    bindNumber('cableLabelX',value=>{cable.labelOffset={x:value*units,y:cable.labelOffset?.y ?? -.285*units};});
+    bindNumber('cableLabelY',value=>{cable.labelOffset={x:cable.labelOffset?.x ?? -units,y:value*units};});
+    for(const [id,key] of [['cableShowLabel','showLabel'],['cableShowCores','showCoreLabels']] as const)container.querySelector('#'+id)?.addEventListener('change',e=>{cable[key]=(e.target as HTMLInputElement).checked;this.notifyChange();});
+    container.querySelector('#cableMarkStyle')?.addEventListener('change',e=>{cable.markStyle=(e.target as HTMLSelectElement).value as 'none'|'slash';this.notifyChange();});
+    cable.cores.forEach((core,i)=>{bindText('cableCoreColor'+i,v=>core.color=v);bindText('cableCoreName'+i,v=>core.designation=v);});
+    container.querySelector('#cableRotate')?.addEventListener('click',()=>{this.canvas.rotateSelected();this.renderCableProperties(container,cable);});
+    container.querySelector('#cableDelete')?.addEventListener('click',()=>this.canvas.deleteSelected());
+  }
+
   private renderPropertiesTab(container: HTMLElement): void {
+    if (this.selectedCable) { this.renderCableProperties(container,this.selectedCable);return; }
     if (this.selectedComponent) {
       const comp = this.selectedComponent;
       const sym = getSymbolForComponent(comp);
 
+      const units = getDrawingUnitsPerMm(this.project);
       const bmkPreset = comp.bmkPosition?.preset || 'top';
 
       container.innerHTML = `
@@ -1899,6 +1963,10 @@ export class App {
           <label class="form-label">Funktionstext</label>
           <input class="form-input" id="propFunctionText" value="${comp.functionText || ''}">
         </div>
+
+        <fieldset style="border:1px solid var(--border-color);padding:8px;margin:0 0 12px"><legend>Schriftgrößen (mm)</legend>
+          ${[['Bmk','BMK',comp.bmkPosition?.fontSize ?? 10],['Fn','Funktionstext',comp.functionTextPosition?.fontSize ?? 8],['Tech','Technische Daten',comp.technicalDataPosition?.fontSize ?? 8],['CrossRef','Querverweise',comp.crossRefFontSize ?? 8],['Pin','Anschlussbezeichnungen',comp.pinLabelFontSize ?? sym?.pins.find(p=>p.labelPosition)?.labelPosition?.fontSize ?? 6.5]].map(([key,label,size])=>`<label class="form-label">${label}<input class="form-input" id="quick${key}FontSize" type="number" min="0.1" max="20" step="0.1" value="${Number((Number(size)/units).toFixed(4))}"></label>`).join('')}
+        </fieldset>
 
         <div class="form-group">
           <label class="form-label">Position der BMK-Beschriftung</label>
@@ -2013,6 +2081,18 @@ export class App {
         comp.bmk = (e.target as HTMLInputElement).value;
         this.notifyChange();
       });
+      for (const [key,property] of [['Bmk','bmkPosition'],['Fn','functionTextPosition'],['Tech','technicalDataPosition']] as const) {
+        document.getElementById(`quick${key}FontSize`)?.addEventListener('input', e => {
+          const input = e.target as HTMLInputElement;
+          if (input.value && input.validity.valid && Number(input.value)>0) { comp[property] = {...comp[property],fontSize:Number(input.value)*units}; this.notifyChange(); }
+        });
+      }
+      for (const [key,property] of [['CrossRef','crossRefFontSize'],['Pin','pinLabelFontSize']] as const) {
+        document.getElementById(`quick${key}FontSize`)?.addEventListener('input', e => {
+          const input = e.target as HTMLInputElement;
+          if (input.value && input.validity.valid && Number(input.value)>0) { comp[property]=Number(input.value)*units;this.notifyChange(); }
+        });
+      }
       document.getElementById('propDeviceTag')?.addEventListener('input', (e) => {
         comp.deviceTag = (e.target as HTMLInputElement).value;
         this.notifyChange();

@@ -1,3 +1,4 @@
+import { cableDrawing } from '../model/CableDefinition';
 import { defaultPlotFrame, frameTextCell, frameTextValue, fitFrameText } from '../model/PlotFrame';
 import { interruptionLabelPosition, isInterruptionSymbol } from '../model/ConnectionSymbols';
 import { rotatedLocalPoint } from '../model/SymbolGeometry';
@@ -108,6 +109,7 @@ export class PdfExporter {
 
       // Render Components & Interactive Cross-Reference Links
       this.renderComponents(doc, page, project, pageWidthMm, pageHeightMm, options, pageNumberToPdfPageIndex);
+      for (const cable of page.cables ?? []) this.renderImportedGraphics(doc, cableDrawing(cable,page,project),pageWidthMm/page.plotFrame.width,pageHeightMm/page.plotFrame.height,options.colorMode);
 
       // Render Free Texts & Annotations
       this.renderTexts(doc, page, pageWidthMm, pageHeightMm, options.colorMode);
@@ -370,7 +372,7 @@ export class PdfExporter {
           const px = comp.x + sym.width / 2 + dx * Math.cos(a) - dy * Math.sin(a);
           const py = comp.y + sym.height / 2 + dx * Math.sin(a) + dy * Math.cos(a);
           doc.setFont('helvetica', 'normal');
-          doc.setFontSize(label.fontSize * sy * 72 / 25.4);
+          doc.setFontSize((comp.pinLabelFontSize ?? label.fontSize) * sy * 72 / 25.4);
           doc.setTextColor(0, 0, 0);
           doc.text(comp.pins[pin.id]?.customLabel ?? pin.name, px * sx, py * sy,
             { align: label.alignment === 'middle' ? 'center' : label.alignment === 'end' ? 'right' : 'left', angle: -(label.rotation ?? 0) });
@@ -383,7 +385,7 @@ export class PdfExporter {
           doc.circle(px, py, 0.4, 'FD');
 
           doc.setFont('courier', 'normal');
-          doc.setFontSize(4.5);
+          doc.setFontSize((comp.pinLabelFontSize ?? 6.5) * sy * 72 / 25.4);
           doc.setTextColor(80, 80, 80);
           const ty = pin.direction === 'top' ? py - 1.0 : py + 2.0;
           doc.text(comp.pins[pin.id]?.customLabel ?? pin.name, px, ty, { align: 'center' });
@@ -395,7 +397,7 @@ export class PdfExporter {
       if (isInterruptionSymbol(sym) && (isConnection || arrowPos)) {
         const local = arrowPos!;
         const point = rotatedLocalPoint(local, sym, comp.rotation);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize((sym.source ? computeFunctionTextPosition(comp, sym).fontSize : 8.5) * sy * 72 / 25.4);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize((sym.source ? computeFunctionTextPosition(comp, sym).fontSize : (comp.functionTextPosition?.fontSize ?? 8.5)) * sy * 72 / 25.4);
         doc.setTextColor(0, 0, 0);
         if (!sym.source || computeFunctionTextPosition(comp, sym).visible) doc.text(comp.functionText || comp.bmk, (comp.x + point.x) * sx, (comp.y + point.y) * sy,
           { align: local.anchor === 'middle' ? 'center' : local.anchor === 'end' ? 'right' : 'left' });
@@ -419,14 +421,14 @@ export class PdfExporter {
         // Terminal: draw terminal designation beside circle and BMK above
         const termNum = comp.deviceTag || comp.technicalCharacteristics || comp.functionText || '1';
         doc.setFont('courier', 'bold');
-        doc.setFontSize(5.5);
+        doc.setFontSize((comp.pinLabelFontSize ?? 7.5) * sy * 72 / 25.4);
         doc.setTextColor(50, 50, 50);
         const anchor = rotatedLocalPoint({x:sym.width+2,y:sym.height/2+3},sym,comp.rotation);
         doc.text(termNum, (comp.x+anchor.x)*sx, (comp.y+anchor.y)*sy);
 
         if (comp.bmk && !comp.bmk.startsWith('comp_')) {
           doc.setFont('helvetica', 'bold');
-          doc.setFontSize(6.5);
+          doc.setFontSize((comp.bmkPosition?.fontSize ?? 7.5) * sy * 72 / 25.4);
           doc.setTextColor(options.colorMode === 'color' ? 180 : 0, options.colorMode === 'color' ? 120 : 0, 0);
           const anchor = rotatedLocalPoint({x:sym.width/2,y:-4},sym,comp.rotation);
           doc.text(comp.bmk, (comp.x+anchor.x)*sx, (comp.y+anchor.y)*sy, { align: 'center' });
@@ -455,7 +457,7 @@ export class PdfExporter {
         const crPoint = rotatedLocalPoint({ x: arrowPos?.referenceX ?? sym.width / 2, y: arrowPos ? arrowPos.referenceY : sym.height + 24 }, sym, comp.rotation);
         const crX = (comp.x + crPoint.x) * sx, crY = (comp.y + crPoint.y) * sy;
         doc.setFont('courier', 'bold');
-        doc.setFontSize(6);
+        doc.setFontSize((comp.crossRefFontSize ?? 8) * sy * 72 / 25.4);
         doc.setTextColor(options.colorMode === 'color' ? 200 : 50, 50, 0);
         doc.text(comp.crossRef, crX, crY, { align: arrowPos?.anchor === 'end' ? 'right' : arrowPos?.anchor === 'start' ? 'left' : 'center' });
 

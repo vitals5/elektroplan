@@ -17,7 +17,7 @@ export class SymbolSelectionDialog {
 
   constructor(callbacks: SymbolSelectionCallbacks, private kind: 'elements' | 'connections' = 'elements') {
     this.callbacks = callbacks;
-    this.selectedSymbolId = getSymbolDefinitions().find(s => isConnectionSymbol(s) === (kind === 'connections'))?.id ?? '';
+    this.selectedSymbolId = getSymbolDefinitions().find(s => !s.annotationKind && isConnectionSymbol(s) === (kind === 'connections'))?.id ?? '';
   }
 
   public show(): void {
@@ -188,6 +188,7 @@ export class SymbolSelectionDialog {
 
   private getFilteredSymbols(): SymbolDefinition[] {
     return getSymbolDefinitions().filter(s => {
+      if (s.annotationKind) return false;
       if (isConnectionSymbol(s) !== (this.kind === 'connections')) return false;
       const matchCat = this.selectedCategory === 'all' || this.kind === 'connections' && connectionFamily(s) === this.selectedCategory || s.category === this.selectedCategory
         || (this.selectedCategory === 'project' && !!s.source);

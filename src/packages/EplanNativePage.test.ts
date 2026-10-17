@@ -227,3 +227,21 @@ assert(project.plotFrameTemplate?.graphics.some(g => g.kind === 'line' && g.y1 =
 assert(project.plotFrameTemplate?.texts.some(t => t.property === 11011 && t.x === 231 && t.y === 285));
 assert(project.plotFrameTemplate?.texts.some(t => t.property === 1001 && t.index === 20134));
 console.log('✓ Embedded FN1_001 norm sheet, full-width footer and native field bindings');
+
+const cables=project.pages.flatMap(p=>p.cables ?? []);
+assert.equal(cables.length,81);
+assert.equal(cables.reduce((n,c)=>n+c.cores.length,0),418);
+const heating=project.pages.find(p=>p.title==='Unterverteiler Heizungsanlage')!;
+const heatingCable=heating.cables!.find(c=>c.bmk==='-W2')!;
+assert.equal(heatingCable.cableType,'NYM-J');assert.equal(heatingCable.coreCount,5);assert.equal(heatingCable.crossSection,'2,5');
+assert.equal(heatingCable.cores.length,5);assert(heatingCable.cores.every(c=>c.wireIds?.length));
+assert(!project.pages.some(p=>p.components.some(c=>symbol(c).annotationKind==='cable')));
+assert.equal(living.cables!.length,3);assert.equal(living.wires.length,193);
+assert(page.components.some(c=>c.source?.objectType===59 && c.source?.objectId===176),'An unassigned connection-definition point must not be dropped');
+assert(cables.every(c=>project.symbolLibrary!.some(s=>s.id===c.symbolId)), 'Cable placements retain their embedded library resource');
+console.log('✓ 81 native cable definitions, 418 associated core points, cable metadata and untouched physical/electrical graphs');
+
+assert(heatingCable.cores.some(c=>c.color==='BU'));
+assert(cables.every(c=>c.cores.every(core=>!/[\x00-\x1f]/.test(core.designation ?? ''))), 'Label-property references cannot masquerade as string values');
+
+assert(cables.every(c=>c.cores.every(core=>project.symbolLibrary!.some(s=>s.id===core.symbolId))), 'Cable core annotations retain their source library master');

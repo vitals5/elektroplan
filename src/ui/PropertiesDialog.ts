@@ -4,7 +4,7 @@
 import { referenceMarkup } from '../model/CrossReferenceNavigation';
 import { PlacedComponent, Project, TextFormatConfig } from '../model/types';
 import { escapeSvg } from '../model/ImportedDrawing';
-import { getSymbolForComponent } from '../model/symbols';
+import { getSymbolForComponent, getDrawingUnitsPerMm } from '../model/symbols';
 import { MANUFACTURER_PARTS } from '../model/PartCatalogue';
 import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
 import { componentInsertionPoint, positionAtInsertionPoint } from '../model/SymbolGeometry';
@@ -361,6 +361,13 @@ export class PropertiesDialog {
             </div>
           </div>
 
+          <div style="background:#1f242e;border:1px solid #3e4656;border-radius:6px;padding:12px">
+            <strong>Schriftgrößen (mm)</strong>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">
+              ${this.fontSizeFields()}
+            </div>
+          </div>
+
           <!-- Section 4: Live Interactive Preview -->
           <div style="background: #181d26; border: 1px solid #3e4656; border-radius: 6px; padding: 12px;">
             <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: #63b3ed; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
@@ -468,6 +475,19 @@ export class PropertiesDialog {
     return '';
   }
 
+  private fontSizeFields(): string {
+    const sym = getSymbolForComponent(this.component, this.project);
+    if (!sym) return '';
+    const units = getDrawingUnitsPerMm(this.project);
+    return [
+      ['Bmk', 'BMK', computeBmkPosition(this.component, sym).fontSize],
+      ['Fn', 'Funktionstext', computeFunctionTextPosition(this.component, sym).fontSize],
+      ['Tech', 'Technische Daten', computeTechnicalDataPosition(this.component, sym).fontSize],
+      ['CrossRef', 'Querverweise', this.component.crossRefFontSize ?? 8],
+      ['Pin', 'Anschlussbezeichnungen', this.component.pinLabelFontSize ?? sym.pins.find(p=>p.labelPosition)?.labelPosition?.fontSize ?? 6.5]
+    ].map(([key,label,size]) => `<label class="form-label">${label}<input class="form-input" type="number" min="0.1" max="20" step="0.1" id="prop${key}FontSize" value="${Number((Number(size)/units).toFixed(4))}"></label>`).join('');
+  }
+
   private generatePreviewSvg(): string {
     const sym = getSymbolForComponent(this.component, this.project);
     if (!sym) return '<span style="color:#a0aec0;">Kein Symbol gefunden</span>';
@@ -524,6 +544,7 @@ export class PropertiesDialog {
         ${bmkSvg}
         ${fnSvg}
         ${techSvg}
+        ${this.component.crossRef ? `<text x="${sym.width/2}" y="${sym.height+38}" text-anchor="middle" font-size="${this.component.crossRefFontSize ?? 8}" fill="#f6ad55">${escapeSvg(this.component.crossRef)}</text>` : ''}
       </svg>
     `;
   }
@@ -737,6 +758,17 @@ export class PropertiesDialog {
       }
       this.component.pins[pinId].customLabel = val;
     });
+
+    const units = getDrawingUnitsPerMm(this.project);
+    for (const [key, property] of [['Bmk','bmkPosition'],['Fn','functionTextPosition'],['Tech','technicalDataPosition']] as const) {
+      const input = modal.querySelector(`#prop${key}FontSize`) as HTMLInputElement | null;
+      if (input && input.value !== '' && input.validity.valid && Number(input.value)>0)
+        this.component[property] = { ...this.component[property], fontSize: Number(input.value)*units };
+    }
+    for (const [key, property] of [['CrossRef','crossRefFontSize'],['Pin','pinLabelFontSize']] as const) {
+      const input = modal.querySelector(`#prop${key}FontSize`) as HTMLInputElement | null;
+      if (input && input.value !== '' && input.validity.valid && Number(input.value)>0) this.component[property] = Number(input.value)*units;
+    }
 
     // Display / Label positioning tab fields
     const bmkPreset = modal.querySelector('#propBmkPreset') as HTMLSelectElement;

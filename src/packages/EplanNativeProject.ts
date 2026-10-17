@@ -1,3 +1,4 @@
+import { nativeCableKind, readEplanCables, bindImportedCableCores } from './EplanCables';
 import JSZip from 'jszip';
 import { readEplanPlotFrame } from './EplanPlotFrame';
 import { PlotFrameTemplate } from '../model/PlotFrame';
@@ -57,6 +58,7 @@ export class EplanNativeProject {
 
   finalize(project: Project): void {
     if (this.plotFrameTemplate) project.plotFrameTemplate = this.plotFrameTemplate;
+    for (const page of project.pages) bindImportedCableCores(page,project);
     const components = new Map(project.pages.flatMap(p => p.components).filter(c => c.source)
       .map(c => [`${c.source!.objectType}:${c.source!.objectId}`, c]));
     project.logicalConnections = [];
@@ -183,7 +185,10 @@ export class EplanNativeProject {
       components.push(comp); objects.set(identity(r), comp);
       return comp;
     };
+    const cableIds=new Set(records.filter(r=>nativeCableKind(r,this.library)==='cable').map(r=>r.id));
     for (const r of records) {
+      const annotation=nativeCableKind(r,this.library);
+      if (annotation==='cable' || annotation==='cable_core' && r.number(0xee67)===17 && cableIds.has(r.number(0xee67,4,4)!)) continue;
       if (r.symbol !== undefined) {
         const entry = this.library.resolve(r);
         if (!entry || !r.position) {
@@ -291,7 +296,8 @@ export class EplanNativeProject {
         : c.symbolId.startsWith('eplan:annotation:') ? 3 : 2;
     };
     components.sort((a, b) => drawingOrder(a) - drawingOrder(b));
-    page.components = components; page.wires = wires; page.texts = []; page.boxes = [];
+    page.components = components; page.wires = wires;
+    page.cables = readEplanCables(records,page,this.library,diagnostics); page.texts = []; page.boxes = [];
     page.plotFrame.height = 297 * SCALE;
     page.grid = { spacing: 4 * SCALE, origin: { x: 0, y: page.plotFrame.height } };
     page.connectionMode = 'explicit';

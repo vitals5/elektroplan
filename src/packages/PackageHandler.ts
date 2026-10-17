@@ -397,6 +397,7 @@ export class PackageHandler {
       || project.pages.some(page => !page || typeof page.id !== 'string'
         || !Array.isArray(page.components) || !Array.isArray(page.wires)
         || !page.plotFrame || typeof page.plotFrame !== 'object'
+        || (page.cables !== undefined && (!Array.isArray(page.cables) || page.cables.some(cable => !cable || typeof cable.id !== 'string' || typeof cable.bmk !== 'string' || typeof cable.cableType !== 'string' || typeof cable.crossSection !== 'string' || !Array.isArray(cable.cores) || cable.cores.some(core=>!core || typeof core.id!=='string' || !Number.isFinite(core.t)) || !Number.isFinite(cable.start?.x) || !Number.isFinite(cable.start?.y) || !Number.isFinite(cable.end?.x) || !Number.isFinite(cable.end?.y))))
         || page.components.some(component => !component || typeof component.id !== 'string'
           || typeof component.symbolId !== 'string' || !Number.isFinite(component.x) || !Number.isFinite(component.y)))) {
       throw new Error(`${source} enthält keine gültige Projektstruktur.`);

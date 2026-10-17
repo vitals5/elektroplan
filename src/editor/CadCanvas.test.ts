@@ -17,7 +17,7 @@ const symbol: SymbolDefinition = {
 };
 const component: PlacedComponent = { id: 'placed', symbolId: symbol.id, bmk: '-Q1', functionText: 'Hauptschalter', technicalCharacteristics: '63 A',
   x: 100, y: 150, rotation: 90, pins: { '1': { customLabel: 'L1' } }, bmkPosition: { preset: 'left', offsetX: 3 } };
-const page = { id: 'p', pageNumber: '2', title: 'Einspeisung', components: [component], wires: [],
+const page = { id: 'p', pageNumber: '2', title: 'Einspeisung',higherLevel:'',location:'', components: [component], wires: [],
   plotFrame: { width: 1000, height: 700 }, importedDrawing: { source: 'EPLAN_P8', graphics: [], diagnostics: [] } } as unknown as Page;
 const project = { pages: [page], symbolLibrary: [symbol] } as Project;
 const canvas = Object.assign(Object.create(CadCanvas.prototype), { activePage: page, project, selectedComponentId: component.id });
@@ -44,7 +44,7 @@ component.functionText = 'Geändert';
 const scene: any = { activePage: page, svg: { innerHTML: '' }, scale: 1, panX: 0, panY: 0,
   getEffectiveGridSize: () => 8, renderPlotFrame: () => '<g id="normal-frame"/>',
 };
-for (const name of ['renderWires', 'renderComponents', 'renderImages', 'renderBoxes', 'renderTexts', 'renderAutoconnectPreview', 'renderInteractiveWire', 'renderHoveredPin', 'renderGhostSymbol']) scene[name] = () => '';
+for (const name of ['renderCables', 'renderWires', 'renderComponents', 'renderImages', 'renderBoxes', 'renderTexts', 'renderAutoconnectPreview', 'renderInteractiveWire', 'renderHoveredPin', 'renderGhostSymbol']) scene[name] = () => '';
 CadCanvas.prototype.render.call(scene);
 assert.match(scene.svg.innerHTML, /fill="#1a202c"/);
 assert.match(scene.svg.innerHTML, /fill="url\(#cadGrid\)"/);
@@ -118,3 +118,13 @@ for (const rotation of [90,180,270] as const) {
   }
 }
 console.log('✓ Built-in PDF contours remain attached to rotated electrical pins');
+
+component.crossRef='/2.4';component.crossRefFontSize=3;component.pinLabelFontSize=4;
+component.bmkPosition={...component.bmkPosition,fontSize:5};
+const sizes: {text:string;size:number}[]=[];let currentSize=0;
+pdf.setFontSize=(size:number)=>{currentSize=size;};pdf.text=(text:string)=>sizes.push({text,size:currentSize});
+(PdfExporter as any).renderComponents(pdf,page,project,420,297,{colorMode:'color'},new Map());
+assert(Math.abs(sizes.find(t=>t.text==='-Q99')!.size-5*297/700*72/25.4)<1e-7);
+assert(Math.abs(sizes.find(t=>t.text==='/2.4')!.size-3*297/700*72/25.4)<1e-7);
+assert.match(canvas.renderComponents(),/font-size="3"/);
+console.log('✓ Individual label and cross-reference sizes are reflected in SVG and physical PDF fonts');

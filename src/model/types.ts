@@ -43,6 +43,7 @@ export interface SymbolDefinition {
   importedGraphics?: DrawingPrimitive[];
   /** A library routing glyph replaces the wire strokes within its own bounds. */
   connectionGraphic?: boolean;
+  annotationKind?: 'cable' | 'cable_core';
   // SVG drawing paths or markup relative to (0, 0)
   svgContent: string;
   description: string;
@@ -89,6 +90,8 @@ export interface PlacedComponent {
       customLabel?: string;
     };
   };
+  crossRefFontSize?: number;
+  pinLabelFontSize?: number;
   crossRef?: string;            // Calculated cross-reference, e.g. "/1.4"
   // Label positioning & display properties
   bmkPosition?: TextFormatConfig;
@@ -113,6 +116,27 @@ export interface Wire {
   lineWidth?: number;           // drawing units, including imported layer defaults
   waypoints?: { x: number; y: number }[];
   isAutoconnect?: boolean;
+}
+
+export interface CableDefinition {
+  id: string;
+  symbolId?: string;
+  source?: PlacedComponent['source'];
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  bmk: string;
+  cableType: string;
+  coreCount?: number;
+  crossSection: string;
+  description?: string;
+  fontSize?: number;
+  bmkFontSize?: number;
+  coreFontSize?: number;
+  labelOffset?: { x: number; y: number };
+  showLabel?: boolean;
+  showCoreLabels?: boolean;
+  markStyle?: 'slash' | 'none';
+  cores: { id: string; symbolId?: string; t: number; color?: string; designation?: string; crossSection?: string; wireIds?: string[]; source?: PlacedComponent['source'] }[];
 }
 
 export interface TitleBlock {
@@ -168,6 +192,7 @@ export interface Page {
   components: PlacedComponent[];
   grid?: { spacing: number; origin: { x: number; y: number } };
   wires: Wire[];
+  cables?: CableDefinition[];
   texts?: PageText[];
   boxes?: PageBox[];
   images?: PageImage[];

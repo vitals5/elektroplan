@@ -30,6 +30,8 @@ export function positionAtInsertionPoint(point: Point, symbol: SymbolDefinition,
 export function scalePlacedComponent(component: PlacedComponent, factor: number): PlacedComponent {
   const copy: PlacedComponent = JSON.parse(JSON.stringify(component));
   copy.x *= factor; copy.y *= factor;
+  if (copy.crossRefFontSize !== undefined) copy.crossRefFontSize *= factor;
+  if (copy.pinLabelFontSize !== undefined) copy.pinLabelFontSize *= factor;
   for (const key of ['bmkPosition', 'functionTextPosition', 'technicalDataPosition'] as const) {
     const config = copy[key];
     if (!config) continue;

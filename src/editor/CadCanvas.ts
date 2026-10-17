@@ -1,3 +1,4 @@
+import { cableSvg, cableCrossings } from '../model/CableDefinition';
 // src/editor/CadCanvas.ts
 // Interactive SVG-based CAD drawing canvas for electrical schematics
 
@@ -7,7 +8,7 @@ import { plotFrameSvg } from '../model/PlotFrame';
 import { wirePolyline, wirePinDirection } from '../model/WireRouting';
 import { connectionCutouts, connectionGraphicWires, isConnectionGraphic, supersededConnectionGraphics, visibleWireSegments } from '../model/ConnectionGraphics';
 import { drawingToSvg, escapeSvg, uprightSymbolSvg } from '../model/ImportedDrawing';
-import { Project, Page, PlacedComponent, Wire } from '../model/types';
+import { Project, Page, PlacedComponent, Wire, CableDefinition } from '../model/types';
 import { getSymbolById, getSymbolForComponent, getDrawingUnitsPerMm } from '../model/symbols';
 import { referenceTargets, referenceMarkup, ReferenceTarget } from '../model/CrossReferenceNavigation';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
@@ -18,10 +19,11 @@ import { componentInsertionPoint, positionAtInsertionPoint } from '../model/Symb
 import { gridForPage, gridStep, snapCoordinate, snapSymbolPosition, GridResolution } from '../model/DrawingGrid';
 export type { GridResolution } from '../model/DrawingGrid';
 
-export type EditorMode = 'select' | 'wire' | 'place_symbol' | 'place_macro' | 'pan';
+export type EditorMode = 'select' | 'wire' | 'place_symbol' | 'place_macro' | 'pan' | 'cable';
 
 export interface CadCanvasCallbacks {
   onSelectComponent: (component: PlacedComponent | null) => void;
+  onSelectCable?: (cable: CableDefinition | null) => void;
   onSelectWire: (wire: Wire | null) => void;
   onOpenProperties?: (component: PlacedComponent) => void;
   onOpenSymbolSelection?: () => void;
@@ -58,6 +60,9 @@ export class CadCanvas {
   public ghostRotation: 0 | 90 | 180 | 270 = 0;
   public selectedComponentId: string | null = null;
   public selectedWireId: string | null = null;
+  public selectedCableId: string | null = null;
+  private cableStart?: { x: number; y: number };
+  private cableDrag?: { cable: CableDefinition; start: {x:number;y:number}; end: {x:number;y:number}; origin: {x:number;y:number}; moved: boolean };
   public hoveredPin: { componentId: string; pinId: string } | null = null;
 
   // Dragging components
@@ -109,6 +114,8 @@ export class CadCanvas {
       this.project.activePageId = pageId;
       this.selectedComponentId = null;
       this.selectedWireId = null;
+      this.selectedCableId = null; this.cableDrag = undefined; this.cableStart = undefined;
+      this.callbacks.onSelectCable?.(null);
       this.callbacks.onSelectComponent(null);
       this.callbacks.onSelectWire(null);
       if (this.autoconnectEnabled) {
@@ -127,6 +134,8 @@ export class CadCanvas {
     this.activePage = this.getOrCreateActivePage();
     this.selectedComponentId = null;
     this.selectedWireId = null;
+    this.selectedCableId = null; this.cableDrag = undefined; this.cableStart = undefined;
+    this.callbacks.onSelectCable?.(null);
     if (recompute) {
       CrossReferenceEngine.updateProjectCrossReferences(this.project);
       if (this.autoconnectEnabled) AutoconnectEngine.updatePageAutoconnections(this.activePage);
@@ -175,6 +184,7 @@ export class CadCanvas {
 
   public setMode(mode: EditorMode): void {
     this.mode = mode;
+    this.cableStart = undefined;
     this.wireStart = null;
     this.render();
   }
@@ -250,6 +260,12 @@ export class CadCanvas {
   }
 
   public rotateSelected(delta: number = 90): void {
+    const cable = this.activePage.cables?.find(c=>c.id===this.selectedCableId);
+    if (cable) {
+      const cx=cable.start.x,cy=cable.start.y,a=delta*Math.PI/180;
+      const rotate=(p:{x:number;y:number})=>({x:cx+(p.x-cx)*Math.cos(a)-(p.y-cy)*Math.sin(a),y:cy+(p.x-cx)*Math.sin(a)+(p.y-cy)*Math.cos(a)});
+      cable.start=rotate(cable.start);cable.end=rotate(cable.end);this.notifyModified();this.render();return;
+    }
     if (!this.selectedComponentId) return;
     const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
     if (comp) {
@@ -267,6 +283,13 @@ export class CadCanvas {
   }
 
   public duplicateSelected(): void {
+    const cable = this.activePage.cables?.find(c=>c.id===this.selectedCableId);
+    if (cable) {
+      const copy: CableDefinition=JSON.parse(JSON.stringify(cable)); copy.id='cable_'+crypto.randomUUID();delete copy.source;
+      const step=this.activePage.grid?.spacing ?? this.gridSize;
+      copy.start.x+=step;copy.start.y+=step;copy.end.x+=step;copy.end.y+=step;
+      this.activePage.cables!.push(copy);this.selectCable(copy);this.notifyModified();this.render();return;
+    }
     if (!this.selectedComponentId) return;
     const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
     if (!comp) return;
@@ -297,6 +320,10 @@ export class CadCanvas {
   }
 
   public deleteSelected(): void {
+    if (this.selectedCableId) {
+      this.activePage.cables = (this.activePage.cables ?? []).filter(c=>c.id!==this.selectedCableId);
+      this.selectedCableId=null; this.callbacks.onSelectCable?.(null);this.notifyModified();this.render();return;
+    }
     if (this.selectedComponentId) {
       this.activePage.components = this.activePage.components.filter(c => c.id !== this.selectedComponentId);
       // Remove attached wires
@@ -472,6 +499,7 @@ export class CadCanvas {
         }
       } else if (e.key === 'Escape') {
         this.mode = 'select';
+        this.cableStart = undefined;
         this.wireStart = null;
         this.activeSymbolToPlace = null;
         this.render();
@@ -503,7 +531,7 @@ export class CadCanvas {
   }
 
   private onDoubleClick(e: MouseEvent): void {
-    if ((e.target as Element)?.closest?.('[data-crossref-source]')) return;
+    if ((e.target as Element)?.closest?.('[data-crossref-source],[data-cable-id]')) return;
     const world = this.screenToWorld(e.clientX, e.clientY);
     const comp = this.findComponentAt(world.x, world.y);
     if (comp) {
@@ -702,6 +730,15 @@ export class CadCanvas {
       return;
     }
 
+    if (this.mode === 'cable') { this.placeCablePoint(world); return; }
+    const clickedCable = this.cableFromEvent(e);
+    if (clickedCable) {
+      this.selectCable(clickedCable);
+      this.cableDrag={cable:clickedCable,start:{...clickedCable.start},end:{...clickedCable.end},origin:world,moved:false};
+      return;
+    }
+    this.selectedCableId=null;this.callbacks.onSelectCable?.(null);
+
     // Check if clicked on a pin only in wire mode
     if (this.mode === 'wire' || this.wireStart !== null) {
       const clickedPin = this.findPinAt(world.x, world.y);
@@ -769,6 +806,8 @@ export class CadCanvas {
     const world = this.screenToWorld(e.clientX, e.clientY);
     this.currentMousePos = world;
 
+    if (this.cableDrag) { this.moveCable(world);return; }
+
     if (this.isDraggingComponent && this.selectedComponentId) {
       const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
       if (comp) {
@@ -795,12 +834,13 @@ export class CadCanvas {
       this.hoveredPin = pin;
     }
 
-    if (this.mode === 'place_symbol' || this.mode === 'place_macro' || this.wireStart || pinChanged) {
+    if (this.mode === 'cable' || this.mode === 'place_symbol' || this.mode === 'place_macro' || this.wireStart || pinChanged) {
       this.render();
     }
   }
 
   private onMouseUp(): void {
+    if (this.cableDrag) { const moved=this.cableDrag.moved;this.cableDrag=undefined;if(moved)this.notifyModified();this.render(); }
     if (this.isPanning) {
       this.isPanning = false;
     }
@@ -854,6 +894,11 @@ export class CadCanvas {
       this.referenceMarker = undefined;
       const touch = e.touches[0];
       const world = this.screenToWorld(touch.clientX, touch.clientY);
+
+      if (this.mode === 'cable') { e.preventDefault();this.placeCablePoint(world);return; }
+      const cable=this.cableFromEvent(e);
+      if(cable){e.preventDefault();this.selectCable(cable);this.cableDrag={cable,start:{...cable.start},end:{...cable.end},origin:world,moved:false};return;}
+      this.selectedCableId=null;this.callbacks.onSelectCable?.(null);
 
       // Symbol placing
       if (this.mode === 'place_symbol' && this.activeSymbolToPlace) {
@@ -974,7 +1019,9 @@ export class CadCanvas {
         return;
       }
 
-      if (this.touchMode === 'drag' && this.isDraggingComponent && this.selectedComponentId) {
+      if(this.cableDrag && e.touches.length===1){e.preventDefault();const t=e.touches[0];this.moveCable(this.screenToWorld(t.clientX,t.clientY));return;}
+
+    if (this.touchMode === 'drag' && this.isDraggingComponent && this.selectedComponentId) {
         e.preventDefault();
         const world = this.screenToWorld(touch.clientX, touch.clientY);
         const comp = this.activePage.components.find(c => c.id === this.selectedComponentId);
@@ -997,6 +1044,7 @@ export class CadCanvas {
   }
 
   private onTouchEnd(e: TouchEvent): void {
+    if(this.cableDrag && e.touches.length===0)this.onMouseUp();
     if (this.touchMode === 'pinch' && e.touches.length < 2) {
       this.touchMode = 'none';
     }
@@ -1021,6 +1069,10 @@ export class CadCanvas {
   }
 
   private updateSelectionClasses(): void {
+    this.svg.querySelectorAll('.cable-definition').forEach(el=>{
+      el.classList.toggle('selected',el.id===this.selectedCableId);
+      el.setAttribute('color',el.id===this.selectedCableId?'#63b3ed':'#e2e8f0');
+    });
     this.svg.querySelectorAll('.component').forEach(el => {
       const isSel = el.id === this.selectedComponentId;
       el.classList.toggle('selected', isSel);
@@ -1178,6 +1230,8 @@ export class CadCanvas {
           ${this.referenceMarker ? `<circle class="reference-marker" cx="${this.referenceMarker.x}" cy="${this.referenceMarker.y}" r="14" fill="none" stroke="#f6ad55" stroke-width="2" pointer-events="none"/>` : ''}
         </g>
 
+        <g id="cablesLayer">${this.renderCables()}</g>
+
         <!-- Embedded Images & Diagrams -->
         <g id="imagesLayer">
           ${this.renderImages()}
@@ -1215,6 +1269,41 @@ export class CadCanvas {
     return plotFrameSvg(this.activePage, this.project);
   }
 
+  private cableFromEvent(e: Event): CableDefinition | undefined {
+    const id=(e.target as Element)?.closest?.('[data-cable-id]')?.getAttribute('data-cable-id');
+    return this.activePage.cables?.find(c=>c.id===id);
+  }
+
+  public selectCable(cable: CableDefinition): void {
+    this.selectedComponentId=null;this.selectedWireId=null;
+    this.callbacks.onSelectComponent(null);this.callbacks.onSelectWire(null);
+    this.selectedCableId=cable.id;this.callbacks.onSelectCable?.(cable);this.updateSelectionClasses();
+  }
+
+  private placeCablePoint(world:{x:number;y:number}):void {
+    const point={x:this.snap(world.x,false,'x'),y:this.snap(world.y,false,'y')};
+    if(!this.cableStart){this.cableStart=point;this.render();return;}
+    const start=this.cableStart,dx=point.x-start.x,dy=point.y-start.y;
+    const end=Math.abs(dx)>=Math.abs(dy)?{x:point.x,y:start.y}:{x:start.x,y:point.y};
+    if(Math.hypot(end.x-start.x,end.y-start.y)<1e-6)return;
+    const maxNumber=Math.max(0,...this.project.pages.flatMap(p=>p.cables ?? []).map(c=>Number(c.bmk.match(/^-W(\d+)$/)?.[1])||0));
+    const cable:CableDefinition={id:'cable_'+crypto.randomUUID(),start:{...start},end,bmk:'-W'+(maxNumber+1),cableType:'',crossSection:'',markStyle:'slash',cores:[]};
+    cable.cores=cableCrossings(cable,this.activePage,this.project).map((p,i)=>({id:cable.id+'_'+i,t:p.t,wireIds:p.wireIds}));cable.coreCount=cable.cores.length || undefined;
+    (this.activePage.cables ??=[]).push(cable);this.cableStart=undefined;this.mode='select';this.selectCable(cable);this.notifyModified();this.render();
+  }
+
+  private moveCable(world:{x:number;y:number}):void {
+    const drag=this.cableDrag!;
+    const dx=this.snap(drag.start.x+world.x-drag.origin.x,false,'x')-drag.start.x,dy=this.snap(drag.start.y+world.y-drag.origin.y,false,'y')-drag.start.y;
+    drag.cable.start={x:drag.start.x+dx,y:drag.start.y+dy};drag.cable.end={x:drag.end.x+dx,y:drag.end.y+dy};drag.moved=dx!==0||dy!==0;
+    this.svg.getElementById(drag.cable.id)?.setAttribute('transform',`translate(${dx},${dy})`);
+  }
+
+  private renderCables():string {
+    const preview=this.cableStart ? `<line x1="${this.cableStart.x}" y1="${this.cableStart.y}" x2="${Math.abs(this.currentMousePos.x-this.cableStart.x)>=Math.abs(this.currentMousePos.y-this.cableStart.y)?this.currentMousePos.x:this.cableStart.x}" y2="${Math.abs(this.currentMousePos.x-this.cableStart.x)>=Math.abs(this.currentMousePos.y-this.cableStart.y)?this.cableStart.y:this.currentMousePos.y}" stroke="#63b3ed" stroke-dasharray="4 3" pointer-events="none"/>` : '';
+    return (this.activePage.cables ?? []).map(c=>cableSvg(c,this.activePage,this.project,c.id===this.selectedCableId)).join('')+preview;
+  }
+
   private renderComponents(): string {
     const superseded = supersededConnectionGraphics(this.activePage, this.project);
     const graphicWires = connectionGraphicWires(this.activePage, this.project);
@@ -1248,7 +1337,7 @@ export class CadCanvas {
       if (comp.crossRef && (!isConn || isInterruptionSymbol(sym))) {
         const crossRefY = arrowPos ? arrowPos.referenceY : sym.height + (hasTech ? 38 : 24);
         const crossRefX = arrowPos?.referenceX ?? sym.width / 2;
-        crossRefDisplay = `<text ${labelTransform(crossRefX, crossRefY, comp.rotation)} x="${crossRefX}" y="${crossRefY}" font-size="8" font-family="monospace" fill="#f6ad55" text-anchor="${arrowPos?.anchor ?? 'middle'}">${referenceMarkup(this.project, comp, true)}</text>`;
+        crossRefDisplay = `<text ${labelTransform(crossRefX, crossRefY, comp.rotation)} x="${crossRefX}" y="${crossRefY}" font-size="${comp.crossRefFontSize ?? 8}" font-family="monospace" fill="#f6ad55" text-anchor="${arrowPos?.anchor ?? 'middle'}">${referenceMarkup(this.project, comp, true)}</text>`;
       }
 
       // Pins render
@@ -1258,7 +1347,7 @@ export class CadCanvas {
           const handle = this.mode === 'wire' || this.wireStart
             ? `<circle class="pin-handle" cx="${pin.x}" cy="${pin.y}" r="3" fill="#2d3748" stroke="#63b3ed" stroke-width="1.2"/>` : '';
           const text = label && label.visible !== false
-            ? `<text class="source-pin-label" x="${label.x}" y="${label.y}" font-size="${label.fontSize}" font-family="Tahoma, Arial, sans-serif" fill="#e2e8f0" text-anchor="${label.alignment}" ${labelTransform(label.x, label.y, comp.rotation, label.rotation)}>${escapeSvg(comp.pins[pin.id]?.customLabel ?? pin.name)}</text>` : '';
+            ? `<text class="source-pin-label" x="${label.x}" y="${label.y}" font-size="${comp.pinLabelFontSize ?? label.fontSize}" font-family="Tahoma, Arial, sans-serif" fill="#e2e8f0" text-anchor="${label.alignment}" ${labelTransform(label.x, label.y, comp.rotation, label.rotation)}>${escapeSvg(comp.pins[pin.id]?.customLabel ?? pin.name)}</text>` : '';
           return `<g class="pin">${handle}${text}</g>`;
         }
         if (isConn || isTerminal) {
@@ -1271,7 +1360,7 @@ export class CadCanvas {
         return `
           <g class="pin" transform="translate(${pin.x}, ${pin.y})">
             <circle cx="0" cy="0" r="3" fill="#2d3748" stroke="#63b3ed" stroke-width="1.2"/>
-            <text ${labelTransform(pin.direction === 'top' ? 0 : 5, pin.direction === 'top' ? -4 : 3.5, comp.rotation)} x="${pin.direction === 'top' ? 0 : 5}" y="${pin.direction === 'top' ? -4 : 3.5}" font-size="6.5" font-family="monospace" fill="#a0aec0" text-anchor="${pin.direction === 'top' ? 'middle' : 'start'}">${escapeSvg(comp.pins[pin.id]?.customLabel ?? pin.name)}</text>
+            <text ${labelTransform(pin.direction === 'top' ? 0 : 5, pin.direction === 'top' ? -4 : 3.5, comp.rotation)} x="${pin.direction === 'top' ? 0 : 5}" y="${pin.direction === 'top' ? -4 : 3.5}" font-size="${comp.pinLabelFontSize ?? 6.5}" font-family="monospace" fill="#a0aec0" text-anchor="${pin.direction === 'top' ? 'middle' : 'start'}">${escapeSvg(comp.pins[pin.id]?.customLabel ?? pin.name)}</text>
           </g>
         `;
       }).join('');
@@ -1303,13 +1392,13 @@ export class CadCanvas {
             <!-- Cross Reference -->
           ` : isTerminal ? `
             <!-- Terminal designation and BMK -->
-            <text ${labelTransform(sym.width + 2, sym.height / 2 + 3, comp.rotation)} x="${sym.width + 2}" y="${sym.height / 2 + 3}" font-size="7.5" font-weight="bold" font-family="monospace" fill="#cbd5e0">${comp.deviceTag || comp.technicalCharacteristics || comp.functionText || '1'}</text>
+            <text ${labelTransform(sym.width + 2, sym.height / 2 + 3, comp.rotation)} x="${sym.width + 2}" y="${sym.height / 2 + 3}" font-size="${comp.pinLabelFontSize ?? 7.5}" font-weight="bold" font-family="monospace" fill="#cbd5e0">${comp.deviceTag || comp.technicalCharacteristics || comp.functionText || '1'}</text>
             ${comp.bmk && !comp.bmk.startsWith('comp_') ? `
-              <text ${labelTransform(sym.width / 2, -4, comp.rotation)} x="${sym.width / 2}" y="-4" font-size="7.5" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${escapeSvg(comp.bmk)}</text>
+              <text ${labelTransform(sym.width / 2, -4, comp.rotation)} x="${sym.width / 2}" y="-4" font-size="${comp.bmkPosition?.fontSize ?? 7.5}" font-weight="bold" font-family="monospace" fill="#f6e05e" text-anchor="middle">${escapeSvg(comp.bmk)}</text>
             ` : ''}
           ` : (isInterruptionSymbol(sym) || sym.id === 'potential_rail_source' ? (() => {
             const pos = arrowPos ?? { x: -4, y: sym.height / 2 + 3, anchor: 'end' };
-            return `<text x="${pos.x}" y="${pos.y}" ${labelTransform(pos.x, pos.y, comp.rotation)} font-size="8.5" font-weight="bold" font-family="monospace" fill="#f56565" text-anchor="${pos.anchor}">${escapeSvg(comp.functionText || comp.bmk)}</text>`;
+            return `<text x="${pos.x}" y="${pos.y}" ${labelTransform(pos.x, pos.y, comp.rotation)} font-size="${comp.functionTextPosition?.fontSize ?? 8.5}" font-weight="bold" font-family="monospace" fill="#f56565" text-anchor="${pos.anchor}">${escapeSvg(comp.functionText || comp.bmk)}</text>`;
           })() : '')}
 
           ${crossRefDisplay}

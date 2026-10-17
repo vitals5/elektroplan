@@ -316,6 +316,7 @@ export class EplanSymbolLibrary {
         category: functionClass === 100 || functionClass === 1302 ? 'terminals' : functionClass === 1303 ? 'controls'
           : functionClass === 200 ? 'relays' : library === 'SPECIAL' ? 'connections' : /^F/.test(name) ? 'protection' : /^K/.test(name) ? 'relays'
           : /^X/.test(name) ? 'terminals' : 'controls',
+        annotationKind: library === 'SPECIAL' && number === 4 ? 'cable' : library === 'SPECIAL' && number === 311 ? 'cable_core' : undefined,
         standard: 'DIN EN 60617', defaultBmkPrefix: '', defaultFunctionText: '',
         width: 1, height: 1, unitsPerMm: EPLAN_SCALE, pins: sourcePinLabelPositions(variant.data, pins, this.layers,
           message => this.diagnostics.push(`${library}/${number}:${variantIndex}: ${message}`)), svgContent: '', description: description || `${library}: ${name}`,

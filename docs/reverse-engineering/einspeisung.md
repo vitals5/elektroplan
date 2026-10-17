@@ -291,6 +291,46 @@ Pfeiltasten, Eigenschaftendialog mit 180°, horizontale Textmatrizen, Einstellun
 Undo/Redo und geometrisch begrenzter langer Plankopftext. Die bestehenden 193
 Leiterabschnitte von Wohnzimmer 1 bleiben im PDF-Vektorvergleich erhalten.
 
+## Kabeldefinitionen und Schriftgrößen (17.10.2026)
+
+REA-Abgleich am selben Archiv und PDF: SPECIAL/CABDL 4, Function-Typ 17,
+Funktionsdefinition 400 beschreibt die variable Kabeldefinitionslinie.
+ED5A ist der Einfügepunkt; EB1E/EB1F sind die relativen Endpunkte.
+20040 (4E48) liefert den Kabeltyp, 20042 (4E4A) die Aderzahl und 20043 (4E4B)
+den Querschnitt. Für die Heizungs-Unterverteilung sind W1/W2 NYM-J 5×2,5
+und W3 NYM-J 3×1,5 im Quelldatensatz und PDF nachweisbar.
+SPECIAL/CDPNG 311, Function-Typ 59, referenziert über EE67 (Typ/ID) die
+Kabeldefinition. 791C enthält die Aderfarbe, 791A den Verbindungsquerschnitt.
+
+81 Kabeldefinitionen und 418 zugehörige Aderdefinitionspunkte werden als
+`Page.cables` übernommen. Zehn eigenständige CDPNG-Punkte ohne Kabelreferenz
+bleiben als separate Quellobjekte erhalten; die weiteren 26 Function-Typ-59-
+Objekte verwenden SPECIAL 308. Bibliotheksreferenzen bleiben für die Kabel
+im gemeinsamen Projektbestand. Die Linien sind keine elektrischen Pins und
+verbinden die gekreuzten Leiter nicht miteinander. Geometrische Schnittpunkte
+ordnen die sichtbaren Leiter zu; eine deklarierte Aderzahl wird nicht aufgrund
+zusätzlicher Quellpunkte überschrieben. Punkte ohne sichtbaren Leiter bleiben
+in den Kabeldaten erhalten. Native Definitionslinien werden wie im Referenz-PDF
+ohne zusätzliche Schrägstriche importiert; Schrägstriche sind im Kabeldialog
+wählbar und der Standard für neu gezeichnete Linien.
+
+Der Editor besitzt ein eigenes Kabelwerkzeug mit zwei Rasterpunkten und einen
+Kabel-Eigenschaftsbereich für BMK, Typ, Aderzahl, Querschnitt, Adertexte,
+Schriftgrößen und Positionen. Verschieben, Drehen, Duplizieren, Löschen,
+Rückgängig und JSON/XML-Speichern verwenden das eigenständige Kabelmodell.
+SVG und PDF erzeugen die Kabeldarstellung aus derselben Geometrie.
+
+Schriftgrößen für BMK, Funktionstext, technische Daten, Anschlussbezeichnungen
+und Querverweise werden in mm im Eigenschaftendialog und der Seitenleiste
+bearbeitet. Die Werte bleiben in den Zeichnungseinheiten des Projekts gespeichert
+und werden für den PDF-Export physikalisch skaliert. Die vorhandene Textrotation
+wurde auf Wunsch unverändert gelassen.
+
+Prüfung: echter Archivimport mit 81/418 Objekten, 1.915 unveränderte elektrische
+Quellverbindungen, Browserbedienung der Schriftfelder und Kabelwerkzeuge,
+Rückgängig sowie Kabel- und Schriftgrößen-Roundtrip. Die 193 physischen Leiter
+in Wohnzimmer 1 und 132 in Einspeisung bleiben unverändert.
+
 ## Verbleibende Grenzen
 
 Die Slot-/Indexinterpretation ist für das mitgelieferte P8-Layout rekonstruiert,
