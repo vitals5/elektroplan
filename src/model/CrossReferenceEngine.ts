@@ -3,6 +3,7 @@
 
 import { Project, PlacedComponent, Page } from './types';
 import { getSymbolForComponent } from './symbols';
+import { componentInsertionPoint } from './SymbolGeometry';
 
 export interface ContactMirrorItem {
   type: 'PowerNO' | 'NO' | 'NC' | 'Changeover';
@@ -35,6 +36,14 @@ export class CrossReferenceEngine {
     return Math.max(0, Math.min(9, col));
   }
 
+  public static componentPath(comp: PlacedComponent, page: Page, project: Project): number {
+    const symbol = getSymbolForComponent(comp, project);
+    const x = symbol ? componentInsertionPoint(comp, symbol).x : comp.x;
+    return comp.source?.format === 'EPLAN_P8'
+      ? Math.max(0, Math.min(page.plotFrame.columns - 1, Math.floor(x / (page.plotFrame.width / page.plotFrame.columns))))
+      : this.calculatePath(x, page.plotFrame.width);
+  }
+
   /**
    * Recalculates all cross-references across all pages in the project
    */
@@ -48,7 +57,7 @@ export class CrossReferenceEngine {
 
     for (const page of project.pages) {
       for (const comp of page.components) {
-        const col = this.calculatePath(comp.x);
+        const col = this.componentPath(comp, page, project);
         componentLocations.push({ comp, page, col });
       }
     }
@@ -69,12 +78,12 @@ export class CrossReferenceEngine {
     for (const [bmk, items] of bmkGroups.entries()) {
       // Find masters (e.g. coils) and slaves (e.g. contacts)
       const masters = items.filter(i => {
-        const sym = getSymbolForComponent(i.comp);
+        const sym = getSymbolForComponent(i.comp, project);
         return sym?.isMaster === true;
       });
 
       const slaves = items.filter(i => {
-        const sym = getSymbolForComponent(i.comp);
+        const sym = getSymbolForComponent(i.comp, project);
         return sym?.isContact === true;
       });
 
@@ -89,9 +98,8 @@ export class CrossReferenceEngine {
         // Calculate contact mirror items for master
         const mirrorItems: ContactMirrorItem[] = [];
         for (const slave of slaves) {
-          const sym = getSymbolForComponent(slave.comp);
-          const pinKeys = Object.keys(sym?.pins || {});
-          const pinNames = pinKeys.map(k => sym?.pins.find(p => p.id === k)?.name || k).join('-');
+          const sym = getSymbolForComponent(slave.comp, project);
+          const pinNames = sym?.pins.map(p => slave.comp.pins[p.id]?.customLabel ?? p.name).join('-');
 
           mirrorItems.push({
             type: sym?.contactType || 'NO',
@@ -113,7 +121,7 @@ export class CrossReferenceEngine {
         // Pairs / multiple components with same BMK without explicit master
         // Terminals in the same strip do not cross-reference each other
         const isTerminalGroup = items.every(i => {
-          const sym = getSymbolForComponent(i.comp);
+          const sym = getSymbolForComponent(i.comp, project);
           return sym?.category === 'terminals';
         });
 
@@ -137,7 +145,7 @@ export class CrossReferenceEngine {
    * Retrieves detailed contact mirror items for rendering under a contactor coil
    */
   public static getContactMirror(masterComp: PlacedComponent, project: Project): ContactMirrorItem[] {
-    const sym = getSymbolForComponent(masterComp);
+    const sym = getSymbolForComponent(masterComp, project);
     if (!sym?.isMaster) return [];
 
     const mirror: ContactMirrorItem[] = [];
@@ -148,10 +156,10 @@ export class CrossReferenceEngine {
         if (comp.id === masterComp.id) continue;
         if (comp.bmk.trim() !== bmk) continue;
 
-        const compSym = getSymbolForComponent(comp);
+        const compSym = getSymbolForComponent(comp, project);
         if (compSym?.isContact) {
-          const pinNames = compSym.pins.map(p => p.name).join('-');
-          const col = this.calculatePath(comp.x);
+          const pinNames = compSym.pins.map(p => comp.pins[p.id]?.customLabel ?? p.name).join('-');
+          const col = this.componentPath(comp, page, project);
           mirror.push({
             type: compSym.contactType || 'NO',
             pinNames,

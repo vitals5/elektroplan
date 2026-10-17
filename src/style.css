@@ -877,3 +877,10 @@ body.resizing {
   font-weight: 600;
   background: rgba(49, 130, 206, 0.08);
 }
+
+/* Reference labels remain individually clickable on the canvas and in forms. */
+.crossref-link { cursor: pointer; text-decoration: underline; pointer-events: all; }
+button.crossref-link { padding: 0; border: 0; background: transparent; color: #f6ad55; font: inherit; }
+.crossref-link:hover, .crossref-link:focus { color: #fbd38d; fill: #fbd38d; outline: 1px solid #f6ad55; }
+.menu-history { background: transparent; border: 0; width: 100%; text-align: left; font: inherit; }
+button:disabled { opacity: .4; cursor: default; }

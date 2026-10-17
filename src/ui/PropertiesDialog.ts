@@ -1,6 +1,7 @@
 // src/ui/PropertiesDialog.ts
 // Component properties modal ("Eigenschaften (Schaltzeichen)")
 
+import { referenceMarkup } from '../model/CrossReferenceNavigation';
 import { PlacedComponent, Project, TextFormatConfig } from '../model/types';
 import { escapeSvg } from '../model/ImportedDrawing';
 import { getSymbolForComponent } from '../model/symbols';
@@ -11,6 +12,7 @@ import { componentInsertionPoint, positionAtInsertionPoint } from '../model/Symb
 export interface PropertiesDialogCallbacks {
   onSave: (updated: PlacedComponent) => void;
   onNavigateToPage?: (pageId: string) => void;
+  onNavigateToReference?: (index: number) => void;
 }
 
 export class PropertiesDialog {
@@ -410,7 +412,7 @@ export class PropertiesDialog {
     }
 
     if (this.activeTab === 'crossref') {
-      const crossRefText = this.component.crossRef || 'Kein Querverweis vorhanden';
+      const crossRefText = referenceMarkup(this.project, this.component) || 'Kein Querverweis vorhanden';
       return `
         <div style="display: flex; flex-direction: column; gap: 12px;">
           <div style="background: #181d26; border: 1px solid #3e4656; border-radius: 6px; padding: 12px;">
@@ -561,6 +563,12 @@ export class PropertiesDialog {
     modal.querySelector('#btnClosePropModal')?.addEventListener('click', closeModal);
     modal.querySelector('#btnCancelProp')?.addEventListener('click', closeModal);
     modal.addEventListener('click', (e) => {
+      const link = (e.target as Element)?.closest?.('[data-crossref-source]');
+      if (link && this.callbacks.onNavigateToReference) {
+        closeModal();
+        this.callbacks.onNavigateToReference(Number(link.getAttribute('data-crossref-index') ?? 0));
+        return;
+      }
       if (e.target === modal) closeModal();
     });
 
@@ -583,6 +591,12 @@ export class PropertiesDialog {
 
     // Modal keyboard shortcuts (Enter = OK, Escape = Cancel)
     modal.addEventListener('keydown', (e) => {
+      const link = (e.target as Element)?.closest?.('[data-crossref-source]');
+      if (e.key === 'Enter' && link && this.callbacks.onNavigateToReference) {
+        e.preventDefault(); closeModal();
+        this.callbacks.onNavigateToReference(Number(link.getAttribute('data-crossref-index') ?? 0));
+        return;
+      }
       if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement)) {
         e.preventDefault();
         this.collectFormData(modal);

@@ -6,6 +6,7 @@ import { connectionCutouts, connectionGraphicWires, isConnectionGraphic, superse
 import { drawingToSvg, escapeSvg } from '../model/ImportedDrawing';
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
 import { getSymbolById, getSymbolForComponent, getDrawingUnitsPerMm } from '../model/symbols';
+import { referenceTargets, referenceMarkup, ReferenceTarget } from '../model/CrossReferenceNavigation';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
 import { AutoconnectEngine, AutoconnectPreviewSegment } from '../model/AutoconnectEngine';
 import { computeBmkPosition, computeFunctionTextPosition, computeTechnicalDataPosition } from '../model/LabelLayout';
@@ -25,6 +26,8 @@ export interface CadCanvasCallbacks {
   onExportSelectedMacro?: (components: PlacedComponent[]) => void;
   onNavigateToPage?: (pageId: string) => void;
   onProjectModified: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 export class CadCanvas {
@@ -56,6 +59,7 @@ export class CadCanvas {
 
   // Dragging components
   private isDraggingComponent: boolean = false;
+  private referenceMarker?: { x: number; y: number };
   private dragOffset: { x: number; y: number } = { x: 0, y: 0 };
   private lastMousePress: { componentId: string; time: number } | null = null;
 
@@ -97,6 +101,7 @@ export class CadCanvas {
   public setPage(pageId: string): void {
     const page = this.project.pages.find(p => p.id === pageId);
     if (page) {
+      this.referenceMarker = undefined;
       this.activePage = page;
       this.project.activePageId = pageId;
       this.selectedComponentId = null;
@@ -110,16 +115,59 @@ export class CadCanvas {
     }
   }
 
-  public setProject(project: Project): void {
+  public setProject(project: Project, recompute = true): void {
+    this.isDraggingComponent = false; this.isPanning = false; this.touchMode = 'none';
+    this.wireStart = null; this.lastMousePress = null; this.hoveredPin = null;
+    this.activeSymbolToPlace = null; this.activeMacroToPlace = null; this.mode = 'select';
+    this.referenceMarker = undefined;
     this.project = project;
     this.activePage = this.getOrCreateActivePage();
     this.selectedComponentId = null;
     this.selectedWireId = null;
-    CrossReferenceEngine.updateProjectCrossReferences(this.project);
-    if (this.autoconnectEnabled) {
-      AutoconnectEngine.updatePageAutoconnections(this.activePage);
+    if (recompute) {
+      CrossReferenceEngine.updateProjectCrossReferences(this.project);
+      if (this.autoconnectEnabled) AutoconnectEngine.updatePageAutoconnections(this.activePage);
     }
     this.render();
+  }
+
+  public finishInteraction(): void {
+    this.onMouseUp();
+    this.touchMode = 'none';
+  }
+
+  public followReference(source: PlacedComponent, index = 0): boolean {
+    const target = referenceTargets(this.project, source)[index];
+    if (!target) return false;
+    this.focusReference(target);
+    return true;
+  }
+
+  public focusReference(target: ReferenceTarget): void {
+    if (!this.project.pages.some(p => p.id === target.pageId)) return;
+    this.setMode('select');
+    this.isDraggingComponent = false; this.touchMode = 'none'; this.lastMousePress = null;
+    this.callbacks.onNavigateToPage?.(target.pageId);
+    if (this.activePage.id !== target.pageId) this.setPage(target.pageId);
+    const component = this.activePage.components.find(c => c.id === target.componentId) ?? null;
+    this.selectedComponentId = component?.id ?? null;
+    this.selectedWireId = null;
+    this.callbacks.onSelectComponent(component); this.callbacks.onSelectWire(null);
+    this.referenceMarker = { x: target.x, y: target.y };
+    const rect = this.container.getBoundingClientRect();
+    this.scale = Math.max(.9, this.scale);
+    this.panX = rect.width / 2 - target.x * this.scale;
+    this.panY = rect.height / 2 - target.y * this.scale;
+    this.render();
+  }
+
+  private referenceFromEvent(event: Event): boolean {
+    const link = (event.target as Element | null)?.closest?.('[data-crossref-source]');
+    if (!link) return false;
+    const source = this.activePage.components.find(c => c.id === link.getAttribute('data-crossref-source'));
+    if (!source) return false;
+    event.preventDefault(); event.stopPropagation();
+    return this.followReference(source, Number(link.getAttribute('data-crossref-index') ?? 0));
   }
 
   public setMode(mode: EditorMode): void {
@@ -363,7 +411,20 @@ export class CadCanvas {
     // Keyboard shortcuts
     window.addEventListener('keydown', (e) => {
       this.lastMousePress = null;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement
+        || (e.target as HTMLElement)?.isContentEditable || (e.target as Element)?.closest?.('.modal-backdrop')) return;
+      if ((e.key === 'Enter' || e.key === ' ') && this.referenceFromEvent(e)) return;
+      if (e.key === 'Tab' && (e.target as Element)?.closest?.('[data-crossref-source]')) return;
+      if (e.ctrlKey || e.metaKey) {
+        const key = e.key.toLowerCase();
+        if (key === 'z' || key === 'y') {
+          if (document.querySelector('.modal-backdrop')) return;
+          e.preventDefault();
+          if (key === 'y' || e.shiftKey) this.callbacks.onRedo?.(); else this.callbacks.onUndo?.();
+          return;
+        }
+        if (key === 'd') { e.preventDefault(); this.duplicateSelected(); return; }
+      }
       
       if (e.key === 'Tab') {
         if (this.mode === 'place_symbol' && this.activeSymbolToPlace) {
@@ -431,6 +492,7 @@ export class CadCanvas {
   }
 
   private onDoubleClick(e: MouseEvent): void {
+    if ((e.target as Element)?.closest?.('[data-crossref-source]')) return;
     const world = this.screenToWorld(e.clientX, e.clientY);
     const comp = this.findComponentAt(world.x, world.y);
     if (comp) {
@@ -540,14 +602,7 @@ export class CadCanvas {
           this.cycleGridResolution();
           this.callbacks.onProjectModified();
         } else if (action === 'jump-crossref' && comp?.crossRef) {
-          const match = comp.crossRef.match(/\/(\d+)/);
-          if (match) {
-            const pageNum = match[1];
-            const targetPage = this.project.pages.find(p => p.pageNumber === pageNum);
-            if (targetPage && this.callbacks.onNavigateToPage) {
-              this.callbacks.onNavigateToPage(targetPage.id);
-            }
-          }
+          this.followReference(comp);
         }
       });
     });
@@ -621,6 +676,8 @@ export class CadCanvas {
     }
 
     if (e.button !== 0) return;
+    if (this.referenceFromEvent(e)) return;
+    this.referenceMarker = undefined;
 
     const world = this.screenToWorld(e.clientX, e.clientY);
 
@@ -782,6 +839,8 @@ export class CadCanvas {
     }
 
     if (e.touches.length === 1) {
+      if (this.referenceFromEvent(e)) return;
+      this.referenceMarker = undefined;
       const touch = e.touches[0];
       const world = this.screenToWorld(touch.clientX, touch.clientY);
 
@@ -1105,6 +1164,7 @@ export class CadCanvas {
         <!-- Components -->
         <g id="componentsLayer">
           ${this.renderComponents()}
+          ${this.referenceMarker ? `<circle class="reference-marker" cx="${this.referenceMarker.x}" cy="${this.referenceMarker.y}" r="14" fill="none" stroke="#f6ad55" stroke-width="2" pointer-events="none"/>` : ''}
         </g>
 
         <!-- Embedded Images & Diagrams -->
@@ -1235,7 +1295,7 @@ export class CadCanvas {
       let crossRefDisplay = '';
       if (comp.crossRef && !isConn) {
         const crossRefY = sym.height + (hasTech ? 38 : 24);
-        crossRefDisplay = `<text x="${sym.width / 2}" y="${crossRefY}" font-size="8" font-family="monospace" fill="#f6ad55" text-anchor="middle">${escapeSvg(comp.crossRef)}</text>`;
+        crossRefDisplay = `<text x="${sym.width / 2}" y="${crossRefY}" font-size="8" font-family="monospace" fill="#f6ad55" text-anchor="middle">${referenceMarkup(this.project, comp, true)}</text>`;
       }
 
       // Pins render

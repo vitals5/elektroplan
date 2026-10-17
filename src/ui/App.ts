@@ -3,6 +3,8 @@
 
 import { Project, Page, PlacedComponent, Wire } from '../model/types';
 import { getSymbolDefinitions, getSymbolById, getSymbolForComponent, setProjectSymbolLibrary, mergeProjectSymbolLibrary } from '../model/symbols';
+import { ProjectHistory } from '../model/ProjectHistory';
+import { referenceMarkup } from '../model/CrossReferenceNavigation';
 import { CadCanvas } from '../editor/CadCanvas';
 import { CrossReferenceEngine } from '../model/CrossReferenceEngine';
 import { PackageHandler, PackageInspectionResult } from '../packages/PackageHandler';
@@ -21,6 +23,8 @@ import { MacroSelectionDialog } from './MacroSelectionDialog';
 export class App {
   private project!: Project;
   private canvas!: CadCanvas;
+  private history = new ProjectHistory();
+  private inputSession = 0;
   private selectedComponent: PlacedComponent | null = null;
   private selectedWire: Wire | null = null;
   private activeLeftTab: 'pages' | 'symbols' | 'macros' | 'terminals' | 'bom' | 'parts' = 'pages';
@@ -53,6 +57,8 @@ export class App {
     this.initDefaultProject();
     this.renderLayout();
     this.initCanvas();
+    this.history.reset(this.project);
+    this.initHistoryEvents();
     this.initPanelResizers();
     this.updateUI();
 
@@ -97,6 +103,9 @@ export class App {
         <div class="menu-item">
           Bearbeiten
           <div class="menu-dropdown">
+            <button type="button" class="menu-opt menu-history" id="menuUndo">↶ Rückgängig <span class="opt-key">Strg+Z</span></button>
+            <button type="button" class="menu-opt menu-history" id="menuRedo">↷ Wiederholen <span class="opt-key">Strg+Y</span></button>
+            <div class="menu-sep"></div>
             <div class="menu-opt" id="menuDuplicate">📋 Duplizieren <span class="opt-key">Strg+D</span></div>
             <div class="menu-opt" id="menuRotate">🔄 Um 90° drehen <span class="opt-key">R</span></div>
             <div class="menu-opt" id="menuDelete">🗑️ Löschen <span class="opt-key">Entf</span></div>
@@ -180,6 +189,8 @@ export class App {
           <button class="btn active" id="btnToolSelect" title="Auswahlwerkzeug">👆 <span class="hide-mobile">Auswählen</span></button>
           <button class="btn" id="btnToolWire" title="Verbindungslinie zeichnen (D)">🔌 <span class="hide-mobile">Verdrahten</span></button>
           <button class="btn" id="btnToolRotate" title="Ausgewähltes Bauteil um 90° drehen (R)">🔄 <span class="hide-mobile">Drehen (R)</span></button>
+          <button class="btn" id="btnUndo" title="Rückgängig (Strg+Z)" aria-label="Rückgängig">↶</button>
+          <button class="btn" id="btnRedo" title="Wiederholen (Strg+Y / Strg+Umschalt+Z)" aria-label="Wiederholen">↷</button>
           <button class="btn" id="btnToolDuplicate" title="Ausgewähltes Bauteil duplizieren (Strg+D)">📋 <span class="hide-mobile">Duplizieren</span></button>
           <button class="btn" id="btnToolDelete" title="Ausgewähltes Element löschen (Entf)">🗑️ <span class="hide-mobile">Löschen</span></button>
 
@@ -313,13 +324,13 @@ export class App {
     this.canvas = new CadCanvas(container, this.project, {
       onSelectComponent: (comp) => {
         this.selectedComponent = comp;
-        this.selectedWire = null;
+        if (comp) this.selectedWire = null;
         this.updateFloatingSelectionBar();
         this.renderRightTab();
       },
       onSelectWire: (wire) => {
         this.selectedWire = wire;
-        this.selectedComponent = null;
+        if (wire) this.selectedComponent = null;
         this.updateFloatingSelectionBar();
         this.renderRightTab();
       },
@@ -343,6 +354,8 @@ export class App {
         this.canvas.setPage(pageId);
         this.updateUI();
       },
+      onUndo: () => this.undo(),
+      onRedo: () => this.redo(),
       onProjectModified: () => {
         const banner = document.getElementById('placeHintBanner');
         if (banner) banner.style.display = 'none';
@@ -368,6 +381,7 @@ export class App {
 
   public openPropertiesDialog(comp: PlacedComponent): void {
     new PropertiesDialog(comp, this.project, {
+      onNavigateToReference: (index) => this.canvas.followReference(comp, index),
       onSave: (updated) => {
         // 1. Mutate the original comp in-place so all references stay updated
         Object.assign(comp, updated);
@@ -753,6 +767,7 @@ export class App {
         if (activePage) AutoconnectEngine.updatePageAutoconnections(activePage);
         this.canvas.render();
       }
+      this.updateUI();
     });
 
     // File Open
@@ -878,6 +893,8 @@ export class App {
     bindMenuOpt('menuPrint', () => window.print());
 
     // Bearbeiten
+    bindMenuOpt('menuUndo', () => this.undo());
+    bindMenuOpt('menuRedo', () => this.redo());
     bindMenuOpt('menuDuplicate', () => this.canvas.duplicateSelected());
     bindMenuOpt('menuRotate', () => this.canvas.rotateSelected());
     bindMenuOpt('menuDelete', () => this.canvas.deleteSelected());
@@ -911,6 +928,7 @@ export class App {
         if (activePage) AutoconnectEngine.updatePageAutoconnections(activePage);
         this.canvas.render();
       }
+      this.updateUI();
     });
 
     // Einfügen
@@ -943,6 +961,7 @@ export class App {
     bindMenuOpt('menuRecalcCrossRef', () => {
       CrossReferenceEngine.updateProjectCrossReferences(this.project);
       this.canvas.render();
+      this.updateUI();
       alert('Querverweise und Kontaktspiegel für alle Schaltzeichen wurden erfolgreich neu berechnet.');
     });
     bindMenuOpt('menuShowTerminals', () => {
@@ -966,6 +985,8 @@ export class App {
         '• D / W: Verbindungslinie zeichnen (Verdrahten)\n' +
         '• Doppelklick: Eigenschaften (Schaltzeichen)\n' +
         '• Rechtsklick: Kontextmenü\n' +
+        '• Strg+Z: Rückgängig\n' +
+        '• Strg+Y / Strg+Umschalt+Z: Wiederholen\n' +
         '• Strg+D: Ausgewähltes Bauteil duplizieren\n' +
         '• R: Ausgewähltes Bauteil um 90° drehen\n' +
         '• Entf / Backspace: Ausgewähltes Element löschen\n' +
@@ -1024,13 +1045,69 @@ export class App {
     }
   }
 
+  private initHistoryEvents(): void {
+    document.getElementById('btnUndo')?.addEventListener('click', () => this.undo());
+    document.getElementById('btnRedo')?.addEventListener('click', () => this.redo());
+    document.addEventListener('focusin', () => { this.inputSession++; });
+    document.addEventListener('focusout', () => this.history.breakGroup());
+    document.addEventListener('click', (event) => {
+      const link = (event.target as Element)?.closest?.('[data-crossref-source]');
+      if (!link || link instanceof SVGElement || link.closest('#propertiesModal')) return;
+      const component = this.project.pages.flatMap(p => p.components).find(c => c.id === link.getAttribute('data-crossref-source'));
+      if (component) this.canvas.followReference(component, Number(link.getAttribute('data-crossref-index') ?? 0));
+    });
+  }
+
+  private updateHistoryButtons(): void {
+    for (const [id, enabled] of [['btnUndo', this.history.canUndo], ['menuUndo', this.history.canUndo],
+      ['btnRedo', this.history.canRedo], ['menuRedo', this.history.canRedo]] as const) {
+      const button = document.getElementById(id) as HTMLButtonElement | null;
+      if (button) { button.disabled = !enabled; button.setAttribute('aria-disabled', String(!enabled)); }
+    }
+  }
+
+  private undo(): void {
+    this.canvas.finishInteraction();
+    this.history.record(this.project);
+    const previous = this.history.undo();
+    if (previous) this.restoreHistory(previous);
+  }
+
+  private redo(): void {
+    this.canvas.finishInteraction();
+    this.history.record(this.project);
+    const next = this.history.redo();
+    if (next) this.restoreHistory(next);
+  }
+
+  private restoreHistory(project: Project): void {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    const componentId = this.canvas.selectedComponentId, wireId = this.canvas.selectedWireId;
+    this.project = project;
+    setProjectSymbolLibrary(project);
+    this.canvas.setProject(project, false);
+    const page = project.pages.find(p => p.id === project.activePageId)!;
+    this.selectedComponent = page.components.find(c => c.id === componentId) ?? null;
+    this.selectedWire = page.wires.find(w => w.id === wireId) ?? null;
+    this.canvas.selectedComponentId = this.selectedComponent?.id ?? null;
+    this.canvas.selectedWireId = this.selectedWire?.id ?? null;
+    this.canvas.render();
+    this.updateToolButtons('btnToolSelect');
+    this.updateFloatingSelectionBar();
+    this.updateUI();
+  }
+
   private updateUI(): void {
+    const focused = document.activeElement as HTMLElement | null;
+    const editing = focused?.matches('input, textarea, select') && focused.closest('#rightSidebar');
+    this.history.record(this.project, editing ? `${this.inputSession}:${focused!.id}` : undefined);
+    this.updateHistoryButtons();
     const projNameEl = document.getElementById('headerProjectName');
     if (projNameEl) projNameEl.textContent = this.project.name;
 
     this.updateGridButtonState();
     this.renderLeftTab();
-    this.renderRightTab();
+    if (!editing) this.renderRightTab();
   }
 
   private renderLeftTab(): void {
@@ -1834,7 +1911,7 @@ export class App {
         <div class="form-group">
           <label class="form-label">Querverweis / Kontaktspiegel</label>
           <div style="padding: 8px; background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; font-family: monospace; font-size: 11px; color: var(--warning);">
-            ${comp.crossRef || 'Keine Querverweise aktiv'}
+            ${referenceMarkup(this.project, comp) || 'Keine Querverweise aktiv'}
           </div>
         </div>
 
@@ -2128,6 +2205,7 @@ export class App {
           this.canvas.setPage(this.project.activePageId);
         }
         this.canvas.fitToScreen();
+        this.history.reset(this.project);
         this.updateUI();
       }
 
@@ -2213,6 +2291,7 @@ export class App {
     this.selectedComponent = null;
     this.selectedWire = null;
     this.canvas.setProject(this.project);
+    this.history.reset(this.project);
     this.updateUI();
   }
 

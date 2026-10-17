@@ -18,6 +18,8 @@ Eine moderne, professionelle **Elektroplan- & Stromlaufplan-Software für Window
   * Pfad-Spalten `0` bis `9` für präzise Querverweise.
   * Zeilenraster `A` bis `F`.
   * Genormtes Schriftfeld nach **DIN EN ISO 7200** (Projektname, Zeichnungsnummer, Datum, Ersteller, Blattnummer).
+* **Rückgängig und Wiederholen im Editor**: Änderungen über die Pfeile in der Werkzeugleiste, im Menü „Bearbeiten“ oder mit `Strg+Z` zurücknehmen; `Strg+Y` / `Strg+Umschalt+Z` wiederholt sie. Das gilt für Platzieren, Verschieben, Drehen, Löschen, Leitungen, Makros, Eigenschaften und neue Seiten. Ein Verschieben ist ein Schritt. Der Sitzungsverlauf hält bis zu 100 Schritte mit einem Speicherbudget; Öffnen oder Anlegen eines Projekts startet einen neuen Verlauf. In Textfeldern bleibt die normale Text-Rückgängig-Funktion aktiv.
+* **Anklickbare Querverweise im Editor**: Verweise im Plan, in der Seitenleiste und im Eigenschaftendialog springen zum Gegenstück. Das Zielelement wird ausgewählt und zentriert; mehrere Kontaktverweise lassen sich einzeln anklicken. Geteilte Seitennummern wie `/21-3.5` werden vollständig aufgelöst. Ist nur die Seite/Spalte auflösbar, markiert der Editor diese Zielstelle.
 * **Automatischer Querverweis- & Kontaktspiegel-Engine**:
   * Schützspulen berechnen und zeichnen automatisch den **Kontaktspiegel** aller zugehörigen Kontakte mit Blatt- und Pfadangabe (`/1.2`, `/2.1`).
   * Hilfskontakte zeigen automatisch die Blatt- und Pfadreferenz ihrer übergeordneten Spule an.
